@@ -1,5 +1,6 @@
-import { BookOpen, LayoutDashboard, UserRound } from 'lucide-react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { BookOpen, LayoutDashboard, LogOut, UserRound } from 'lucide-react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { useLms } from '../context/LmsContext';
 import type { LearnerStateKey } from '../data/types';
 import { learnerPath } from './common';
@@ -11,6 +12,8 @@ const navItems = [
 ];
 
 export function AppShell() {
+  const navigate = useNavigate();
+  const { session, logout } = useAuth();
   const {
     catalog,
     learners,
@@ -26,6 +29,11 @@ export function AppShell() {
   const gatedCourse = gatedEnrollment
     ? catalog.courses.find((course) => course.id === gatedEnrollment.course_id)
     : null;
+
+  const signOut = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="min-h-dvh bg-dacfp-wash text-dacfp-ink">
@@ -76,6 +84,15 @@ export function AppShell() {
                 ))}
               </select>
             </label>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white"
+              type="button"
+              onClick={() => void signOut()}
+              aria-label={`Sign out${session?.user.email ? ` ${session.user.email}` : ''}`}
+            >
+              <LogOut size={17} aria-hidden="true" />
+              <span>Sign out</span>
+            </button>
           </div>
         </div>
         <div className="h-1 bg-gradient-to-r from-brand-royal via-brand-royal-bright to-brand-gold" />
