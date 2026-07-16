@@ -1,4 +1,4 @@
-# DACFP-LMS — DARK BUILD SPEC v3 (standing reference for all Codex sessions)
+# DACFP-LMS — DARK BUILD SPEC v3.1 (standing reference for all Codex sessions)
 
 This document is the contract for every session in this repo. Read it fully
 before writing code. Where a session prompt and this spec conflict, STOP and
