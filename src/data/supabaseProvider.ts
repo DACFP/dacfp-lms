@@ -5,7 +5,25 @@ import type {
   LmsAuthResult,
   LmsAuthSession,
   LmsAuthRole,
+  LmsProvider,
 } from './provider';
+import type {
+  Catalog,
+  CompletionEvidence,
+  LearnerSnapshot,
+  LearnerStateKey,
+  LearnerSummary,
+  LmsCompletionEvent,
+  LmsCourse,
+  LmsEnrollment,
+  LmsLearnerProfile,
+  LmsLesson,
+  LmsLessonProgress,
+  LmsLessonResource,
+  LmsModule,
+  LmsModuleQuiz,
+  LmsQuizAttempt,
+} from './types';
 
 export const GENERIC_LOGIN_ERROR =
   'Unable to sign in. Check your credentials and try again.';
@@ -64,7 +82,222 @@ function result(
   return { ok, message, session: toSession(session) };
 }
 
-export const supabaseProvider: LmsAuthProvider = {
+const learnerMetadata: Record<
+  string,
+  Pick<LearnerSummary, 'id' | 'label' | 'description'>
+> = {
+  'fresh@example.test': {
+    id: 'fresh',
+    label: 'Fresh learner',
+    description: 'Terms not yet accepted',
+  },
+  'midmodule@example.test': {
+    id: 'mid-module-2',
+    label: 'Mid-module 2',
+    description: 'Resuming required content',
+  },
+  'failedquiz@example.test': {
+    id: 'quiz-failed-on-3',
+    label: 'Quiz failed on 3',
+    description: 'Retake is available',
+  },
+  'almostdone@example.test': {
+    id: 'one-quiz-from-done',
+    label: 'One quiz from done',
+    description: 'Final FPT quiz remains',
+  },
+  'fptcomplete@example.test': {
+    id: 'fpt-completed',
+    label: 'FPT completed',
+    description: 'Bonus unlocked; renewal enrolled',
+  },
+  'complete@example.test': {
+    id: 'fully-complete',
+    label: 'Fully complete',
+    description: 'FPT, bonus, and renewal complete',
+  },
+};
+
+export function learnerSummaryForEmail(
+  email: string,
+  displayName: string,
+): LearnerSummary {
+  const normalizedEmail = email.trim().toLowerCase();
+  const metadata = learnerMetadata[normalizedEmail];
+  if (metadata) return { ...metadata, email: normalizedEmail };
+  return {
+    id: 'fresh',
+    label: displayName || normalizedEmail,
+    description: 'Authenticated learner',
+    email: normalizedEmail,
+  };
+}
+
+interface SnapshotRows {
+  email: string;
+  profile: Omit<LmsLearnerProfile, 'email'>;
+  enrollments: LmsEnrollment[];
+  progress: LmsLessonProgress[];
+  attempts: LmsQuizAttempt[];
+  completions: LmsCompletionEvent[];
+}
+
+export function buildLearnerSnapshot(rows: SnapshotRows): LearnerSnapshot {
+  const learner = learnerSummaryForEmail(rows.email, rows.profile.display_name);
+  const courseByEnrollment = new Map(
+    rows.enrollments.map((enrollment) => [enrollment.id, enrollment.course_id]),
+  );
+  const completions = rows.completions.flatMap<CompletionEvidence>((completion) => {
+    const courseId = courseByEnrollment.get(completion.enrollment_id);
+    return courseId ? [{ ...completion, course_id: courseId }] : [];
+  });
+
+  return {
+    learner,
+    profile: { ...rows.profile, email: rows.email },
+    enrollments: rows.enrollments,
+    progress: rows.progress,
+    attempts: rows.attempts,
+    completions,
+  };
+}
+
+async function currentUser() {
+  const { data, error } = await getClient().auth.getSession();
+  if (error || !data.session?.user) {
+    throw new Error('An authenticated session is required.');
+  }
+  return data.session.user;
+}
+
+async function tableRows<T>(table: string, orderColumns: string[] = []) {
+  let query = getClient().from(table).select('*');
+  for (const column of orderColumns) query = query.order(column);
+  const { data, error } = await query;
+  if (error) throw new Error(`Unable to load ${table}.`);
+  return (data ?? []) as T[];
+}
+
+const contentProvider: LmsProvider = {
+  async listLearners() {
+    const user = await currentUser();
+    const profiles = await tableRows<Omit<LmsLearnerProfile, 'email'>>(
+      'lms_learner_profiles',
+    );
+    const profile = profiles.find((item) => item.auth_user_id === user.id);
+    return [
+      learnerSummaryForEmail(
+        user.email ?? '',
+        profile?.display_name ?? user.user_metadata.display_name ?? '',
+      ),
+    ];
+  },
+
+  async getCatalog() {
+    const [courses, modules, lessons, resources, quizzes] = await Promise.all([
+      tableRows<LmsCourse>('lms_courses', ['created_at']),
+      tableRows<LmsModule>('lms_modules', ['course_id', 'position']),
+      tableRows<LmsLesson>('lms_lessons', ['module_id', 'position']),
+      tableRows<LmsLessonResource>('lms_lesson_resources', [
+        'lesson_id',
+        'position',
+      ]),
+      tableRows<LmsModuleQuiz>('lms_module_quizzes', ['module_id']),
+    ]);
+    return { courses, modules, lessons, resources, quizzes };
+  },
+
+  async getLearnerSnapshot(_learnerId: LearnerStateKey) {
+    const user = await currentUser();
+    const [profiles, enrollments, progress, attempts, completions] =
+      await Promise.all([
+        tableRows<Omit<LmsLearnerProfile, 'email'>>('lms_learner_profiles'),
+        tableRows<LmsEnrollment>('lms_enrollments', ['enrolled_at']),
+        tableRows<LmsLessonProgress>('lms_lesson_progress', ['updated_at']),
+        tableRows<LmsQuizAttempt>('lms_quiz_attempts', [
+          'quiz_id',
+          'attempt_number',
+        ]),
+        tableRows<LmsCompletionEvent>('lms_completion_events', ['completed_at']),
+      ]);
+    const profile = profiles.find((item) => item.auth_user_id === user.id);
+    if (!profile) throw new Error('Learner profile not found.');
+    return buildLearnerSnapshot({
+      email: user.email ?? '',
+      profile,
+      enrollments,
+      progress,
+      attempts,
+      completions,
+    });
+  },
+
+  async getModuleView(courseSlug, position) {
+    const catalog = await this.getCatalog();
+    const course = catalog.courses.find((item) => item.slug === courseSlug);
+    if (!course) return null;
+    const modules = catalog.modules.filter((item) => item.course_id === course.id);
+    const module = modules.find((item) => item.position === position);
+    if (!module) return null;
+    const lessons = catalog.lessons.filter((item) => item.module_id === module.id);
+    const lessonIds = new Set(lessons.map((lesson) => lesson.id));
+    return {
+      course,
+      module,
+      modules,
+      lessons,
+      resources: catalog.resources.filter((item) => lessonIds.has(item.lesson_id)),
+      quiz: catalog.quizzes.find((item) => item.module_id === module.id) ?? null,
+    };
+  },
+
+  async getLessonView(lessonId) {
+    const catalog = await this.getCatalog();
+    const lesson = catalog.lessons.find((item) => item.id === lessonId);
+    if (!lesson) return null;
+    const module = catalog.modules.find((item) => item.id === lesson.module_id);
+    const course = module
+      ? catalog.courses.find((item) => item.id === module.course_id)
+      : null;
+    if (!module || !course) return null;
+    return {
+      course,
+      module,
+      lesson,
+      moduleLessons: catalog.lessons.filter((item) => item.module_id === module.id),
+      resources: catalog.resources.filter((item) => item.lesson_id === lesson.id),
+    };
+  },
+
+  async acceptTerms(enrollmentId) {
+    const termsAcceptedAt = new Date().toISOString();
+    const { data, error } = await getClient()
+      .from('lms_enrollments')
+      .update({ terms_accepted_at: termsAcceptedAt })
+      .eq('id', enrollmentId)
+      .select('*')
+      .single();
+    if (error || !data) throw new Error('Unable to accept course terms.');
+    return data as LmsEnrollment;
+  },
+
+  async updateProfile(profile) {
+    const { data, error } = await getClient()
+      .from('lms_learner_profiles')
+      .update({
+        display_name: profile.display_name,
+        credential_ids: profile.credential_ids,
+      })
+      .eq('auth_user_id', profile.auth_user_id)
+      .select('*')
+      .single();
+    if (error || !data) throw new Error('Unable to update learner profile.');
+    return { ...(data as Omit<LmsLearnerProfile, 'email'>), email: profile.email };
+  },
+};
+
+export const supabaseProvider: LmsProvider & LmsAuthProvider = {
+  ...contentProvider,
   async getSession() {
     try {
       const { data, error } = await getClient().auth.getSession();

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from './App';
 import { AuthSessionProvider } from './context/AuthContext';
 import { LmsProvider } from './context/LmsContext';
+import { mockProvider } from './data/mockProvider';
 import type { LmsAuthProvider, LmsAuthSession } from './data/provider';
 
 const signedInSession: LmsAuthSession = {
@@ -52,7 +53,7 @@ function renderRoute(
   render(
     <MemoryRouter initialEntries={[route]}>
       <AuthSessionProvider provider={authProvider}>
-        <LmsProvider>
+        <LmsProvider provider={mockProvider}>
           <App />
         </LmsProvider>
       </AuthSessionProvider>
