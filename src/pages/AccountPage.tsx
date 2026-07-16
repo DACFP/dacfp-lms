@@ -11,20 +11,32 @@ export function AccountPage() {
   const [credentialIds, setCredentialIds] = useState<CredentialIds>(snapshot.profile.credential_ids);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     setDisplayName(snapshot.profile.display_name);
     setCredentialIds(snapshot.profile.credential_ids);
     setSaved(false);
+    setSaveError('');
   }, [snapshot.profile]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setSaved(false);
-    await saveProfile({ ...snapshot.profile, display_name: displayName, credential_ids: credentialIds });
-    setSaving(false);
-    setSaved(true);
+    setSaveError('');
+    try {
+      await saveProfile({
+        ...snapshot.profile,
+        display_name: displayName.trim(),
+        credential_ids: credentialIds,
+      });
+      setSaved(true);
+    } catch {
+      setSaveError('Your profile could not be saved. Check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const setCredential = (key: keyof CredentialIds, value: string) => {
@@ -60,7 +72,7 @@ export function AccountPage() {
               <label className="block">
                 <span className="mb-2 block text-sm font-bold text-brand-navy">Email</span>
                 <input className="field bg-dacfp-wash text-dacfp-slate" type="email" value={snapshot.profile.email} readOnly aria-describedby="email-help" />
-                <span id="email-help" className="mt-2 block text-xs leading-5 text-dacfp-slate">Email changes are not part of the D0 mock.</span>
+                <span id="email-help" className="mt-2 block text-xs leading-5 text-dacfp-slate">Your email is tied to your sign-in identity. Contact DACFP support if it needs to change.</span>
               </label>
             </div>
           </section>
@@ -93,7 +105,12 @@ export function AccountPage() {
             </button>
             {saved ? (
               <p className="inline-flex items-center gap-2 text-sm font-semibold text-status-positive" role="status">
-                <CheckCircle2 size={17} aria-hidden="true" /> Synthetic profile saved
+                <CheckCircle2 size={17} aria-hidden="true" /> Profile saved
+              </p>
+            ) : null}
+            {saveError ? (
+              <p className="text-sm font-semibold text-status-danger" role="alert">
+                {saveError}
               </p>
             ) : null}
           </div>
@@ -104,9 +121,9 @@ export function AccountPage() {
             <KeyRound size={20} aria-hidden="true" />
           </div>
           <h2 id="password-heading" className="mt-4 font-bold text-brand-navy">Password</h2>
-          <p className="mt-2 text-sm leading-6 text-dacfp-slate">Use the reset route to preview the email-OTP password recovery shell.</p>
+          <p className="mt-2 text-sm leading-6 text-dacfp-slate">Password changes use a secure email recovery link sent to {snapshot.profile.email}.</p>
           <Link className="button-secondary mt-5 w-full" to={learnerPath('/reset', selectedLearner)}>
-            Reset password
+            Change or reset password
           </Link>
         </aside>
       </form>

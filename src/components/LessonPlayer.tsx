@@ -285,7 +285,7 @@ export function LessonPlayer({
             </button>
           ) : null}
         </div>
-        {error ? <p className="mt-3 text-sm font-semibold text-red-700">{error}</p> : null}
+        {error ? <p className="mt-3 text-sm font-semibold text-status-danger" role="alert">{error}</p> : null}
         <div className="mt-5">
           <ProgressBar value={watchPercent} label="Furthest point watched" />
         </div>

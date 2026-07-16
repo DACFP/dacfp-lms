@@ -12,10 +12,17 @@ export function TermsModal({
   onAccept: (enrollmentId: string) => Promise<void>;
 }) {
   const [accepting, setAccepting] = useState(false);
+  const [error, setError] = useState('');
 
   const accept = async () => {
     setAccepting(true);
-    await onAccept(enrollment.id);
+    setError('');
+    try {
+      await onAccept(enrollment.id);
+    } catch {
+      setError('Terms could not be accepted. Check your connection and try again.');
+      setAccepting(false);
+    }
   };
 
   return (
@@ -50,6 +57,11 @@ export function TermsModal({
           <button className="button-primary mt-7 w-full sm:w-auto" type="button" onClick={() => void accept()} disabled={accepting}>
             {accepting ? 'Accepting…' : 'I accept and want to continue'}
           </button>
+          {error ? (
+            <p className="mt-3 text-sm font-semibold text-status-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
       </section>
     </div>

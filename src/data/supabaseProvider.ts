@@ -1,4 +1,5 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
+import { LmsDataError } from './provider';
 import type {
   LmsAuthEvent,
   LmsAuthProvider,
@@ -40,13 +41,31 @@ export const GENERIC_PASSWORD_ERROR =
 
 let client: SupabaseClient | null = null;
 
+function dataError(error: unknown, message: string) {
+  const candidate = error as {
+    code?: string;
+    status?: number;
+    context?: { status?: number };
+  } | null;
+  const status = candidate?.status ?? candidate?.context?.status;
+  const denied =
+    status === 401 ||
+    status === 403 ||
+    candidate?.code === '42501' ||
+    candidate?.code === 'PGRST301';
+  return new LmsDataError(denied ? 'denied' : 'unavailable', message);
+}
+
 function getClient() {
   if (client) return client;
 
   const url = import.meta.env.VITE_SUPABASE_URL;
   const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !publishableKey) {
-    throw new Error('Sandbox authentication is not configured.');
+    throw new LmsDataError(
+      'unavailable',
+      'Sandbox authentication is not configured.',
+    );
   }
 
   client = createClient(url, publishableKey, {
@@ -169,7 +188,7 @@ export function buildLearnerSnapshot(rows: SnapshotRows): LearnerSnapshot {
 async function currentUser() {
   const { data, error } = await getClient().auth.getSession();
   if (error || !data.session?.user) {
-    throw new Error('An authenticated session is required.');
+    throw new LmsDataError('denied', 'An authenticated session is required.');
   }
   return data.session.user;
 }
@@ -178,14 +197,14 @@ async function tableRows<T>(table: string, orderColumns: string[] = []) {
   let query = getClient().from(table).select('*');
   for (const column of orderColumns) query = query.order(column);
   const { data, error } = await query;
-  if (error) throw new Error(`Unable to load ${table}.`);
+  if (error) throw dataError(error, `Unable to load ${table}.`);
   return (data ?? []) as T[];
 }
 
 function progressFromPayload(value: unknown): LmsLessonProgress {
   const candidate = Array.isArray(value) ? value[0] : value;
   if (!candidate || typeof candidate !== 'object') {
-    throw new Error('Progress response was invalid.');
+    throw new LmsDataError('unavailable', 'Progress response was invalid.');
   }
   return candidate as LmsLessonProgress;
 }
@@ -233,7 +252,9 @@ const contentProvider: LmsProvider = {
         tableRows<LmsCompletionEvent>('lms_completion_events', ['completed_at']),
       ]);
     const profile = profiles.find((item) => item.auth_user_id === user.id);
-    if (!profile) throw new Error('Learner profile not found.');
+    if (!profile) {
+      throw new LmsDataError('denied', 'Learner profile not found.');
+    }
     return buildLearnerSnapshot({
       email: user.email ?? '',
       profile,
@@ -289,7 +310,9 @@ const contentProvider: LmsProvider = {
       .eq('id', enrollmentId)
       .select('*')
       .single();
-    if (error || !data) throw new Error('Unable to accept course terms.');
+    if (error || !data) {
+      throw dataError(error, 'Unable to accept course terms.');
+    }
     return data as LmsEnrollment;
   },
 
@@ -303,7 +326,9 @@ const contentProvider: LmsProvider = {
       .eq('auth_user_id', profile.auth_user_id)
       .select('*')
       .single();
-    if (error || !data) throw new Error('Unable to update learner profile.');
+    if (error || !data) {
+      throw dataError(error, 'Unable to update learner profile.');
+    }
     return { ...(data as Omit<LmsLearnerProfile, 'email'>), email: profile.email };
   },
 
@@ -319,7 +344,7 @@ const contentProvider: LmsProvider = {
       typeof data.expires_at !== 'string' ||
       typeof data.max_watched_seconds !== 'number'
     ) {
-      throw new Error('Unable to start this lesson.');
+      throw dataError(error, 'Unable to start this lesson.');
     }
     return data as LmsPlaybackToken;
   },
@@ -332,7 +357,9 @@ const contentProvider: LmsProvider = {
         position_seconds: positionSeconds,
       },
     });
-    if (error || !data) throw new Error('Unable to save lesson progress.');
+    if (error || !data) {
+      throw dataError(error, 'Unable to save lesson progress.');
+    }
     return progressFromPayload(data.progress);
   },
 
@@ -340,7 +367,9 @@ const contentProvider: LmsProvider = {
     const { data, error } = await getClient().functions.invoke('lms-progress', {
       body: { action: 'complete_reading', lesson_id: lessonId },
     });
-    if (error || !data) throw new Error('Unable to complete this reading.');
+    if (error || !data) {
+      throw dataError(error, 'Unable to complete this reading.');
+    }
     return progressFromPayload(data.progress);
   },
 
@@ -355,7 +384,7 @@ const contentProvider: LmsProvider = {
       !Array.isArray(data.questions) ||
       JSON.stringify(data).includes('"correct"')
     ) {
-      throw new Error('Unable to load this quiz.');
+      throw dataError(error, 'Unable to load this quiz.');
     }
     return data as LmsQuizPayload;
   },
@@ -374,7 +403,7 @@ const contentProvider: LmsProvider = {
       typeof data.passed !== 'boolean' ||
       typeof data.completion_fired !== 'boolean'
     ) {
-      throw new Error('Unable to grade this quiz.');
+      throw dataError(error, 'Unable to grade this quiz.');
     }
     return data as LmsQuizGradeResult;
   },
