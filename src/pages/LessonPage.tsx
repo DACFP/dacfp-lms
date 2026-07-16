@@ -12,7 +12,11 @@ import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/c
 import { LessonPlayer } from '../components/LessonPlayer';
 import { useLms } from '../context/LmsContext';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
-import { enrollmentForCourse, moduleIsUnlocked } from '../lib/progress';
+import {
+  enrollmentAccessState,
+  enrollmentForCourse,
+  moduleIsUnlocked,
+} from '../lib/progress';
 
 export function LessonPage() {
   const { id } = useParams();
@@ -24,15 +28,29 @@ export function LessonPage() {
   const course = catalog.courses.find((item) => item.id === module?.course_id);
 
   if (!lesson || !module || !course) {
-    return <EmptyState title="Lesson not found" description="This synthetic route does not match a lesson in the D0 catalog." />;
+    return (
+      <EmptyState
+        title="Lesson not found"
+        description="This lesson is unavailable or the link is no longer current."
+        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+      />
+    );
   }
 
   const enrollment = enrollmentForCourse(snapshot, course.id);
   if (!enrollment) {
-    return <EmptyState title="No enrollment" description="The selected synthetic learner cannot open this lesson." />;
+    return (
+      <EmptyState
+        title="No course access"
+        description="This account is not enrolled in the course that contains this lesson."
+        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+      />
+    );
   }
 
+  const accessState = enrollmentAccessState(enrollment);
   const accessible =
+    accessState === 'active' &&
     courseUnlocked(course, snapshot.completions) &&
     termsGateSatisfied(course, enrollment) &&
     moduleIsUnlocked(catalog, snapshot, course, module);
@@ -56,7 +74,11 @@ export function LessonPage() {
         eyebrow={`${course.title} · Module ${module.position} · Lesson ${lesson.position}`}
         title={lesson.title}
         description={lesson.kind === 'video' ? 'Required video progress completes when your furthest watched point reaches 95%.' : 'Read the material, then mark the lesson complete.'}
-        action={<StatusPill tone={complete ? 'positive' : accessible ? 'neutral' : 'warning'}>{complete ? 'Complete' : accessible ? 'In progress' : 'Locked'}</StatusPill>}
+        action={
+          <StatusPill tone={complete ? 'positive' : accessible ? 'neutral' : 'warning'}>
+            {complete ? 'Complete' : accessState === 'expired' ? 'Access expired' : accessible ? 'In progress' : 'Locked'}
+          </StatusPill>
+        }
       />
 
       {!accessible ? (
@@ -64,7 +86,16 @@ export function LessonPage() {
           <LockKeyhole className="mt-0.5 shrink-0 text-brand-gold" aria-hidden="true" size={22} />
           <div>
             <h2 className="font-bold text-brand-navy">This lesson is locked</h2>
-            <p className="mt-1 text-sm leading-6 text-dacfp-slate">Complete the prerequisite course, terms acknowledgment, or previous module before opening this content.</p>
+            <p className="mt-1 text-sm leading-6 text-dacfp-slate">
+              {accessState === 'expired'
+                ? 'Course access has expired. This does not itself change designation standing.'
+                : accessState === 'revoked'
+                  ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
+                  : 'Complete the prerequisite course, terms acknowledgment, or previous module before opening this content.'}
+            </p>
+            <Link className="button-quiet mt-3" to={learnerPath(`/course/${course.slug}/module/${module.position}`, selectedLearner)}>
+              Return to module
+            </Link>
           </div>
         </section>
       ) : lesson.kind === 'video' ? (
@@ -94,7 +125,7 @@ export function LessonPage() {
               <CheckCircle2 size={17} aria-hidden="true" />
               {complete ? 'Reading complete' : savingReading ? 'Saving…' : 'Mark reading complete'}
             </button>
-            {readingError ? <p className="font-semibold text-red-700">{readingError}</p> : null}
+            {readingError ? <p className="font-semibold text-status-danger" role="alert">{readingError}</p> : null}
           </div>
         </article>
       )}
@@ -108,10 +139,17 @@ export function LessonPage() {
           <ul className="mt-4 divide-y divide-dacfp-line rounded-lg border border-dacfp-line">
             {resources.map((resource) => (
               <li key={resource.id}>
-                <a className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-brand-royal hover:bg-dacfp-wash-blue" href={resource.file_ref} download>
-                  <span>{resource.title}</span>
-                  <Download size={17} aria-hidden="true" />
-                </a>
+                {accessible ? (
+                  <a className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-brand-royal hover:bg-dacfp-wash-blue" href={resource.file_ref} download>
+                    <span>{resource.title}</span>
+                    <Download size={17} aria-hidden="true" />
+                  </a>
+                ) : (
+                  <span className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-dacfp-slate" aria-disabled="true">
+                    <span>{resource.title}</span>
+                    <LockKeyhole size={17} aria-hidden="true" />
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -121,12 +159,12 @@ export function LessonPage() {
       </section>
 
       <nav aria-label="Lesson navigation" className="flex flex-col gap-3 border-t border-dacfp-line pt-6 sm:flex-row sm:justify-between">
-        {previous ? (
+        {accessible && previous ? (
           <Link className="button-secondary" to={learnerPath(`/lesson/${previous.id}`, selectedLearner)}>
             <ArrowLeft size={17} aria-hidden="true" /> Previous lesson
           </Link>
         ) : <span />}
-        {next ? (
+        {accessible && next ? (
           <Link className="button-primary" to={learnerPath(`/lesson/${next.id}`, selectedLearner)}>
             Next lesson <ArrowRight size={17} aria-hidden="true" />
           </Link>

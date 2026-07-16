@@ -1,6 +1,7 @@
 import {
   courseComplete,
   lessonComplete,
+  moduleRequirementsComplete,
   moduleUnlocked,
   quizAttemptable,
 } from '../engine';
@@ -14,6 +15,21 @@ import type {
 
 export function enrollmentForCourse(snapshot: LearnerSnapshot, courseId: string) {
   return snapshot.enrollments.find((item) => item.course_id === courseId) ?? null;
+}
+
+export function enrollmentAccessState(
+  enrollment: LmsEnrollment,
+  now = Date.now(),
+): 'active' | 'expired' | 'revoked' {
+  if (enrollment.status === 'revoked') return 'revoked';
+  if (
+    enrollment.status === 'expired' ||
+    (enrollment.expires_at !== null &&
+      new Date(enrollment.expires_at).getTime() <= now)
+  ) {
+    return 'expired';
+  }
+  return 'active';
 }
 
 export function moduleContext(
@@ -51,6 +67,47 @@ export function quizIsAttemptable(
   module: LmsModule,
 ) {
   return quizAttemptable(moduleContext(catalog, snapshot, course, module));
+}
+
+export function moduleIsPassed(
+  catalog: Catalog,
+  snapshot: LearnerSnapshot,
+  course: LmsCourse,
+  module: LmsModule,
+) {
+  const enrollment = enrollmentForCourse(snapshot, course.id);
+  if (!enrollment) return false;
+  const attempts = snapshot.attempts.filter(
+    (item) => item.enrollment_id === enrollment.id,
+  );
+  const quiz = catalog.quizzes.find((item) => item.module_id === module.id);
+  if (quiz) {
+    return attempts.some(
+      (attempt) => attempt.quiz_id === quiz.id && attempt.passed === true,
+    );
+  }
+  return moduleRequirementsComplete(
+    module,
+    catalog.lessons,
+    snapshot.progress.filter((item) => item.enrollment_id === enrollment.id),
+  );
+}
+
+export function resumeModuleForCourse(
+  catalog: Catalog,
+  snapshot: LearnerSnapshot,
+  course: LmsCourse,
+) {
+  const modules = catalog.modules
+    .filter((item) => item.course_id === course.id)
+    .sort((a, b) => a.position - b.position);
+  return (
+    modules.find(
+      (module) =>
+        moduleIsUnlocked(catalog, snapshot, course, module) &&
+        !moduleIsPassed(catalog, snapshot, course, module),
+    ) ?? modules.at(-1)
+  );
 }
 
 export function courseProgressPercent(

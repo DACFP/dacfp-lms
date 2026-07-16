@@ -44,7 +44,7 @@ function AuthShell({
             Professional learning, with progress you can trust.
           </p>
           <p className="mt-5 max-w-md leading-7 text-white/70">
-            Sandbox authentication protects synthetic learner content while the course experience remains on mock data.
+            Sandbox authentication protects synthetic learner content, progress, and quiz attempts end to end.
           </p>
         </div>
         <p className="text-sm text-white/55">

@@ -36,6 +36,22 @@ export interface LmsQuizGradeResult {
   completion_fired: boolean;
 }
 
+export type LmsDataErrorKind = 'denied' | 'unavailable';
+
+export class LmsDataError extends Error {
+  readonly kind: LmsDataErrorKind;
+
+  constructor(kind: LmsDataErrorKind, message: string) {
+    super(message);
+    this.name = 'LmsDataError';
+    this.kind = kind;
+  }
+}
+
+export function isLmsAccessDenied(error: unknown): boolean {
+  return error instanceof LmsDataError && error.kind === 'denied';
+}
+
 export interface LmsProvider {
   listLearners(): Promise<LearnerSummary[]>;
   getCatalog(): Promise<Catalog>;

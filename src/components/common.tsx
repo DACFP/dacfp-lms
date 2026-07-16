@@ -63,11 +63,20 @@ export function StatusPill({ tone, children }: { tone: 'positive' | 'warning' | 
   );
 }
 
-export function EmptyState({ title, description }: { title: string; description: string }) {
+export function EmptyState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="card px-6 py-12 text-center">
       <h2 className="text-lg font-bold text-brand-navy">{title}</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-dacfp-slate">{description}</p>
+      {action ? <div className="mt-6 flex justify-center">{action}</div> : null}
     </div>
   );
 }

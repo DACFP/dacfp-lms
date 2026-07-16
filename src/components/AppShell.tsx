@@ -3,6 +3,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLms } from '../context/LmsContext';
 import type { LearnerStateKey } from '../data/types';
+import { courseUnlocked } from '../engine';
+import { enrollmentAccessState } from '../lib/progress';
 import { learnerPath } from './common';
 import { TermsModal } from './TermsModal';
 
@@ -24,7 +26,12 @@ export function AppShell() {
   } = useLms();
   const gatedEnrollment = snapshot.enrollments.find((enrollment) => {
     const course = catalog.courses.find((item) => item.id === enrollment.course_id);
-    return course?.requires_terms_acceptance && !enrollment.terms_accepted_at;
+    return (
+      course?.requires_terms_acceptance &&
+      !enrollment.terms_accepted_at &&
+      enrollmentAccessState(enrollment) === 'active' &&
+      courseUnlocked(course, snapshot.completions)
+    );
   });
   const gatedCourse = gatedEnrollment
     ? catalog.courses.find((course) => course.id === gatedEnrollment.course_id)
@@ -53,7 +60,7 @@ export function AppShell() {
           </div>
 
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <nav aria-label="Primary" className="flex items-center gap-2">
+            <nav aria-label="Primary" className="flex flex-wrap items-center gap-2">
               {navItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
@@ -69,21 +76,27 @@ export function AppShell() {
                 </NavLink>
               ))}
             </nav>
-            <label className="flex min-h-11 items-center gap-3 rounded-lg border border-white/20 bg-white/10 px-3 text-sm">
-              <span className="font-semibold text-white/70">Mock state</span>
-              <select
-                className="min-h-9 max-w-52 rounded-md border border-white/20 bg-brand-navy px-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-gold"
-                value={selectedLearner}
-                onChange={(event) => selectLearner(event.target.value as LearnerStateKey)}
-                aria-label="Select synthetic learner state"
-              >
-                {learners.map((learner) => (
-                  <option key={learner.id} value={learner.id}>
-                    {learner.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {learners.length > 1 ? (
+              <label className="flex min-h-11 items-center gap-3 rounded-lg border border-white/20 bg-white/10 px-3 text-sm">
+                <span className="font-semibold text-white/70">Preview state</span>
+                <select
+                  className="min-h-9 max-w-52 rounded-md border border-white/20 bg-brand-navy px-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-gold"
+                  value={selectedLearner}
+                  onChange={(event) => selectLearner(event.target.value as LearnerStateKey)}
+                  aria-label="Select synthetic learner state"
+                >
+                  {learners.map((learner) => (
+                    <option key={learner.id} value={learner.id}>
+                      {learner.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="max-w-56 truncate text-sm text-white/70" title={session?.user.email}>
+                {session?.user.email}
+              </p>
+            )}
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white"
               type="button"
@@ -104,8 +117,8 @@ export function AppShell() {
 
       <footer className="border-t border-dacfp-line bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-6 text-sm text-dacfp-slate sm:px-6 lg:px-8">
-          <p className="font-semibold text-brand-navy">DACFP LMS dark-build preview</p>
-          <p>Synthetic learner data only. Learning access and designation status remain separate.</p>
+          <p className="font-semibold text-brand-navy">DACFP learning portal · sandbox preview</p>
+          <p>Synthetic learner data only. Learning access and designation status are governed separately.</p>
         </div>
       </footer>
 

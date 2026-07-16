@@ -16,7 +16,12 @@ import type {
   LmsQuizPayload,
 } from '../data/provider';
 import { courseUnlocked, nextAttemptNumber, termsGateSatisfied } from '../engine';
-import { enrollmentForCourse, moduleIsUnlocked, quizIsAttemptable } from '../lib/progress';
+import {
+  enrollmentAccessState,
+  enrollmentForCourse,
+  moduleIsUnlocked,
+  quizIsAttemptable,
+} from '../lib/progress';
 
 export function QuizPage() {
   const { moduleId } = useParams();
@@ -59,6 +64,7 @@ export function QuizPage() {
       course &&
       quiz &&
       enrollment &&
+      enrollmentAccessState(enrollment) === 'active' &&
       courseUnlocked(course, snapshot.completions) &&
       termsGateSatisfied(course, enrollment) &&
       moduleIsUnlocked(catalog, snapshot, course, module) &&
@@ -89,12 +95,26 @@ export function QuizPage() {
   }, [accessible, error, loading, payload, quiz, startAttempt]);
 
   if (!module || !course || !quiz) {
-    return <EmptyState title="Quiz not found" description="This module has no learner quiz." />;
+    return (
+      <EmptyState
+        title="Quiz not found"
+        description="This quiz is unavailable or the link is no longer current."
+        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+      />
+    );
   }
 
   if (!enrollment) {
-    return <EmptyState title="No enrollment" description="Your account cannot access this quiz." />;
+    return (
+      <EmptyState
+        title="No course access"
+        description="This account is not enrolled in the course that contains this quiz."
+        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+      />
+    );
   }
+
+  const accessState = enrollmentAccessState(enrollment);
 
   const toggleChoice = (questionId: string, choiceId: string) => {
     setAnswers((current) => {
@@ -125,6 +145,9 @@ export function QuizPage() {
     (item) =>
       item.course_id === course.id && item.position === module.position + 1,
   );
+  const unlockedCourses = catalog.courses.filter(
+    (item) => item.prerequisite_course_id === course.id,
+  );
 
   return (
     <div className="space-y-8">
@@ -136,7 +159,13 @@ export function QuizPage() {
           <StatusPill
             tone={latest?.passed ? 'positive' : accessible ? 'neutral' : 'warning'}
           >
-            {latest?.passed ? 'Passed' : accessible ? 'Ready' : 'Locked'}
+            {latest?.passed
+              ? 'Passed'
+              : accessState === 'expired'
+                ? 'Access expired'
+                : accessible
+                  ? 'Ready'
+                  : 'Locked'}
           </StatusPill>
         }
       />
@@ -155,8 +184,20 @@ export function QuizPage() {
           </p>
 
           {!accessible ? (
-            <div className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-slate" aria-disabled="true">
-              <LockKeyhole size={17} aria-hidden="true" /> Complete all required lessons first
+            <div className="mt-7 rounded-lg border border-dacfp-line bg-dacfp-wash p-4 text-sm leading-6 text-dacfp-slate">
+              <p className="flex items-center gap-2 font-bold text-brand-navy">
+                <LockKeyhole size={17} aria-hidden="true" /> Quiz unavailable
+              </p>
+              <p className="mt-1">
+                {accessState === 'expired'
+                  ? 'Course access has expired. Designation standing is governed separately.'
+                  : accessState === 'revoked'
+                    ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
+                    : 'Complete all required lessons and any prior module before starting this quiz.'}
+              </p>
+              <Link className="button-quiet mt-2" to={learnerPath(`/course/${course.slug}/module/${module.position}`, selectedLearner)}>
+                Back to module
+              </Link>
             </div>
           ) : loading ? (
             <p className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-dacfp-slate" role="status">
@@ -183,6 +224,16 @@ export function QuizPage() {
                 {result.completion_fired ? (
                   <p className="mt-4 text-sm font-semibold text-status-positive">
                     All course requirements are complete.
+                  </p>
+                ) : null}
+                {result.passed && nextModule ? (
+                  <p className="mt-2 text-sm font-semibold text-status-positive" role="status">
+                    Module {nextModule.position} unlocked. You can continue immediately.
+                  </p>
+                ) : null}
+                {result.completion_fired && unlockedCourses.length > 0 ? (
+                  <p className="mt-2 text-sm font-semibold text-status-positive" role="status">
+                    {unlockedCourses.map((item) => item.title).join(', ')} unlocked on your dashboard.
                   </p>
                 ) : null}
               </div>
@@ -215,7 +266,7 @@ export function QuizPage() {
                   </p>
                   <div className="mt-4 grid gap-3">
                     {question.choices.map((choice) => (
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-dacfp-line px-4 py-3 hover:bg-dacfp-wash-blue" key={choice.id}>
+                      <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-dacfp-line px-4 py-3 hover:bg-dacfp-wash-blue" key={choice.id}>
                         <input
                           checked={(answers[question.id] ?? []).includes(choice.id)}
                           className="mt-1 size-4 accent-brand-royal"

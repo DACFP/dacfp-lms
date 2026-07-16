@@ -5,13 +5,16 @@ import {
   FileText,
   LockKeyhole,
   PlayCircle,
+  ChevronLeft,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
 import { useLms } from '../context/LmsContext';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import {
+  enrollmentAccessState,
   enrollmentForCourse,
+  moduleIsPassed,
   moduleIsUnlocked,
   quizIsAttemptable,
 } from '../lib/progress';
@@ -25,23 +28,38 @@ export function ModulePage() {
   );
 
   if (!course || !module) {
-    return <EmptyState title="Module not found" description="This synthetic route does not match a module in the D0 catalog." />;
+    return (
+      <EmptyState
+        title="Module not found"
+        description="This module is unavailable or the link is no longer current."
+        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+      />
+    );
   }
 
   const enrollment = enrollmentForCourse(snapshot, course.id);
   if (!enrollment) {
-    return <EmptyState title="No enrollment" description="The selected synthetic learner is not enrolled in this course." />;
+    return (
+      <EmptyState
+        title="No course access"
+        description="This account is not enrolled in the requested course."
+        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+      />
+    );
   }
 
+  const accessState = enrollmentAccessState(enrollment);
+  const accessActive = accessState === 'active';
   const courseIsUnlocked = courseUnlocked(course, snapshot.completions);
   const termsAccepted = termsGateSatisfied(course, enrollment);
   const currentModuleUnlocked = moduleIsUnlocked(catalog, snapshot, course, module);
-  const contentAccessible = courseIsUnlocked && termsAccepted && currentModuleUnlocked;
+  const contentAccessible = accessActive && courseIsUnlocked && termsAccepted && currentModuleUnlocked;
   const moduleLessons = catalog.lessons.filter((item) => item.module_id === module.id);
   const quiz = catalog.quizzes.find((item) => item.module_id === module.id);
   const canAttemptQuiz = quiz ? quizIsAttemptable(catalog, snapshot, course, module) : false;
   const enrollmentProgress = snapshot.progress.filter((item) => item.enrollment_id === enrollment.id);
   const courseModules = catalog.modules.filter((item) => item.course_id === course.id);
+  const passed = moduleIsPassed(catalog, snapshot, course, module);
 
   return (
     <div className="space-y-8">
@@ -53,7 +71,11 @@ export function ModulePage() {
             ? 'Open progression: complete these lessons in any order.'
             : 'Sequential progression: complete each required lesson, then pass the module quiz with 70% or higher.'
         }
-        action={<StatusPill tone={contentAccessible ? 'positive' : 'warning'}>{contentAccessible ? 'Available' : 'Locked'}</StatusPill>}
+        action={
+          <StatusPill tone={passed ? 'positive' : contentAccessible ? 'neutral' : 'warning'}>
+            {passed ? 'Passed' : accessState === 'expired' ? 'Access expired' : contentAccessible ? 'Available' : 'Locked'}
+          </StatusPill>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -71,6 +93,10 @@ export function ModulePage() {
                 <p className="mt-1 text-sm leading-6 text-dacfp-slate">
                   {!courseIsUnlocked
                     ? 'Complete FPT to unlock this bonus curriculum.'
+                    : accessState === 'expired'
+                      ? `Course access expired on ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(enrollment.expires_at!))}. Designation standing is governed separately.`
+                      : accessState === 'revoked'
+                        ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
                     : !termsAccepted
                       ? 'Accept the course terms before opening content.'
                       : 'Pass the previous module quiz to continue.'}
@@ -79,6 +105,13 @@ export function ModulePage() {
             </div>
           ) : null}
 
+          {moduleLessons.length === 0 ? (
+            <EmptyState
+              title="No lessons published"
+              description="This module does not contain learner lessons yet. Return to the dashboard and choose another available course."
+              action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+            />
+          ) : (
           <ol className="space-y-3">
             {moduleLessons.map((lesson) => {
               const complete = lessonComplete(lesson, enrollmentProgress);
@@ -113,9 +146,22 @@ export function ModulePage() {
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-dacfp-slate">Resources</p>
                       <ul className="mt-2 space-y-2">
                         {lessonResources.map((resource) => (
-                          <li key={resource.id} className="flex items-center gap-2 text-sm text-brand-royal">
-                            <Download size={16} aria-hidden="true" />
-                            <span>{resource.title}</span>
+                          <li key={resource.id}>
+                            {contentAccessible ? (
+                              <a
+                                className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-royal hover:underline"
+                                download
+                                href={resource.file_ref}
+                              >
+                                <Download size={16} aria-hidden="true" />
+                                <span>{resource.title}</span>
+                              </a>
+                            ) : (
+                              <span className="inline-flex min-h-11 items-center gap-2 text-sm text-dacfp-slate">
+                                <LockKeyhole size={15} aria-hidden="true" />
+                                {resource.title}
+                              </span>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -125,6 +171,7 @@ export function ModulePage() {
               );
             })}
           </ol>
+          )}
 
           {quiz ? (
             <div className="card flex flex-col gap-5 border-l-4 border-l-brand-gold p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -133,14 +180,22 @@ export function ModulePage() {
                 <h2 className="mt-1 text-lg font-bold text-brand-navy">{quiz.question_count} questions · {quiz.pass_pct}% to pass</h2>
                 <p className="mt-1 text-sm text-dacfp-slate">Unlimited attempts. No cumulative exam.</p>
               </div>
-              <Link
-                className={canAttemptQuiz && contentAccessible ? 'button-primary' : 'pointer-events-none inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-slate opacity-60'}
-                aria-disabled={!canAttemptQuiz || !contentAccessible}
-                to={learnerPath(`/quiz/${module.id}`, selectedLearner)}
-              >
-                {!canAttemptQuiz ? <LockKeyhole size={16} aria-hidden="true" /> : null}
-                {canAttemptQuiz ? 'Open quiz' : 'Complete required lessons'}
-              </Link>
+              {canAttemptQuiz && contentAccessible ? (
+                <Link
+                  className="button-primary"
+                  to={learnerPath(`/quiz/${module.id}`, selectedLearner)}
+                >
+                  {passed ? 'Review or retake quiz' : 'Open quiz'}
+                </Link>
+              ) : (
+                <span
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-slate opacity-70"
+                  aria-disabled="true"
+                >
+                  <LockKeyhole size={16} aria-hidden="true" />
+                  {contentAccessible ? 'Complete required lessons' : 'Quiz unavailable'}
+                </span>
+              )}
             </div>
           ) : (
             <div className="card p-6">
@@ -155,18 +210,42 @@ export function ModulePage() {
           <ol className="mt-3 space-y-1">
             {courseModules.map((item) => {
               const unlocked = moduleIsUnlocked(catalog, snapshot, course, item) && courseIsUnlocked && termsAccepted;
+              const outlineAvailable = unlocked && accessActive;
               const active = item.id === module.id;
+              const itemPassed = moduleIsPassed(catalog, snapshot, course, item);
+              const outlineContent = (
+                <>
+                  {itemPassed ? (
+                    <CheckCircle2 size={17} aria-hidden="true" />
+                  ) : outlineAvailable ? (
+                    <Circle size={17} aria-hidden="true" />
+                  ) : (
+                    <LockKeyhole size={17} aria-hidden="true" />
+                  )}
+                  <span className="min-w-0 flex-1">Module {item.position}: {item.title}</span>
+                  <span className="text-xs opacity-75">
+                    {itemPassed ? 'Passed' : outlineAvailable ? 'Open' : 'Locked'}
+                  </span>
+                </>
+              );
               return (
                 <li key={item.id}>
-                  <Link
-                    to={learnerPath(`/course/${course.slug}/module/${item.position}`, selectedLearner)}
-                    aria-current={active ? 'page' : undefined}
-                    className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-brand-navy text-white' : unlocked ? 'text-brand-navy hover:bg-dacfp-wash-blue' : 'pointer-events-none text-dacfp-mist'}`}
-                    aria-disabled={!unlocked}
-                  >
-                    {unlocked ? <Circle size={17} aria-hidden="true" /> : <LockKeyhole size={17} aria-hidden="true" />}
-                    <span>Module {item.position}: {item.title}</span>
-                  </Link>
+                  {outlineAvailable ? (
+                    <Link
+                      to={learnerPath(`/course/${course.slug}/module/${item.position}`, selectedLearner)}
+                      aria-current={active ? 'page' : undefined}
+                      className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-brand-navy text-white' : 'text-brand-navy hover:bg-dacfp-wash-blue'}`}
+                    >
+                      {outlineContent}
+                    </Link>
+                  ) : (
+                    <span
+                      className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-dacfp-wash-blue text-brand-navy' : 'text-dacfp-mist'}`}
+                      aria-disabled="true"
+                    >
+                      {outlineContent}
+                    </span>
+                  )}
                 </li>
               );
             })}
@@ -176,6 +255,10 @@ export function ModulePage() {
           </p>
         </aside>
       </div>
+
+      <Link className="button-quiet" to={learnerPath('/dashboard', selectedLearner)}>
+        <ChevronLeft size={17} aria-hidden="true" /> Back to dashboard
+      </Link>
     </div>
   );
 }
