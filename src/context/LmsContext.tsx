@@ -7,7 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { mockProvider } from '../data/mockProvider';
+import type { LmsProvider as LmsDataProvider } from '../data/provider';
+import { supabaseProvider } from '../data/supabaseProvider';
 import type {
   Catalog,
   LearnerSnapshot,
@@ -37,7 +38,13 @@ function initialLearner(): LearnerStateKey {
     : 'fresh';
 }
 
-export function LmsProvider({ children }: { children: ReactNode }) {
+export function LmsProvider({
+  children,
+  provider = supabaseProvider,
+}: {
+  children: ReactNode;
+  provider?: LmsDataProvider;
+}) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [learners, setLearners] = useState<LearnerSummary[]>([]);
   const [selectedLearner, setSelectedLearner] = useState<LearnerStateKey>(initialLearner);
@@ -46,19 +53,20 @@ export function LmsProvider({ children }: { children: ReactNode }) {
 
   const loadSnapshot = useCallback(async (learner: LearnerStateKey) => {
     setLoading(true);
-    const next = await mockProvider.getLearnerSnapshot(learner);
+    const next = await provider.getLearnerSnapshot(learner);
     setSnapshot(next);
     setLoading(false);
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
-    void Promise.all([mockProvider.getCatalog(), mockProvider.listLearners()]).then(
+    void Promise.all([provider.getCatalog(), provider.listLearners()]).then(
       ([nextCatalog, nextLearners]) => {
         setCatalog(nextCatalog);
         setLearners(nextLearners);
+        if (nextLearners.length === 1) setSelectedLearner(nextLearners[0].id);
       },
     );
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
     void loadSnapshot(selectedLearner);
@@ -73,18 +81,22 @@ export function LmsProvider({ children }: { children: ReactNode }) {
 
   const acceptTerms = useCallback(
     async (enrollmentId: string) => {
-      await mockProvider.acceptTerms(enrollmentId);
-      await loadSnapshot(selectedLearner);
+      await provider.acceptTerms(enrollmentId);
+      const [nextCatalog] = await Promise.all([
+        provider.getCatalog(),
+        loadSnapshot(selectedLearner),
+      ]);
+      setCatalog(nextCatalog);
     },
-    [loadSnapshot, selectedLearner],
+    [loadSnapshot, provider, selectedLearner],
   );
 
   const saveProfile = useCallback(
     async (profile: LmsLearnerProfile) => {
-      await mockProvider.updateProfile(profile);
+      await provider.updateProfile(profile);
       await loadSnapshot(selectedLearner);
     },
-    [loadSnapshot, selectedLearner],
+    [loadSnapshot, provider, selectedLearner],
   );
 
   const value = useMemo(
@@ -117,7 +129,7 @@ export function LmsProvider({ children }: { children: ReactNode }) {
     return (
       <div className="grid min-h-dvh place-items-center bg-dacfp-wash px-6">
         <p className="text-sm font-semibold text-brand-navy" role="status">
-          Loading the synthetic learning portal…
+          Loading the learning portal…
         </p>
       </div>
     );
