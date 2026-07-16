@@ -51,4 +51,10 @@ describe('mockProvider synthetic catalog', () => {
     expect(rewound.max_watched_seconds).toBe(570);
     expect(rewound.completed_at).toBe(almostComplete.completed_at);
   });
+
+  it('returns a learner-safe quiz payload with no answer-key field', async () => {
+    const payload = await mockProvider.getQuiz('quiz-fpt-m1', 'fresh');
+    expect(payload.questions).toHaveLength(10);
+    expect(JSON.stringify(payload)).not.toContain('"correct"');
+  });
 });

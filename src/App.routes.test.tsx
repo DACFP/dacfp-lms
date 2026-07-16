@@ -5,7 +5,11 @@ import { App } from './App';
 import { AuthSessionProvider } from './context/AuthContext';
 import { LmsProvider } from './context/LmsContext';
 import { mockProvider } from './data/mockProvider';
-import type { LmsAuthProvider, LmsAuthSession } from './data/provider';
+import type {
+  LmsAuthProvider,
+  LmsAuthSession,
+  LmsProvider as LmsDataProvider,
+} from './data/provider';
 
 const signedInSession: LmsAuthSession = {
   user: {
@@ -46,6 +50,7 @@ function renderRoute(
   path: string,
   learner = 'fully-complete',
   authProvider = testAuthProvider(signedInSession),
+  dataProvider: LmsDataProvider = mockProvider,
 ) {
   const separator = path.includes('?') ? '&' : '?';
   const route = `${path}${separator}learner=${learner}`;
@@ -53,7 +58,7 @@ function renderRoute(
   render(
     <MemoryRouter initialEntries={[route]}>
       <AuthSessionProvider provider={authProvider}>
-        <LmsProvider provider={mockProvider}>
+        <LmsProvider provider={dataProvider}>
           <App />
         </LmsProvider>
       </AuthSessionProvider>
@@ -102,6 +107,31 @@ describe('D0 route shell', () => {
     expect(
       await screen.findByRole('button', { name: 'Reading complete' }),
     ).toBeDisabled();
+  });
+
+  it('renders the server grading result and unlimited retake control', async () => {
+    const quizProvider: LmsDataProvider = {
+      ...mockProvider,
+      async gradeQuiz() {
+        return {
+          attempt_number: 1,
+          score: 7,
+          possible_points: 10,
+          passed: true,
+          completion_fired: true,
+        };
+      },
+    };
+    renderRoute(
+      '/quiz/fpt-m4',
+      'one-quiz-from-done',
+      testAuthProvider(signedInSession),
+      quizProvider,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Submit attempt' }));
+    expect(await screen.findByText('7/10')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retake quiz' })).toBeInTheDocument();
+    expect(screen.getByText('All course requirements are complete.')).toBeInTheDocument();
   });
 
   it('redirects an unauthenticated protected route to login', async () => {

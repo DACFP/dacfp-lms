@@ -10,6 +10,9 @@ import {
 import type {
   LmsPlaybackToken,
   LmsProvider as LmsDataProvider,
+  LmsQuizAnswers,
+  LmsQuizGradeResult,
+  LmsQuizPayload,
 } from '../data/provider';
 import { supabaseProvider } from '../data/supabaseProvider';
 import type {
@@ -37,6 +40,11 @@ interface LmsContextValue {
     positionSeconds: number,
   ) => Promise<LmsLessonProgress>;
   completeReading: (lessonId: string) => Promise<LmsLessonProgress>;
+  loadQuiz: (quizId: string) => Promise<LmsQuizPayload>;
+  submitQuiz: (
+    quizId: string,
+    answers: LmsQuizAnswers,
+  ) => Promise<LmsQuizGradeResult>;
 }
 
 const LmsContext = createContext<LmsContextValue | null>(null);
@@ -149,6 +157,20 @@ export function LmsProvider({
     [applyProgress, provider, selectedLearner],
   );
 
+  const loadQuiz = useCallback(
+    (quizId: string) => provider.getQuiz(quizId, selectedLearner),
+    [provider, selectedLearner],
+  );
+
+  const submitQuiz = useCallback(
+    async (quizId: string, answers: LmsQuizAnswers) => {
+      const result = await provider.gradeQuiz(quizId, answers, selectedLearner);
+      await loadSnapshot(selectedLearner);
+      return result;
+    },
+    [loadSnapshot, provider, selectedLearner],
+  );
+
   const value = useMemo(
     () =>
       catalog && snapshot
@@ -164,6 +186,8 @@ export function LmsProvider({
             requestPlayback,
             recordHeartbeat,
             completeReading,
+            loadQuiz,
+            submitQuiz,
           }
         : null,
     [
@@ -172,12 +196,14 @@ export function LmsProvider({
       learners,
       loading,
       completeReading,
+      loadQuiz,
       recordHeartbeat,
       requestPlayback,
       saveProfile,
       selectedLearner,
       selectLearner,
       snapshot,
+      submitQuiz,
     ],
   );
 

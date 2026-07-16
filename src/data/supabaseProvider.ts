@@ -7,6 +7,9 @@ import type {
   LmsAuthRole,
   LmsPlaybackToken,
   LmsProvider,
+  LmsQuizAnswers,
+  LmsQuizGradeResult,
+  LmsQuizPayload,
 } from './provider';
 import type {
   Catalog,
@@ -339,6 +342,41 @@ const contentProvider: LmsProvider = {
     });
     if (error || !data) throw new Error('Unable to complete this reading.');
     return progressFromPayload(data.progress);
+  },
+
+  async getQuiz(quizId) {
+    const { data, error } = await getClient().functions.invoke('lms-get-quiz', {
+      body: { quiz_id: quizId },
+    });
+    if (
+      error ||
+      !data ||
+      !data.quiz ||
+      !Array.isArray(data.questions) ||
+      JSON.stringify(data).includes('"correct"')
+    ) {
+      throw new Error('Unable to load this quiz.');
+    }
+    return data as LmsQuizPayload;
+  },
+
+  async gradeQuiz(quizId, answers: LmsQuizAnswers) {
+    const { data, error } = await getClient().functions.invoke(
+      'lms-grade-attempt',
+      { body: { quiz_id: quizId, answers } },
+    );
+    if (
+      error ||
+      !data ||
+      typeof data.attempt_number !== 'number' ||
+      typeof data.score !== 'number' ||
+      typeof data.possible_points !== 'number' ||
+      typeof data.passed !== 'boolean' ||
+      typeof data.completion_fired !== 'boolean'
+    ) {
+      throw new Error('Unable to grade this quiz.');
+    }
+    return data as LmsQuizGradeResult;
   },
 };
 

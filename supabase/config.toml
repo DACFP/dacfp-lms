@@ -3,3 +3,9 @@ verify_jwt = true
 
 [functions.lms-progress]
 verify_jwt = true
+
+[functions.lms-get-quiz]
+verify_jwt = true
+
+[functions.lms-grade-attempt]
+verify_jwt = true
