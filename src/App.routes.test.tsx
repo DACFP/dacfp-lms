@@ -2,17 +2,60 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { App } from './App';
+import { AuthSessionProvider } from './context/AuthContext';
 import { LmsProvider } from './context/LmsContext';
+import type { LmsAuthProvider, LmsAuthSession } from './data/provider';
 
-function renderRoute(path: string, learner = 'fully-complete') {
+const signedInSession: LmsAuthSession = {
+  user: {
+    id: 'auth-fully-complete',
+    email: 'complete@example.test',
+    displayName: 'Fully complete',
+    role: 'learner',
+  },
+};
+
+function testAuthProvider(session: LmsAuthSession | null): LmsAuthProvider {
+  return {
+    async getSession() {
+      return session;
+    },
+    onAuthStateChange() {
+      return () => undefined;
+    },
+    async signUp() {
+      return { ok: true, message: 'Account created.', session };
+    },
+    async login() {
+      return session
+        ? { ok: true, message: 'Signed in.', session }
+        : { ok: false, message: 'Unable to sign in.', session: null };
+    },
+    async logout() {},
+    async requestPasswordReset() {
+      return { ok: true, message: 'If an account exists, reset instructions will be sent.', session: null };
+    },
+    async updatePassword() {
+      return { ok: true, message: 'Password updated.', session };
+    },
+  };
+}
+
+function renderRoute(
+  path: string,
+  learner = 'fully-complete',
+  authProvider = testAuthProvider(signedInSession),
+) {
   const separator = path.includes('?') ? '&' : '?';
   const route = `${path}${separator}learner=${learner}`;
   window.history.replaceState({}, '', route);
   render(
     <MemoryRouter initialEntries={[route]}>
-      <LmsProvider>
-        <App />
-      </LmsProvider>
+      <AuthSessionProvider provider={authProvider}>
+        <LmsProvider>
+          <App />
+        </LmsProvider>
+      </AuthSessionProvider>
     </MemoryRouter>,
   );
 }
@@ -47,5 +90,10 @@ describe('D0 route shell', () => {
     expect(await screen.findByLabelText('CFP ID')).toBeInTheDocument();
     expect(screen.getByLabelText('IWI ID')).toBeInTheDocument();
     expect(screen.getByLabelText('CFA ID')).toBeInTheDocument();
+  });
+
+  it('redirects an unauthenticated protected route to login', async () => {
+    renderRoute('/dashboard', 'fully-complete', testAuthProvider(null));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to continue' })).toBeInTheDocument();
   });
 });

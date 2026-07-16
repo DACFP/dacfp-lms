@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { AccountPage } from './pages/AccountPage';
 import { LoginPage, ResetPage } from './pages/AuthPages';
 import { DashboardPage } from './pages/DashboardPage';
@@ -12,7 +13,13 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset" element={<ResetPage />} />
-      <Route element={<AppShell />}>
+      <Route
+        element={
+          <ProtectedRoute>
+            <AppShell />
+          </ProtectedRoute>
+        }
+      >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/course/:slug/module/:n" element={<ModulePage />} />
         <Route path="/lesson/:id" element={<LessonPage />} />
