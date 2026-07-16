@@ -5,9 +5,16 @@ import type {
   LearnerSummary,
   LessonView,
   LmsEnrollment,
+  LmsLessonProgress,
   LmsLearnerProfile,
   ModuleView,
 } from './types';
+
+export interface LmsPlaybackToken {
+  url: string;
+  expires_at: string;
+  max_watched_seconds: number;
+}
 
 export interface LmsProvider {
   listLearners(): Promise<LearnerSummary[]>;
@@ -17,6 +24,19 @@ export interface LmsProvider {
   getLessonView(lessonId: string): Promise<LessonView | null>;
   acceptTerms(enrollmentId: string): Promise<LmsEnrollment>;
   updateProfile(profile: LmsLearnerProfile): Promise<LmsLearnerProfile>;
+  getPlaybackToken(
+    lessonId: string,
+    learnerId: LearnerStateKey,
+  ): Promise<LmsPlaybackToken>;
+  recordHeartbeat(
+    lessonId: string,
+    positionSeconds: number,
+    learnerId: LearnerStateKey,
+  ): Promise<LmsLessonProgress>;
+  completeReading(
+    lessonId: string,
+    learnerId: LearnerStateKey,
+  ): Promise<LmsLessonProgress>;
 }
 
 export type LmsAuthRole = 'learner' | 'operator' | null;

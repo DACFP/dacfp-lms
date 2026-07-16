@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { App } from './App';
@@ -91,6 +91,17 @@ describe('D0 route shell', () => {
     expect(await screen.findByLabelText('CFP ID')).toBeInTheDocument();
     expect(screen.getByLabelText('IWI ID')).toBeInTheDocument();
     expect(screen.getByLabelText('CFA ID')).toBeInTheDocument();
+  });
+
+  it('marks an accessible reading complete through the provider action', async () => {
+    renderRoute('/lesson/fpt-m2-reading', 'mid-module-2');
+    const button = await screen.findByRole('button', {
+      name: 'Mark reading complete',
+    });
+    fireEvent.click(button);
+    expect(
+      await screen.findByRole('button', { name: 'Reading complete' }),
+    ).toBeDisabled();
   });
 
   it('redirects an unauthenticated protected route to login', async () => {

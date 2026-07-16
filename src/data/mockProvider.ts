@@ -378,6 +378,34 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+function progressTarget(learnerId: LearnerStateKey, lessonId: string) {
+  const snapshot = snapshots[learnerId];
+  const lesson = lessons.find((item) => item.id === lessonId);
+  const module = modules.find((item) => item.id === lesson?.module_id);
+  const enrollment = snapshot.enrollments.find(
+    (item) => item.course_id === module?.course_id,
+  );
+  if (!lesson || !module || !enrollment) {
+    throw new Error('Synthetic lesson progress target not found.');
+  }
+  return { snapshot, lesson, enrollment };
+}
+
+function upsertMockProgress(
+  learnerId: LearnerStateKey,
+  lessonId: string,
+  mutate: (current: LmsLessonProgress | undefined) => LmsLessonProgress,
+) {
+  const { snapshot } = progressTarget(learnerId, lessonId);
+  const index = snapshot.progress.findIndex(
+    (item) => item.lesson_id === lessonId,
+  );
+  const next = mutate(index >= 0 ? snapshot.progress[index] : undefined);
+  if (index >= 0) snapshot.progress[index] = next;
+  else snapshot.progress.push(next);
+  return clone(next);
+}
+
 export const mockProvider: LmsProvider = {
   async listLearners() {
     return clone(learnerSummaries);
@@ -437,5 +465,60 @@ export const mockProvider: LmsProvider = {
     if (!snapshot) throw new Error('Synthetic learner not found.');
     snapshot.profile = { ...profile, updated_at: new Date().toISOString() };
     return clone(snapshot.profile);
+  },
+  async getPlaybackToken(lessonId, learnerId) {
+    const { snapshot, enrollment } = progressTarget(learnerId, lessonId);
+    const progress = snapshot.progress.find(
+      (item) =>
+        item.enrollment_id === enrollment.id && item.lesson_id === lessonId,
+    );
+    return {
+      url: 'data:video/mp4;base64,',
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      max_watched_seconds: progress?.max_watched_seconds ?? 0,
+    };
+  },
+  async recordHeartbeat(lessonId, positionSeconds, learnerId) {
+    const { lesson, enrollment } = progressTarget(learnerId, lessonId);
+    if (lesson.kind !== 'video' || !lesson.duration_seconds) {
+      throw new Error('Synthetic heartbeat target is not a video.');
+    }
+    const now = new Date().toISOString();
+    const position = Math.min(
+      lesson.duration_seconds,
+      Math.max(0, Math.floor(positionSeconds)),
+    );
+    return upsertMockProgress(learnerId, lessonId, (current) => {
+      const maxWatched = Math.max(current?.max_watched_seconds ?? 0, position);
+      return {
+        id: current?.id ?? `${learnerId}-progress-${lessonId}`,
+        enrollment_id: enrollment.id,
+        lesson_id: lessonId,
+        started_at: current?.started_at ?? now,
+        completed_at:
+          current?.completed_at ??
+          (maxWatched >= lesson.duration_seconds! * 0.95 ? now : null),
+        last_position_seconds: position,
+        max_watched_seconds: maxWatched,
+        updated_at: now,
+      };
+    });
+  },
+  async completeReading(lessonId, learnerId) {
+    const { lesson, enrollment } = progressTarget(learnerId, lessonId);
+    if (lesson.kind !== 'reading') {
+      throw new Error('Synthetic completion target is not a reading.');
+    }
+    const now = new Date().toISOString();
+    return upsertMockProgress(learnerId, lessonId, (current) => ({
+      id: current?.id ?? `${learnerId}-progress-${lessonId}`,
+      enrollment_id: enrollment.id,
+      lesson_id: lessonId,
+      started_at: current?.started_at ?? now,
+      completed_at: current?.completed_at ?? now,
+      last_position_seconds: current?.last_position_seconds ?? 0,
+      max_watched_seconds: current?.max_watched_seconds ?? 0,
+      updated_at: now,
+    }));
   },
 };

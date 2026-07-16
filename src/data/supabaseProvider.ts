@@ -5,6 +5,7 @@ import type {
   LmsAuthResult,
   LmsAuthSession,
   LmsAuthRole,
+  LmsPlaybackToken,
   LmsProvider,
 } from './provider';
 import type {
@@ -178,6 +179,14 @@ async function tableRows<T>(table: string, orderColumns: string[] = []) {
   return (data ?? []) as T[];
 }
 
+function progressFromPayload(value: unknown): LmsLessonProgress {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (!candidate || typeof candidate !== 'object') {
+    throw new Error('Progress response was invalid.');
+  }
+  return candidate as LmsLessonProgress;
+}
+
 const contentProvider: LmsProvider = {
   async listLearners() {
     const user = await currentUser();
@@ -293,6 +302,43 @@ const contentProvider: LmsProvider = {
       .single();
     if (error || !data) throw new Error('Unable to update learner profile.');
     return { ...(data as Omit<LmsLearnerProfile, 'email'>), email: profile.email };
+  },
+
+  async getPlaybackToken(lessonId) {
+    const { data, error } = await getClient().functions.invoke(
+      'lms-playback-token',
+      { body: { lesson_id: lessonId } },
+    );
+    if (
+      error ||
+      !data ||
+      typeof data.url !== 'string' ||
+      typeof data.expires_at !== 'string' ||
+      typeof data.max_watched_seconds !== 'number'
+    ) {
+      throw new Error('Unable to start this lesson.');
+    }
+    return data as LmsPlaybackToken;
+  },
+
+  async recordHeartbeat(lessonId, positionSeconds) {
+    const { data, error } = await getClient().functions.invoke('lms-progress', {
+      body: {
+        action: 'heartbeat',
+        lesson_id: lessonId,
+        position_seconds: positionSeconds,
+      },
+    });
+    if (error || !data) throw new Error('Unable to save lesson progress.');
+    return progressFromPayload(data.progress);
+  },
+
+  async completeReading(lessonId) {
+    const { data, error } = await getClient().functions.invoke('lms-progress', {
+      body: { action: 'complete_reading', lesson_id: lessonId },
+    });
+    if (error || !data) throw new Error('Unable to complete this reading.');
+    return progressFromPayload(data.progress);
   },
 };
 

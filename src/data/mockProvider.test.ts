@@ -33,4 +33,22 @@ describe('mockProvider synthetic catalog', () => {
     const snapshot = await mockProvider.getLearnerSnapshot('quiz-failed-on-3');
     expect(JSON.stringify({ catalog: mockCatalog, snapshot })).not.toContain('"correct"');
   });
+
+  it('keeps video progress monotonic and completes at the 95% boundary', async () => {
+    const almostComplete = await mockProvider.recordHeartbeat(
+      'fpt-m1-video',
+      570,
+      'fresh',
+    );
+    const rewound = await mockProvider.recordHeartbeat(
+      'fpt-m1-video',
+      10,
+      'fresh',
+    );
+
+    expect(almostComplete.completed_at).not.toBeNull();
+    expect(rewound.last_position_seconds).toBe(10);
+    expect(rewound.max_watched_seconds).toBe(570);
+    expect(rewound.completed_at).toBe(almostComplete.completed_at);
+  });
 });
