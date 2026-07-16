@@ -7,7 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { LmsProvider as LmsDataProvider } from '../data/provider';
+import type {
+  LmsPlaybackToken,
+  LmsProvider as LmsDataProvider,
+} from '../data/provider';
 import { supabaseProvider } from '../data/supabaseProvider';
 import type {
   Catalog,
@@ -15,6 +18,7 @@ import type {
   LearnerStateKey,
   LearnerSummary,
   LmsLearnerProfile,
+  LmsLessonProgress,
 } from '../data/types';
 import { learnerStateKeys } from '../data/types';
 
@@ -27,6 +31,12 @@ interface LmsContextValue {
   selectLearner: (learner: LearnerStateKey) => void;
   acceptTerms: (enrollmentId: string) => Promise<void>;
   saveProfile: (profile: LmsLearnerProfile) => Promise<void>;
+  requestPlayback: (lessonId: string) => Promise<LmsPlaybackToken>;
+  recordHeartbeat: (
+    lessonId: string,
+    positionSeconds: number,
+  ) => Promise<LmsLessonProgress>;
+  completeReading: (lessonId: string) => Promise<LmsLessonProgress>;
 }
 
 const LmsContext = createContext<LmsContextValue | null>(null);
@@ -99,6 +109,46 @@ export function LmsProvider({
     [loadSnapshot, provider, selectedLearner],
   );
 
+  const applyProgress = useCallback((progress: LmsLessonProgress) => {
+    setSnapshot((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        progress: [
+          ...current.progress.filter((item) => item.id !== progress.id),
+          progress,
+        ],
+      };
+    });
+  }, []);
+
+  const requestPlayback = useCallback(
+    (lessonId: string) => provider.getPlaybackToken(lessonId, selectedLearner),
+    [provider, selectedLearner],
+  );
+
+  const recordHeartbeat = useCallback(
+    async (lessonId: string, positionSeconds: number) => {
+      const progress = await provider.recordHeartbeat(
+        lessonId,
+        positionSeconds,
+        selectedLearner,
+      );
+      applyProgress(progress);
+      return progress;
+    },
+    [applyProgress, provider, selectedLearner],
+  );
+
+  const completeReading = useCallback(
+    async (lessonId: string) => {
+      const progress = await provider.completeReading(lessonId, selectedLearner);
+      applyProgress(progress);
+      return progress;
+    },
+    [applyProgress, provider, selectedLearner],
+  );
+
   const value = useMemo(
     () =>
       catalog && snapshot
@@ -111,6 +161,9 @@ export function LmsProvider({
             selectLearner,
             acceptTerms,
             saveProfile,
+            requestPlayback,
+            recordHeartbeat,
+            completeReading,
           }
         : null,
     [
@@ -118,6 +171,9 @@ export function LmsProvider({
       catalog,
       learners,
       loading,
+      completeReading,
+      recordHeartbeat,
+      requestPlayback,
       saveProfile,
       selectedLearner,
       selectLearner,
