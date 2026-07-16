@@ -1,38 +1,130 @@
-import { CheckCircle2, LockKeyhole, RotateCcw, ShieldCheck, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import {
+  CheckCircle2,
+  LoaderCircle,
+  LockKeyhole,
+  RotateCcw,
+  ShieldCheck,
+  XCircle,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
 import { useLms } from '../context/LmsContext';
+import type {
+  LmsQuizAnswers,
+  LmsQuizGradeResult,
+  LmsQuizPayload,
+} from '../data/provider';
 import { courseUnlocked, nextAttemptNumber, termsGateSatisfied } from '../engine';
 import { enrollmentForCourse, moduleIsUnlocked, quizIsAttemptable } from '../lib/progress';
 
 export function QuizPage() {
-  const [shellMessage, setShellMessage] = useState('');
   const { moduleId } = useParams();
-  const { catalog, snapshot, selectedLearner } = useLms();
+  const {
+    catalog,
+    snapshot,
+    selectedLearner,
+    loadQuiz,
+    submitQuiz,
+  } = useLms();
+  const [payload, setPayload] = useState<LmsQuizPayload | null>(null);
+  const [answers, setAnswers] = useState<LmsQuizAnswers>({});
+  const [result, setResult] = useState<LmsQuizGradeResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
   const module = catalog.modules.find((item) => item.id === moduleId);
   const course = catalog.courses.find((item) => item.id === module?.course_id);
   const quiz = catalog.quizzes.find((item) => item.module_id === module?.id);
+  const enrollment = course
+    ? enrollmentForCourse(snapshot, course.id)
+    : null;
+  const attempts = useMemo(
+    () =>
+      enrollment && quiz
+        ? snapshot.attempts
+            .filter(
+              (attempt) =>
+                attempt.enrollment_id === enrollment.id &&
+                attempt.quiz_id === quiz.id,
+            )
+            .sort((a, b) => b.attempt_number - a.attempt_number)
+        : [],
+    [enrollment, quiz, snapshot.attempts],
+  );
+  const latest = attempts[0];
+  const accessible = Boolean(
+    module &&
+      course &&
+      quiz &&
+      enrollment &&
+      courseUnlocked(course, snapshot.completions) &&
+      termsGateSatisfied(course, enrollment) &&
+      moduleIsUnlocked(catalog, snapshot, course, module) &&
+      quizIsAttemptable(catalog, snapshot, course, module),
+  );
+  const nextNumber = quiz ? nextAttemptNumber(quiz.id, attempts) : 1;
+
+  const startAttempt = useCallback(async () => {
+    if (!quiz) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    setAnswers({});
+    try {
+      setPayload(await loadQuiz(quiz.id));
+    } catch {
+      setPayload(null);
+      setError('Unable to load this quiz. Please retry.');
+    } finally {
+      setLoading(false);
+    }
+  }, [loadQuiz, quiz]);
+
+  useEffect(() => {
+    if (accessible && quiz && !payload && !loading && !error) {
+      void startAttempt();
+    }
+  }, [accessible, error, loading, payload, quiz, startAttempt]);
 
   if (!module || !course || !quiz) {
-    return <EmptyState title="Quiz not found" description="This module has no learner quiz in the D0 catalog." />;
+    return <EmptyState title="Quiz not found" description="This module has no learner quiz." />;
   }
 
-  const enrollment = enrollmentForCourse(snapshot, course.id);
   if (!enrollment) {
-    return <EmptyState title="No enrollment" description="The selected synthetic learner cannot access this quiz." />;
+    return <EmptyState title="No enrollment" description="Your account cannot access this quiz." />;
   }
 
-  const attempts = snapshot.attempts
-    .filter((attempt) => attempt.enrollment_id === enrollment.id && attempt.quiz_id === quiz.id)
-    .sort((a, b) => b.attempt_number - a.attempt_number);
-  const latest = attempts[0];
-  const accessible =
-    courseUnlocked(course, snapshot.completions) &&
-    termsGateSatisfied(course, enrollment) &&
-    moduleIsUnlocked(catalog, snapshot, course, module) &&
-    quizIsAttemptable(catalog, snapshot, course, module);
-  const nextNumber = nextAttemptNumber(quiz.id, attempts);
+  const toggleChoice = (questionId: string, choiceId: string) => {
+    setAnswers((current) => {
+      const selected = current[questionId] ?? [];
+      return {
+        ...current,
+        [questionId]: selected.includes(choiceId)
+          ? selected.filter((item) => item !== choiceId)
+          : [...selected, choiceId],
+      };
+    });
+  };
+
+  const gradeCurrentAttempt = async () => {
+    if (!payload) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      setResult(await submitQuiz(payload.quiz.id, answers));
+    } catch {
+      setError('Unable to grade this attempt. Your answers were not changed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const nextModule = catalog.modules.find(
+    (item) =>
+      item.course_id === course.id && item.position === module.position + 1,
+  );
 
   return (
     <div className="space-y-8">
@@ -40,7 +132,13 @@ export function QuizPage() {
         eyebrow={`${course.title} · Module ${module.position}`}
         title={`${module.title} quiz`}
         description={`${quiz.question_count} questions. Score ${quiz.pass_pct}% or higher to pass and move on. Attempts are unlimited.`}
-        action={<StatusPill tone={latest?.passed ? 'positive' : accessible ? 'neutral' : 'warning'}>{latest?.passed ? 'Passed' : accessible ? 'Ready' : 'Locked'}</StatusPill>}
+        action={
+          <StatusPill
+            tone={latest?.passed ? 'positive' : accessible ? 'neutral' : 'warning'}
+          >
+            {latest?.passed ? 'Passed' : accessible ? 'Ready' : 'Locked'}
+          </StatusPill>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -48,26 +146,112 @@ export function QuizPage() {
           <div className="flex size-12 items-center justify-center rounded-xl bg-dacfp-wash-blue text-brand-royal">
             <ShieldCheck aria-hidden="true" size={24} />
           </div>
-          <p className="eyebrow mt-6">Attempt {nextNumber}</p>
-          <h2 id="attempt-heading" className="mt-1 text-2xl font-bold text-brand-navy">Ready for the next attempt?</h2>
+          <p className="eyebrow mt-6">Attempt {result?.attempt_number ?? nextNumber}</p>
+          <h2 id="attempt-heading" className="mt-1 text-2xl font-bold text-brand-navy">
+            {result ? 'Attempt result' : 'Knowledge check'}
+          </h2>
           <p className="mt-3 max-w-2xl leading-7 text-dacfp-slate">
-            D0 renders the complete attempt gate and prior results. Question delivery and server-side grading arrive in D4; answer keys are never present in this client.
+            Questions are delivered in a new shuffled order for each attempt. Grading happens only on the secure server.
           </p>
 
-          {accessible ? (
-            <button type="button" className="button-primary mt-7" onClick={() => setShellMessage('D0 shell only: server-side quiz delivery begins in D4.')}>
-              {latest ? <RotateCcw size={17} aria-hidden="true" /> : null}
-              {latest ? `Retake quiz · attempt ${nextNumber}` : 'Start quiz attempt'}
-            </button>
-          ) : (
+          {!accessible ? (
             <div className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-slate" aria-disabled="true">
               <LockKeyhole size={17} aria-hidden="true" /> Complete all required lessons first
             </div>
-          )}
-          {shellMessage ? (
-            <p className="mt-4 rounded-lg border border-dacfp-line bg-dacfp-wash p-3 text-sm leading-6 text-dacfp-slate" role="status">
-              {shellMessage}
+          ) : loading ? (
+            <p className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-dacfp-slate" role="status">
+              <LoaderCircle className="animate-spin" size={18} aria-hidden="true" /> Loading shuffled questions…
             </p>
+          ) : result ? (
+            <div className="mt-7 space-y-5">
+              <div className={`rounded-xl border p-5 ${result.passed ? 'border-status-positive/30 bg-status-positive/5' : 'border-status-danger/30 bg-status-danger/5'}`}>
+                <div className="flex items-center gap-3">
+                  {result.passed ? (
+                    <CheckCircle2 className="text-status-positive" size={24} aria-hidden="true" />
+                  ) : (
+                    <XCircle className="text-status-danger" size={24} aria-hidden="true" />
+                  )}
+                  <div>
+                    <p className="font-bold text-brand-navy">
+                      {result.passed ? 'Passed' : 'Not passed yet'}
+                    </p>
+                    <p className="text-sm text-dacfp-slate">
+                      Score <strong className="tabular-nums text-brand-navy">{result.score}/{result.possible_points}</strong>
+                    </p>
+                  </div>
+                </div>
+                {result.completion_fired ? (
+                  <p className="mt-4 text-sm font-semibold text-status-positive">
+                    All course requirements are complete.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button className="button-secondary" onClick={() => void startAttempt()} type="button">
+                  <RotateCcw size={17} aria-hidden="true" /> Retake quiz
+                </button>
+                {result.passed && nextModule ? (
+                  <Link className="button-primary" to={learnerPath(`/course/${course.slug}/module/${nextModule.position}`, selectedLearner)}>
+                    Continue to module {nextModule.position}
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ) : payload ? (
+            <form
+              className="mt-7 space-y-7"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void gradeCurrentAttempt();
+              }}
+            >
+              {payload.questions.map((question, questionIndex) => (
+                <fieldset className="rounded-xl border border-dacfp-line p-5" key={question.id}>
+                  <legend className="px-1 font-bold leading-6 text-brand-navy">
+                    {questionIndex + 1}. {question.prompt}
+                  </legend>
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.08em] text-dacfp-slate">
+                    Select all that apply
+                  </p>
+                  <div className="mt-4 grid gap-3">
+                    {question.choices.map((choice) => (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-dacfp-line px-4 py-3 hover:bg-dacfp-wash-blue" key={choice.id}>
+                        <input
+                          checked={(answers[question.id] ?? []).includes(choice.id)}
+                          className="mt-1 size-4 accent-brand-royal"
+                          name={question.id}
+                          onChange={() => toggleChoice(question.id, choice.id)}
+                          type="checkbox"
+                          value={choice.id}
+                        />
+                        <span className="text-sm leading-6 text-brand-navy">{choice.text}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
+              <button className="button-primary" disabled={submitting} type="submit">
+                {submitting ? (
+                  <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
+                ) : (
+                  <ShieldCheck size={17} aria-hidden="true" />
+                )}
+                {submitting ? 'Grading securely…' : 'Submit attempt'}
+              </button>
+            </form>
+          ) : (
+            <button className="button-primary mt-7" onClick={() => void startAttempt()} type="button">
+              Start quiz attempt
+            </button>
+          )}
+
+          {error ? (
+            <div className="mt-5 rounded-lg border border-status-danger/30 bg-status-danger/5 p-4 text-sm font-semibold text-status-danger" role="alert">
+              {error}
+              <button className="button-quiet mt-2" onClick={() => void startAttempt()} type="button">
+                Retry
+              </button>
+            </div>
           ) : null}
         </section>
 

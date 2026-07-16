@@ -1,4 +1,5 @@
 import type { LmsProvider } from './provider';
+import { meetsPassThreshold } from '../engine';
 import type {
   Catalog,
   CompletionEvidence,
@@ -215,7 +216,7 @@ function attempt(
     submitted_at: '2026-07-16T16:40:00.000Z',
     answers: {},
     score,
-    passed: score >= 7,
+    passed: meetsPassThreshold(score, quiz.question_count, quiz.pass_pct),
   };
 }
 
@@ -520,5 +521,28 @@ export const mockProvider: LmsProvider = {
       max_watched_seconds: current?.max_watched_seconds ?? 0,
       updated_at: now,
     }));
+  },
+  async getQuiz(quizId) {
+    const quiz = quizzes.find((item) => item.id === quizId);
+    if (!quiz) throw new Error('Synthetic quiz not found.');
+    return {
+      quiz: clone(quiz),
+      questions: Array.from({ length: quiz.question_count }, (_, index) => ({
+        id: `${quiz.id}-question-${index + 1}`,
+        quiz_id: quiz.id,
+        position: index + 1,
+        prompt: `Synthetic question ${index + 1}?`,
+        choices: [
+          { id: 'a', text: 'Synthetic choice A' },
+          { id: 'b', text: 'Synthetic choice B' },
+          { id: 'c', text: 'Synthetic choice C' },
+          { id: 'd', text: 'Synthetic choice D' },
+        ],
+        points: 1,
+      })),
+    };
+  },
+  async gradeQuiz() {
+    throw new Error('Server-side grading is unavailable in the mock provider.');
   },
 };

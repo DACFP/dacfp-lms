@@ -7,6 +7,7 @@ import type {
   LmsEnrollment,
   LmsLessonProgress,
   LmsLearnerProfile,
+  LmsQuizQuestionPublic,
   ModuleView,
 } from './types';
 
@@ -14,6 +15,25 @@ export interface LmsPlaybackToken {
   url: string;
   expires_at: string;
   max_watched_seconds: number;
+}
+
+export type LmsQuizAnswers = Record<string, string[]>;
+
+export interface LmsQuizPayload {
+  quiz: {
+    id: string;
+    question_count: number;
+    pass_pct: number;
+  };
+  questions: LmsQuizQuestionPublic[];
+}
+
+export interface LmsQuizGradeResult {
+  attempt_number: number;
+  score: number;
+  possible_points: number;
+  passed: boolean;
+  completion_fired: boolean;
 }
 
 export interface LmsProvider {
@@ -37,6 +57,15 @@ export interface LmsProvider {
     lessonId: string,
     learnerId: LearnerStateKey,
   ): Promise<LmsLessonProgress>;
+  getQuiz(
+    quizId: string,
+    learnerId: LearnerStateKey,
+  ): Promise<LmsQuizPayload>;
+  gradeQuiz(
+    quizId: string,
+    answers: LmsQuizAnswers,
+    learnerId: LearnerStateKey,
+  ): Promise<LmsQuizGradeResult>;
 }
 
 export type LmsAuthRole = 'learner' | 'operator' | null;
