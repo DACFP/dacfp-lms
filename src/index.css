@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Open Sans", "Helvetica Neue", Arial, sans-serif;
+
+  --color-brand-navy-deep: #0e1b30;
+  --color-brand-navy: #14243f;
+  --color-brand-royal: #1e3a8a;
+  --color-brand-royal-bright: #1f47b0;
+  --color-brand-maroon: #8f1a25;
+  --color-brand-maroon-deep: #731019;
+  --color-brand-gold: #c79a3b;
+  --color-dacfp-ink: #1c2733;
+  --color-dacfp-slate: #54626f;
+  --color-dacfp-mist: #8a97a3;
+  --color-dacfp-wash: #f4f7fb;
+  --color-dacfp-wash-blue: #eaf0f9;
+  --color-dacfp-line: #dce4ee;
+  --color-status-positive: #1f7a4d;
+  --color-status-danger: #b42318;
+
+  --radius-card: 0.625rem;
+  --shadow-card: 0 1px 2px rgba(20, 36, 63, 0.05), 0 10px 28px rgba(20, 36, 63, 0.09), 0 2px 6px rgba(20, 36, 63, 0.05);
+  --shadow-card-hover: 0 12px 32px rgba(20, 36, 63, 0.14);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 20rem;
+    background: var(--color-dacfp-wash);
+  }
+
+  body {
+    margin: 0;
+    min-width: 20rem;
+    min-height: 100vh;
+    background: var(--color-dacfp-wash);
+    color: var(--color-dacfp-ink);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button:not(:disabled),
+  a,
+  select {
+    cursor: pointer;
+  }
+
+  button,
+  a,
+  input,
+  select {
+    transition-duration: 150ms;
+    transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+    transition-timing-function: ease;
+  }
+
+  :focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-brand-gold) 85%, white);
+    outline-offset: 3px;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-dacfp-line bg-white shadow-card;
+  }
+
+  .eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.16em] text-brand-royal;
+  }
+
+  .button-primary,
+  .button-secondary,
+  .button-quiet {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-brand-gold disabled:opacity-50;
+  }
+
+  .button-primary {
+    @apply bg-brand-maroon text-white hover:bg-brand-maroon-deep;
+  }
+
+  .button-secondary {
+    @apply border border-brand-royal bg-white text-brand-royal hover:bg-dacfp-wash-blue;
+  }
+
+  .button-quiet {
+    @apply text-brand-royal hover:bg-dacfp-wash-blue;
+  }
+
+  .field {
+    @apply min-h-11 w-full rounded-lg border border-dacfp-line bg-white px-3.5 py-2.5 text-base text-dacfp-ink shadow-sm placeholder:text-dacfp-mist focus:border-brand-royal focus:outline-none focus:ring-3 focus:ring-brand-royal/15;
+  }
+
+  .skip-link {
+    @apply fixed left-4 top-4 z-50 -translate-y-24 rounded-lg bg-white px-4 py-3 font-bold text-brand-navy shadow-card focus:translate-y-0;
+  }
+}
+
+#root {
+  min-height: 100vh;
+}
