@@ -11,24 +11,34 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Alert } from '../components/Alert';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DetailList, type DetailItem } from '../components/DetailList';
 import { Field } from '../components/Field';
 import { PageHeader, StatusPill, formatDate } from '../components/common';
 import { useAdmin } from '../context/AdminContext';
-import type { LearnerInspection, QuestionBank } from '../data/admin';
+import type { AdminEnrollment, LearnerInspection } from '../data/admin';
 import type { LmsCourse, LmsLesson, LmsModule } from '../data/types';
 import { parseQuestionBankCsv, parseQuestionBankJson, serializeQuestionBankCsv } from '../lib/adminCsv';
 
 /**
- * Native <select> is retained here rather than moving to the shadcn Select
- * primitive: these are inside uncontrolled <form> elements read via FormData on
- * submit, and Radix Select renders a button + portal with no form-associated
- * value. Swapping it would be a behaviour change, not a restyle. Deferred to
- * O3, where the admin forms are in scope.
+ * Native <select> is retained rather than moving to the shadcn Select
+ * primitive: these live inside uncontrolled <form> elements read via FormData
+ * on submit, and Radix Select renders a button + portal with no form-associated
+ * value. Swapping it would change submit behaviour, not restyle it. Styled to
+ * match the foundation Input so the two read as one control family.
  */
 const selectClass =
   'min-h-11 w-full rounded-lg border border-input bg-transparent px-3.5 py-2 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm';
@@ -81,6 +91,8 @@ export function AdminCoursesPage() {
   return (
     <div className="space-y-8">
       <PageHeader eyebrow="Content operations" title="Course catalog" description="Author and publish course structures without granting the operator direct table access." />
+      {/* D6 acceptance path stays one screen: name, slug, description → Create
+          draft → straight into the editor. No wizard, no extra step. */}
       <section className="card p-5 sm:p-6" aria-labelledby="create-course-heading">
         <h2 id="create-course-heading" className="text-xl font-bold text-dacfp-navy">Create a draft course</h2>
         <form className="mt-5 grid gap-4 lg:grid-cols-2" onSubmit={(event) => void create(event)}>
@@ -157,7 +169,7 @@ function CourseSettings({ course }: { course: LmsCourse }) {
             <Input className="bg-dacfp-wash font-bold" readOnly value="70%" aria-readonly="true" />
           </Field>
         </div>
-        <label className="flex min-h-11 items-center gap-3 rounded-lg border border-dacfp-line p-3 md:col-span-2"><input defaultChecked={course.requires_terms_acceptance} name="requires_terms_acceptance" type="checkbox" className="size-5" /><span className="font-bold text-dacfp-navy">Require first-entry terms acceptance</span></label>
+        <label className="flex min-h-11 items-center gap-3 rounded-lg border border-dacfp-line p-3 md:col-span-2"><input defaultChecked={course.requires_terms_acceptance} name="requires_terms_acceptance" type="checkbox" className="size-5 accent-dacfp-maroon" /><span className="font-bold text-dacfp-navy">Require first-entry terms acceptance</span></label>
         <div className="space-y-3 md:col-span-2"><ErrorMessage message={error} /><SuccessMessage message={message} /></div>
         <div className="md:col-span-2"><button className="button-primary" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save course settings'}</button></div>
       </form>
@@ -174,12 +186,44 @@ function orderMove<T extends { id: string }>(items: T[], id: string, direction: 
   return next;
 }
 
+/**
+ * Up/down reorder controls — the touch and keyboard fallback (brief #21). Real
+ * buttons with names, so this path works with no pointer at all. Retained and
+ * visible alongside the drag handle, never replaced by it.
+ */
+function ReorderControls({
+  label,
+  atStart,
+  atEnd,
+  onUp,
+  onDown,
+}: {
+  label: string;
+  atStart: boolean;
+  atEnd: boolean;
+  onUp: () => void;
+  onDown: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 gap-1">
+      <button className="button-quiet px-3" disabled={atStart} aria-label={`Move ${label} up`} type="button" onClick={onUp}>
+        <ArrowUp className="size-icon-sm" aria-hidden="true" />
+      </button>
+      <button className="button-quiet px-3" disabled={atEnd} aria-label={`Move ${label} down`} type="button" onClick={onDown}>
+        <ArrowDown className="size-icon-sm" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 function QuestionBankPanel({ module }: { module: LmsModule }) {
   const { mutate, exportQuestionBank } = useAdmin();
   const [input, setInput] = useState('');
   const [format, setFormat] = useState<'csv' | 'json'>('csv');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // A stable per-module name so the two format radios form one group (L-12).
+  const formatName = `qb-format-${module.id}`;
 
   const importBank = async () => {
     setError(''); setMessage('');
@@ -210,9 +254,17 @@ function QuestionBankPanel({ module }: { module: LmsModule }) {
   return (
     <div className="mt-5 rounded-lg border border-dacfp-line bg-dacfp-wash p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="font-bold text-dacfp-navy">Question bank</h4><p className="text-sm text-dacfp-gray-text">Exactly 10 questions · 70% fixed pass policy</p></div><button className="button-secondary" type="button" onClick={() => void exportBank()}><Download className="size-icon-sm" aria-hidden="true" />Export CSV</button></div>
-      <div className="mt-4 flex gap-4"><label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'csv'} onChange={() => setFormat('csv')} type="radio" />CSV</label><label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'json'} onChange={() => setFormat('json')} type="radio" />JSON</label></div>
+      <fieldset className="mt-4">
+        <legend className="text-sm font-bold text-dacfp-navy">Import format</legend>
+        <div className="mt-2 flex gap-4">
+          <label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'csv'} name={formatName} onChange={() => setFormat('csv')} type="radio" className="size-4 accent-dacfp-blue" />CSV</label>
+          <label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'json'} name={formatName} onChange={() => setFormat('json')} type="radio" className="size-4 accent-dacfp-blue" />JSON</label>
+        </div>
+      </fieldset>
       <Field label="Paste or load question bank" className="mt-4"><Textarea className="min-h-40 font-mono text-sm" value={input} onChange={(event) => setInput(event.target.value)} /></Field>
-      <input className="mt-3 block max-w-full text-sm" accept=".csv,.json,text/csv,application/json" type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then(setInput).catch(() => setError('Question bank file could not be read.')); }} />
+      <Field label="Or load a bank file" className="mt-3">
+        <Input accept=".csv,.json,text/csv,application/json" className="py-2" type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then(setInput).catch(() => setError('Question bank file could not be read.')); }} />
+      </Field>
       <div className="mt-4 space-y-3"><ErrorMessage message={error} /><SuccessMessage message={message} /><button className="button-primary" type="button" onClick={() => void importBank()}><FileUp className="size-icon-sm" aria-hidden="true" />Import and replace</button></div>
     </div>
   );
@@ -266,13 +318,26 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
         <Field label="video_ref path"><Input name="video_ref" defaultValue={lesson.video_ref ?? ''} placeholder="placeholder/dacfp-d3-placeholder.mp4" /></Field>
         <Field label="Duration seconds"><Input name="duration_seconds" type="number" min="1" defaultValue={lesson.duration_seconds ?? ''} /></Field>
         <Field label="Reading body" className="md:col-span-2"><Textarea name="body_md" defaultValue={lesson.body_md ?? ''} /></Field>
-        <label className="flex min-h-11 items-center gap-2"><input className="size-5" type="checkbox" name="is_required" defaultChecked={lesson.is_required} /><span className="font-bold">Required</span></label>
-        <div className="flex flex-wrap gap-2 md:justify-end"><button className="button-secondary" type="submit">Save lesson</button><button className="button-quiet text-status-danger" type="button" onClick={async () => { if (window.confirm('Delete this lesson and its content?')) await handleMutation(mutate('delete_lesson', { id: lesson.id })); }}><Trash2 className="size-icon-sm" aria-hidden="true" />Delete</button></div>
+        <label className="flex min-h-11 items-center gap-2"><input className="size-5 accent-dacfp-maroon" type="checkbox" name="is_required" defaultChecked={lesson.is_required} /><span className="font-bold">Required</span></label>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+          <button className="button-secondary" type="submit">Save lesson</button>
+          <ConfirmDialog
+            trigger={
+              <button className="button-quiet text-status-danger" type="button">
+                <Trash2 className="size-icon-sm" aria-hidden="true" />Delete
+              </button>
+            }
+            title="Delete this lesson?"
+            description={`"${lesson.title}" and any resources attached to it will be permanently removed. This cannot be undone.`}
+            confirmLabel="Delete lesson"
+            onConfirm={() => handleMutation(mutate('delete_lesson', { id: lesson.id }))}
+          />
+        </div>
       </form>
       <form className="mt-4 grid gap-3 border-t border-dacfp-line pt-4 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => void upload(event)}>
-        <Input name="resource_title" required placeholder="Resource title" aria-label="Resource title" />
-        <Input className="py-2" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv" aria-label="Resource file" />
-        <button className="button-secondary" type="submit"><FileUp className="size-icon-sm" aria-hidden="true" />Upload</button>
+        <Field label="Resource title" className="sm:col-span-1"><Input name="resource_title" required placeholder="Operator guide" /></Field>
+        <Field label="Resource file" className="sm:col-span-1"><Input className="py-2" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv" /></Field>
+        <div className="flex items-end"><button className="button-secondary w-full sm:w-auto" type="submit"><FileUp className="size-icon-sm" aria-hidden="true" />Upload</button></div>
         <Field label="Or create a text resource" className="sm:col-span-3"><Textarea className="min-h-24" name="text_content" placeholder="Paste sandbox text content when no file is selected." /></Field>
       </form>
       <div className="mt-3 space-y-2"><ErrorMessage message={error} /><SuccessMessage message={message} /></div>
@@ -284,33 +349,89 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
   const { catalog, mutate } = useAdmin();
   const lessons = catalog.lessons.filter((lesson) => lesson.module_id === module.id).sort((a, b) => a.position - b.position);
   const [lessonTitle, setLessonTitle] = useState('');
-  const [dragged, setDragged] = useState('');
+  const [dragging, setDragging] = useState(false);
 
-  const reorderLessons = (next: LmsLesson[]) => mutate('reorder', { kind: 'lessons', parent_id: module.id, ordered_ids: next.map((item) => item.id) });
+  const reorderModules = (next: LmsModule[]) =>
+    mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: next.map((item) => item.id) });
+  const reorderLessons = (next: LmsLesson[]) =>
+    mutate('reorder', { kind: 'lessons', parent_id: module.id, ordered_ids: next.map((item) => item.id) });
+
+  const dropModuleBefore = async (draggedId: string) => {
+    if (!draggedId || draggedId === module.id) return;
+    const source = modules.findIndex((item) => item.id === draggedId);
+    const target = modules.findIndex((item) => item.id === module.id);
+    if (source < 0 || target < 0) return;
+    const next = [...modules];
+    const [moved] = next.splice(source, 1);
+    next.splice(target, 0, moved);
+    await handleMutation(reorderModules(next));
+  };
+
   return (
-    <article className="card p-5 sm:p-6" draggable onDragStart={() => setDragged(module.id)} onDragOver={(event) => event.preventDefault()} onDrop={async () => { if (dragged && dragged !== module.id) { const source = modules.findIndex((item) => item.id === dragged); const target = modules.findIndex((item) => item.id === module.id); const next = [...modules]; const [moved] = next.splice(source, 1); next.splice(target, 0, moved); await handleMutation(mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: next.map((item) => item.id) })); } setDragged(''); }}>
+    <article
+      className={`card p-5 transition-shadow sm:p-6 ${dragging ? 'ring-2 ring-dacfp-blue' : ''}`}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => { void dropModuleBefore(event.dataTransfer.getData('text/plain')); }}
+    >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <GripVertical className="hidden text-dacfp-gray-text sm:block" aria-hidden="true" />
+        {/* brief #21: drag is confined to this explicit handle, not the whole
+            card. Only the grip is draggable, so selecting text or tapping a
+            field never starts a drag. The up/down controls remain the pointer-
+            free path. */}
+        <button
+          type="button"
+          aria-label={`Drag to reorder ${module.title}`}
+          title="Drag to reorder"
+          draggable
+          onDragStart={(event) => { event.dataTransfer.setData('text/plain', module.id); event.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
+          onDragEnd={() => setDragging(false)}
+          className="hidden size-9 shrink-0 cursor-grab touch-none place-items-center rounded-md text-dacfp-gray-text hover:bg-dacfp-wash-blue hover:text-dacfp-navy active:cursor-grabbing sm:grid"
+        >
+          <GripVertical className="size-icon-md" aria-hidden="true" />
+        </button>
         <form className="flex flex-1 flex-col gap-3 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); const title = new FormData(event.currentTarget).get('title'); await handleMutation(mutate('update_module', { id: module.id, title })); }}>
           <Input name="title" defaultValue={module.title} aria-label={`Module ${module.position} title`} />
-          <button className="button-secondary" type="submit">Save module</button>
+          <button className="button-secondary shrink-0" type="submit">Save module</button>
         </form>
-        <div className="flex gap-1">
-          <button className="button-quiet px-3" disabled={module.position === 1} aria-label={`Move ${module.title} up`} type="button" onClick={async () => handleMutation(mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: orderMove(modules, module.id, -1).map((item) => item.id) }))}><ArrowUp className="size-icon-sm" /></button>
-          <button className="button-quiet px-3" disabled={module.position === modules.length} aria-label={`Move ${module.title} down`} type="button" onClick={async () => handleMutation(mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: orderMove(modules, module.id, 1).map((item) => item.id) }))}><ArrowDown className="size-icon-sm" /></button>
-          <button className="button-quiet px-3 text-status-danger" aria-label={`Delete ${module.title}`} type="button" onClick={async () => { if (window.confirm('Delete this module and all lessons?')) await handleMutation(mutate('delete_module', { id: module.id })); }}><Trash2 className="size-icon-sm" /></button>
+        <div className="flex shrink-0 items-center gap-1">
+          <ReorderControls
+            label={module.title}
+            atStart={module.position === 1}
+            atEnd={module.position === modules.length}
+            onUp={() => void handleMutation(reorderModules(orderMove(modules, module.id, -1)))}
+            onDown={() => void handleMutation(reorderModules(orderMove(modules, module.id, 1)))}
+          />
+          <ConfirmDialog
+            trigger={
+              <button className="button-quiet px-3 text-status-danger" aria-label={`Delete ${module.title}`} type="button">
+                <Trash2 className="size-icon-sm" aria-hidden="true" />
+              </button>
+            }
+            title="Delete this module?"
+            description={`"${module.title}" and every lesson, resource, and question bank inside it will be permanently removed. This cannot be undone.`}
+            confirmLabel="Delete module"
+            onConfirm={() => handleMutation(mutate('delete_module', { id: module.id }))}
+          />
         </div>
       </div>
       <div className="mt-5 space-y-3">
         {lessons.map((lesson) => (
           <div key={lesson.id} className="space-y-2">
-            <div className="flex justify-end gap-1"><button className="button-quiet px-3" disabled={lesson.position === 1} aria-label={`Move ${lesson.title} up`} onClick={async () => handleMutation(reorderLessons(orderMove(lessons, lesson.id, -1)))} type="button"><ArrowUp className="size-icon-sm" /></button><button className="button-quiet px-3" disabled={lesson.position === lessons.length} aria-label={`Move ${lesson.title} down`} onClick={async () => handleMutation(reorderLessons(orderMove(lessons, lesson.id, 1)))} type="button"><ArrowDown className="size-icon-sm" /></button></div>
+            <div className="flex justify-end">
+              <ReorderControls
+                label={lesson.title}
+                atStart={lesson.position === 1}
+                atEnd={lesson.position === lessons.length}
+                onUp={() => void handleMutation(reorderLessons(orderMove(lessons, lesson.id, -1)))}
+                onDown={() => void handleMutation(reorderLessons(orderMove(lessons, lesson.id, 1)))}
+              />
+            </div>
             <LessonEditor lesson={lesson} />
           </div>
         ))}
       </div>
       <form className="mt-4 flex flex-col gap-3 rounded-lg border border-dashed border-dacfp-gray-text p-4 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); await handleMutation(mutate('create_lesson', { module_id: module.id, title: lessonTitle, kind: 'video', is_required: true, duration_seconds: 4 }).then(() => setLessonTitle(''))); }}>
-        <Input value={lessonTitle} onChange={(event) => setLessonTitle(event.target.value)} required placeholder="New lesson title" aria-label="New lesson title" /><button className="button-secondary" type="submit"><Plus className="size-icon-sm" aria-hidden="true" />Add lesson</button>
+        <Input value={lessonTitle} onChange={(event) => setLessonTitle(event.target.value)} required placeholder="New lesson title" aria-label="New lesson title" /><button className="button-secondary shrink-0" type="submit"><Plus className="size-icon-sm" aria-hidden="true" />Add lesson</button>
       </form>
       <QuestionBankPanel module={module} />
     </article>
@@ -331,18 +452,115 @@ export function AdminCoursePage() {
       <PageHeader eyebrow={`Course editor · ${course.status}`} title={course.title} description="Manage structure, private resources, fixed-policy question banks, and publication status." />
       <CourseSettings course={course} />
       <section className="space-y-4" aria-labelledby="modules-heading">
-        <div><p className="eyebrow">Curriculum</p><h2 id="modules-heading" className="mt-1 text-2xl font-bold text-dacfp-navy">Modules and lessons</h2><p className="mt-2 text-sm text-dacfp-gray-text">Drag modules on larger screens, or use the up/down controls on any device.</p></div>
+        <div><p className="eyebrow">Curriculum</p><h2 id="modules-heading" className="mt-1 text-2xl font-bold text-dacfp-navy">Modules and lessons</h2><p className="mt-2 text-sm text-dacfp-gray-text">Drag the grip handle to reorder on larger screens, or use the up/down controls on any device.</p></div>
         {modules.map((module) => <ModuleEditor key={module.id} module={module} modules={modules} />)}
         <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); await handleMutation(mutate('create_module', { course_id: course.id, title: moduleTitle, ce_credits: null }).then(() => setModuleTitle(''))); }}>
-          <Input value={moduleTitle} onChange={(event) => setModuleTitle(event.target.value)} required placeholder="New module title" aria-label="New module title" /><button className="button-primary" type="submit"><Plus className="size-icon-sm" aria-hidden="true" />Add module</button>
+          <Input value={moduleTitle} onChange={(event) => setModuleTitle(event.target.value)} required placeholder="New module title" aria-label="New module title" /><button className="button-primary shrink-0" type="submit"><Plus className="size-icon-sm" aria-hidden="true" />Add module</button>
         </form>
       </section>
     </div>
   );
 }
 
+/** Structured evidence for one enrollment — replaces the JSON dumps (brief #21). */
+function EnrollmentInspector({
+  inspection,
+  enrollment,
+  onSupport,
+}: {
+  inspection: LearnerInspection;
+  enrollment: AdminEnrollment;
+  onSupport: (action: string, payload: Record<string, unknown>) => void;
+}) {
+  const { catalog } = useAdmin();
+  const summary = inspection.summaries.find((item) => item.enrollment_id === enrollment.id);
+  const moduleIds = catalog.modules.filter((item) => item.course_id === enrollment.course_id).map((item) => item.id);
+  const quizzes = catalog.quizzes.filter((item) => moduleIds.includes(item.module_id));
+  const progress = inspection.progress.filter((item) => item.enrollment_id === enrollment.id);
+  const attempts = inspection.attempts.filter((item) => item.enrollment_id === enrollment.id);
+  const completion = inspection.completions.find((item) => item.enrollment_id === enrollment.id);
+
+  const facts: DetailItem[] = [
+    { label: 'Status', value: enrollment.status },
+    { label: 'Source', value: enrollment.source },
+    { label: 'Access expiry', value: formatDate(enrollment.expires_at) },
+    { label: 'Enrolled', value: formatDate(enrollment.enrolled_at) },
+    { label: 'Terms accepted', value: enrollment.terms_accepted_at ? formatDate(enrollment.terms_accepted_at) : null },
+    { label: 'CE credits', value: enrollment.lms_courses.ce_credits ?? null },
+    { label: 'Completion', value: completion ? `Fired ${formatDate(completion.completed_at)}` : null },
+    { label: 'Enrollment id', value: enrollment.id, mono: true },
+  ];
+
+  return (
+    <article className="card p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="eyebrow">{enrollment.status}</p>
+          <h3 className="mt-1 text-xl font-bold text-dacfp-navy">{enrollment.lms_courses.title}</h3>
+          <p className="mt-1 text-sm text-dacfp-gray-text">{summary?.percent_complete ?? 0}% complete</p>
+        </div>
+        {completion ? <StatusPill tone="positive">Completed</StatusPill> : <StatusPill tone="neutral">In progress</StatusPill>}
+      </div>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">Progress rows</p><p className="text-2xl font-bold tabular-nums text-dacfp-navy">{progress.length}</p></div>
+        <div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">Attempts</p><p className="text-2xl font-bold tabular-nums text-dacfp-navy">{attempts.length}</p></div>
+        <div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">CE credits</p><p className="text-2xl font-bold tabular-nums text-dacfp-navy">{enrollment.lms_courses.ce_credits ?? '—'}</p></div>
+      </div>
+
+      <div className="mt-5 border-t border-dacfp-line pt-5">
+        <DetailList items={facts} />
+      </div>
+
+      {attempts.length > 0 ? (
+        <div className="mt-5 border-t border-dacfp-line pt-5">
+          <h4 className="text-sm font-bold text-dacfp-navy">Quiz attempts</h4>
+          <ul className="mt-3 space-y-2">
+            {attempts
+              .slice()
+              .sort((a, b) => b.attempt_number - a.attempt_number)
+              .map((attempt) => (
+                <li key={attempt.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dacfp-line px-3 py-2 text-sm">
+                  <span className="font-semibold text-dacfp-navy">Attempt {attempt.attempt_number}</span>
+                  <span className="tabular-nums text-dacfp-gray-text">
+                    {attempt.submitted_at ? `Score ${attempt.score ?? 0}` : 'In progress'}
+                  </span>
+                  {attempt.submitted_at ? (
+                    <StatusPill tone={attempt.passed ? 'positive' : 'warning'}>{attempt.passed ? 'Passed' : 'Not passed'}</StatusPill>
+                  ) : (
+                    <StatusPill tone="neutral">Unsubmitted</StatusPill>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-5 flex flex-col gap-3 border-t border-dacfp-line pt-5 sm:flex-row sm:flex-wrap">
+        <ConfirmDialog
+          trigger={<button className="button-secondary" type="button"><CheckCircle2 className="size-icon-sm" aria-hidden="true" />Manual mark complete</button>}
+          title="Mark this enrollment complete?"
+          description={`This records a manual completion event for "${enrollment.lms_courses.title}" against this learner. It is written to the audit trail.`}
+          confirmLabel="Mark complete"
+          onConfirm={() => onSupport('manual_mark_complete', { enrollment_id: enrollment.id })}
+        />
+        {quizzes.map((quiz) => (
+          <ConfirmDialog
+            key={quiz.id}
+            trigger={<button className="button-secondary" type="button">Reset quiz attempt history</button>}
+            title="Reset quiz attempt history?"
+            description="Every recorded attempt for this quiz will be permanently removed for this learner. Their pass/fail state is recomputed from an empty history. This cannot be undone."
+            confirmLabel="Reset attempts"
+            onConfirm={() => onSupport('reset_attempt_history', { enrollment_id: enrollment.id, quiz_id: quiz.id })}
+          />
+        ))}
+      </div>
+    </article>
+  );
+}
+
 export function AdminLearnersPage() {
-  const { catalog, inspectLearner, mutate } = useAdmin();
+  const { inspectLearner, mutate } = useAdmin();
   const [email, setEmail] = useState('');
   const [inspection, setInspection] = useState<LearnerInspection | null | undefined>(undefined);
   const [error, setError] = useState('');
@@ -356,14 +574,13 @@ export function AdminLearnersPage() {
 
   const support = async (action: string, payload: Record<string, unknown>) => {
     setError(''); setMessage('');
-    let result: Record<string, unknown>;
     try {
-      result = await mutate<Record<string, unknown>>(action, payload);
+      await mutate<Record<string, unknown>>(action, payload);
     } catch {
       setError('Support action failed. No change was confirmed.');
       return;
     }
-    setMessage(`${action.replaceAll('_', ' ')} completed: ${JSON.stringify(result)}`);
+    setMessage(`${action.replaceAll('_', ' ')} completed.`);
     try {
       setInspection(await inspectLearner(email));
     } catch {
@@ -371,33 +588,32 @@ export function AdminLearnersPage() {
     }
   };
 
+  const profileFacts: DetailItem[] = inspection
+    ? [
+        { label: 'Email', value: inspection.user.email, mono: true },
+        { label: 'Display name', value: inspection.profile?.display_name ?? null },
+        { label: 'CFP ID', value: inspection.profile?.credential_ids?.cfp ?? null, mono: true },
+        { label: 'IWI ID', value: inspection.profile?.credential_ids?.iwi ?? null, mono: true },
+        { label: 'CFA ID', value: inspection.profile?.credential_ids?.cfa ?? null, mono: true },
+      ]
+    : [];
+
   return (
     <div className="space-y-8">
       <PageHeader eyebrow="Learner support" title="Per-learner inspector" description="Search one person by email, review enrollment evidence, and use only the two audited support actions." />
-      <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={(event) => void search(event)}><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="learner@example.test" required aria-label="Learner email" /><button className="button-primary" type="submit"><Search className="size-icon-sm" aria-hidden="true" />Inspect learner</button></form>
+      <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={(event) => void search(event)}><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="learner@example.test" required aria-label="Learner email" /><button className="button-primary shrink-0" type="submit"><Search className="size-icon-sm" aria-hidden="true" />Inspect learner</button></form>
       <ErrorMessage message={error} /><SuccessMessage message={message} />
       {inspection === null ? <div className="card p-8 text-center"><h2 className="text-xl font-bold text-dacfp-navy">No learner found</h2><p className="mt-2 text-dacfp-gray-text">Check the exact email and try again.</p></div> : null}
       {inspection ? (
         <div className="space-y-6">
-          <section className="card p-5"><h2 className="text-xl font-bold text-dacfp-navy">{inspection.profile?.display_name || inspection.user.email}</h2><p className="mt-1 text-dacfp-gray-text">{inspection.user.email}</p><pre className="mt-4 overflow-auto rounded-lg bg-dacfp-navy p-4 text-xs text-white">{JSON.stringify(inspection.profile?.credential_ids ?? {}, null, 2)}</pre></section>
-          {inspection.enrollments.map((enrollment) => {
-            const summary = inspection.summaries.find((item) => item.enrollment_id === enrollment.id);
-            const moduleIds = catalog.modules.filter((item) => item.course_id === enrollment.course_id).map((item) => item.id);
-            const quizzes = catalog.quizzes.filter((item) => moduleIds.includes(item.module_id));
-            const progress = inspection.progress.filter((item) => item.enrollment_id === enrollment.id);
-            const attempts = inspection.attempts.filter((item) => item.enrollment_id === enrollment.id);
-            const completion = inspection.completions.find((item) => item.enrollment_id === enrollment.id);
-            return (
-              <article className="card p-5 sm:p-6" key={enrollment.id}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="eyebrow">{enrollment.status}</p><h3 className="mt-1 text-xl font-bold text-dacfp-navy">{enrollment.lms_courses.title}</h3><p className="mt-1 text-sm text-dacfp-gray-text">Access expiry: {formatDate(enrollment.expires_at)} · {summary?.percent_complete ?? 0}% complete</p></div>{completion ? <StatusPill tone="positive">Completed</StatusPill> : <StatusPill tone="neutral">In progress</StatusPill>}</div>
-                <div className="mt-5 grid gap-4 md:grid-cols-3"><div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">Progress rows</p><p className="text-2xl font-bold text-dacfp-navy">{progress.length}</p></div><div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">Attempts</p><p className="text-2xl font-bold text-dacfp-navy">{attempts.length}</p></div><div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">CE credits</p><p className="text-2xl font-bold text-dacfp-navy">{enrollment.lms_courses.ce_credits ?? '—'}</p></div></div>
-                <div className="mt-5 flex flex-col gap-3 border-t border-dacfp-line pt-5 sm:flex-row sm:flex-wrap">
-                  <button className="button-secondary" type="button" onClick={() => void support('manual_mark_complete', { enrollment_id: enrollment.id })}><CheckCircle2 className="size-icon-sm" aria-hidden="true" />Manual mark complete</button>
-                  {quizzes.map((quiz) => <button key={quiz.id} className="button-secondary" type="button" onClick={() => void support('reset_attempt_history', { enrollment_id: enrollment.id, quiz_id: quiz.id })}>Reset quiz attempt history</button>)}
-                </div>
-              </article>
-            );
-          })}
+          <section className="card p-5 sm:p-6" aria-labelledby="learner-profile-heading">
+            <h2 id="learner-profile-heading" className="text-xl font-bold text-dacfp-navy">{inspection.profile?.display_name || inspection.user.email}</h2>
+            <p className="mt-1 text-sm text-dacfp-gray-text">Profile and credential IDs</p>
+            <div className="mt-4"><DetailList items={profileFacts} /></div>
+          </section>
+          {inspection.enrollments.map((enrollment) => (
+            <EnrollmentInspector key={enrollment.id} inspection={inspection} enrollment={enrollment} onSupport={support} />
+          ))}
         </div>
       ) : null}
     </div>
@@ -408,8 +624,79 @@ export function AdminAuditPage() {
   const { audit } = useAdmin();
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow="Accountability" title="Admin audit trail" description="Every admin mutation, including CRUD, import, upload, reorder, and support actions, is written by the service boundary." action={<div className="flex items-center gap-2 rounded-lg bg-status-positive/10 px-3 py-2 text-sm font-bold text-status-positive"><ShieldCheck className="size-icon-md" />{audit.length} recent actions</div>} />
-      <div className="card overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-dacfp-wash text-dacfp-navy"><tr><th className="px-4 py-3">Time</th><th className="px-4 py-3">Action</th><th className="px-4 py-3">Actor</th><th className="px-4 py-3">Target</th></tr></thead><tbody className="divide-y divide-dacfp-line">{audit.map((action) => <tr key={action.id}><td className="whitespace-nowrap px-4 py-3 text-dacfp-gray-text">{new Date(action.created_at).toLocaleString()}</td><td className="px-4 py-3 font-bold text-dacfp-navy">{action.action}</td><td className="px-4 py-3 font-mono text-xs">{action.actor_auth_user_id}</td><td className="px-4 py-3"><code className="break-all text-xs">{JSON.stringify(action.target)}</code></td></tr>)}</tbody></table></div></div>
+      <PageHeader eyebrow="Accountability" title="Admin audit trail" description="Every admin mutation, including CRUD, import, upload, reorder, and support actions, is written by the service boundary." action={<div className="flex items-center gap-2 rounded-lg bg-status-positive/10 px-3 py-2 text-sm font-bold text-status-positive"><ShieldCheck className="size-icon-md" aria-hidden="true" />{audit.length} recent actions</div>} />
+
+      {/* brief #21: a real table at md and up; card-per-row below it, because a
+          4-column table does not survive 375px. Same data, two presentations. */}
+      <div className="hidden md:block">
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Actor</TableHead>
+                  <TableHead>Target</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {audit.map((action) => (
+                  <TableRow key={action.id}>
+                    <TableCell className="whitespace-nowrap text-dacfp-gray-text">{new Date(action.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="font-bold text-dacfp-navy">{action.action}</TableCell>
+                    <TableCell className="font-mono text-xs">{action.actor_auth_user_id}</TableCell>
+                    <TableCell><AuditTarget target={action.target} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </div>
+
+      <ul className="space-y-3 md:hidden">
+        {audit.map((action) => (
+          <li key={action.id} className="card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-bold text-dacfp-navy">{action.action}</span>
+              <span className="shrink-0 text-xs text-dacfp-gray-text">{new Date(action.created_at).toLocaleString()}</span>
+            </div>
+            <dl className="mt-3 space-y-2 border-t border-dacfp-line pt-3 text-sm">
+              <div className="flex gap-2"><dt className="shrink-0 font-semibold text-dacfp-gray-text">Actor</dt><dd className="min-w-0 break-all font-mono text-xs text-dacfp-navy">{action.actor_auth_user_id}</dd></div>
+              <div><dt className="font-semibold text-dacfp-gray-text">Target</dt><dd className="mt-1"><AuditTarget target={action.target} /></dd></div>
+            </dl>
+          </li>
+        ))}
+      </ul>
     </div>
   );
+}
+
+/**
+ * Audit target as labelled key-values, not JSON.stringify (brief #21). The
+ * target is a flat record of id/kind fields, so a compact chip list reads at a
+ * glance where a brace-wrapped blob did not.
+ */
+function AuditTarget({ target }: { target: Record<string, unknown> }) {
+  const entries = Object.entries(target);
+  if (entries.length === 0) return <span className="text-dacfp-gray-text">—</span>;
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {entries.map(([key, value]) => (
+        <li key={key} className="inline-flex max-w-full items-baseline gap-1 rounded-md bg-dacfp-wash px-2 py-1 text-xs">
+          <span className="font-semibold text-dacfp-gray-text">{key}</span>
+          <span className="truncate font-mono text-dacfp-navy">{formatTargetValue(value)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function formatTargetValue(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  // ordered_ids and similar arrays: show the count, not a wall of ids.
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'object') return 'object';
+  return String(value);
 }

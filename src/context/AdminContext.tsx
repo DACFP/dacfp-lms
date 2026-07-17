@@ -11,8 +11,10 @@ import {
   MutationStatusBanner,
   type MutationNotice,
 } from '../components/MutationStatusBanner';
+import { SessionExpiredDialog } from '../components/SessionExpiredDialog';
 import type { AdminSnapshot, LearnerInspection, QuestionBank } from '../data/admin';
 import type { LmsAdminProvider } from '../data/provider';
+import { isLmsAccessDenied } from '../data/provider';
 import { supabaseProvider } from '../data/supabaseProvider';
 import { runMutationLifecycle } from '../lib/mutationStatus';
 
@@ -38,6 +40,10 @@ export function AdminProvider({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mutationNotice, setMutationNotice] = useState<MutationNotice | null>(null);
+  // L-11 (UI only): a denied error means the operator session is no longer
+  // authorised, not that data is momentarily unavailable. Classifying it here
+  // reads the already-caught error — no fetching sequence changes.
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const loadAdminSnapshot = useCallback(async () => {
     setLoading(true);
@@ -58,12 +64,18 @@ export function AdminProvider({
       await loadAdminSnapshot();
       setMutationNotice(null);
     } catch (refreshError) {
-      setError('Admin data could not be loaded. Retry or sign in again.');
-      setMutationNotice({
-        kind: 'warning',
-        message: 'Admin data could not be refreshed. The last loaded workspace is still shown.',
-        retry: () => void refresh().catch(() => undefined),
-      });
+      // L-11: an expired session surfaces the re-auth prompt, not a Retry that
+      // cannot succeed. Every other failure keeps the existing recoverable path.
+      if (isLmsAccessDenied(refreshError)) {
+        setSessionExpired(true);
+      } else {
+        setError('Admin data could not be loaded. Retry or sign in again.');
+        setMutationNotice({
+          kind: 'warning',
+          message: 'Admin data could not be refreshed. The last loaded workspace is still shown.',
+          retry: () => void refresh().catch(() => undefined),
+        });
+      }
       throw refreshError;
     }
   }, [loadAdminSnapshot]);
@@ -81,10 +93,17 @@ export function AdminProvider({
         kind: 'success',
         message: `${label} succeeded.`,
       }),
-      onMutationFailure: () => setMutationNotice({
-        kind: 'error',
-        message: `${label} failed. No change was confirmed.`,
-      }),
+      onMutationFailure: (mutationError) => {
+        // L-11: a denied mutation is an expired session, not a failed write.
+        if (isLmsAccessDenied(mutationError)) {
+          setSessionExpired(true);
+          return;
+        }
+        setMutationNotice({
+          kind: 'error',
+          message: `${label} failed. No change was confirmed.`,
+        });
+      },
       onRefreshFailure: () => setMutationNotice({
         kind: 'warning',
         message: `${label} succeeded, but refreshed admin data could not be loaded. The existing workspace is still shown.`,
@@ -104,6 +123,9 @@ export function AdminProvider({
   } : null, [error, loading, mutate, provider, refresh, snapshot]);
 
   if (!value) {
+    // Boot failed before any snapshot loaded. If it was a denied session, the
+    // re-auth prompt is the whole story — the generic Retry card cannot help.
+    if (sessionExpired) return <SessionExpiredDialog />;
     return (
       <main className="grid min-h-dvh place-items-center bg-dacfp-wash px-5">
         <section className="card w-full max-w-lg p-7 text-center" role={error ? 'alert' : 'status'}>
@@ -126,6 +148,9 @@ export function AdminProvider({
     <AdminContext.Provider value={value}>
       <MutationStatusBanner notice={mutationNotice} onDismiss={() => setMutationNotice(null)} />
       {children}
+      {/* Mid-session expiry: overlays the workspace so nothing the operator sees
+          implies the console is still authorised. */}
+      {sessionExpired ? <SessionExpiredDialog /> : null}
     </AdminContext.Provider>
   );
 }
