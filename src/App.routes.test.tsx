@@ -592,7 +592,11 @@ describe('D6 operator routes', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole('heading', { name: 'Course catalog' })).toBeInTheDocument();
-    expect(screen.getByText('Operator console')).toBeInTheDocument();
+    // O3 replaced the icon+"Operator console" text lockup with the brand
+    // lockup image (BrandLockup). The admin chrome's identity is now the
+    // lockup plus the "Operator" role badge; the property under test — that the
+    // operator console rendered — is asserted through the badge.
+    expect(screen.getByText('Operator')).toBeInTheDocument();
   });
 
   it('shows pass_pct as read-only published policy', async () => {
