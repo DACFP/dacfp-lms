@@ -36,6 +36,8 @@ export const GENERIC_LOGIN_ERROR =
   'Unable to sign in. Check your credentials and try again.';
 export const GENERIC_RESET_RESPONSE =
   'If an account exists, reset instructions will be sent.';
+export const GENERIC_RESET_ERROR =
+  'Unable to request reset instructions. Check your connection and try again.';
 export const GENERIC_SIGNUP_ERROR =
   'Unable to create the account. Check your details and try again.';
 export const GENERIC_PASSWORD_ERROR =
@@ -194,6 +196,17 @@ export function quizQuestionsContainCorrectKey(value: unknown): boolean {
       question !== null &&
       typeof question === 'object' &&
       Object.prototype.hasOwnProperty.call(question, 'correct'),
+  );
+}
+
+export function quizQuestionsHaveValidSelectionKind(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (question) =>
+      question !== null &&
+      typeof question === 'object' &&
+      ('select_kind' in question) &&
+      (question.select_kind === 'single' || question.select_kind === 'multi'),
   );
 }
 
@@ -419,7 +432,8 @@ const contentProvider: LmsProvider = {
       !data ||
       !data.quiz ||
       !Array.isArray(data.questions) ||
-      quizQuestionsContainCorrectKey(data.questions)
+      quizQuestionsContainCorrectKey(data.questions) ||
+      !quizQuestionsHaveValidSelectionKind(data.questions)
     ) {
       throw dataError(error, 'Unable to load this quiz.');
     }
@@ -510,11 +524,12 @@ export const supabaseProvider: LmsProvider & LmsAuthProvider & LmsAdminProvider 
 
   async requestPasswordReset(email, redirectTo) {
     try {
-      await getClient().auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      const { error } = await getClient().auth.resetPasswordForEmail(email.trim().toLowerCase(), {
         redirectTo,
       });
+      if (error) return result(false, GENERIC_RESET_ERROR);
     } catch {
-      // Deliberately indistinguishable from a successful reset request.
+      return result(false, GENERIC_RESET_ERROR);
     }
     return result(true, GENERIC_RESET_RESPONSE);
   },

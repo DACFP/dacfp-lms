@@ -13,6 +13,7 @@ import type {
   LmsAuthSession,
 } from '../data/provider';
 import { supabaseProvider } from '../data/supabaseProvider';
+import { runMutationLifecycle } from '../lib/mutationStatus';
 
 interface AuthContextValue {
   session: LmsAuthSession | null;
@@ -48,8 +49,10 @@ export function AuthSessionProvider({
 
   useEffect(() => {
     let active = true;
+    let authEventSeen = false;
     const unsubscribe = provider.onAuthStateChange((event, nextSession) => {
       if (!active) return;
+      authEventSeen = true;
       if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
       setSession(nextSession);
       setLoading(false);
@@ -58,15 +61,15 @@ export function AuthSessionProvider({
     void provider
       .getSession()
       .then((nextSession) => {
-        if (!active) return;
+        if (!active || authEventSeen) return;
         setSession(nextSession);
       })
       .catch(() => {
-        if (!active) return;
+        if (!active || authEventSeen) return;
         setSession(null);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && !authEventSeen) setLoading(false);
       });
 
     return () => {
@@ -77,7 +80,9 @@ export function AuthSessionProvider({
 
   const signUp = useCallback(
     async (input: { email: string; password: string; displayName: string }) => {
-      const response = await provider.signUp(input);
+      const response = await runMutationLifecycle({
+        mutate: () => provider.signUp(input),
+      });
       if (response.session) setSession(response.session);
       return response;
     },
@@ -86,7 +91,9 @@ export function AuthSessionProvider({
 
   const login = useCallback(
     async (email: string, password: string) => {
-      const response = await provider.login(email, password);
+      const response = await runMutationLifecycle({
+        mutate: () => provider.login(email, password),
+      });
       if (response.session) setSession(response.session);
       return response;
     },
@@ -94,22 +101,25 @@ export function AuthSessionProvider({
   );
 
   const logout = useCallback(async () => {
-    await provider.logout();
+    await runMutationLifecycle({ mutate: () => provider.logout() });
     setSession(null);
   }, [provider]);
 
   const requestPasswordReset = useCallback(
-    (email: string) =>
-      provider.requestPasswordReset(
+    (email: string) => runMutationLifecycle({
+      mutate: () => provider.requestPasswordReset(
         email,
         `${window.location.origin}/reset?mode=update`,
       ),
+    }),
     [provider],
   );
 
   const updatePassword = useCallback(
     async (password: string) => {
-      const response = await provider.updatePassword(password);
+      const response = await runMutationLifecycle({
+        mutate: () => provider.updatePassword(password),
+      });
       if (response.ok) setRecoveryMode(false);
       return response;
     },

@@ -5,6 +5,7 @@ import {
   termsGateSatisfied,
   type ProgressionContext,
 } from './progression.ts';
+import { buildPublicQuestions } from './public-quiz.ts';
 
 const DENIED_BODY = { error: 'Quiz is unavailable.' };
 const corsHeaders = {
@@ -210,7 +211,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: questions, error: questionsError } = await admin
       .from('lms_quiz_questions')
-      .select('id,quiz_id,position,prompt,choices,points')
+      .select('id,quiz_id,position,prompt,choices,correct,points')
       .eq('quiz_id', access.quiz.id)
       .order('position');
     assertQuery(questionsError);
@@ -218,12 +219,7 @@ Deno.serve(async (req: Request) => {
       throw new Error('Quiz question count is invalid.');
     }
 
-    const publicQuestions = shuffle(
-      questions.map((question) => ({
-        ...question,
-        choices: shuffle(Array.isArray(question.choices) ? question.choices : []),
-      })),
-    );
+    const publicQuestions = buildPublicQuestions(questions, shuffle);
 
     return jsonResponse(200, {
       quiz: {

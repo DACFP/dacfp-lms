@@ -354,6 +354,123 @@ describe('D0 route shell', () => {
     expect(await screen.findByText('Module 4 unlocked. You can continue immediately.')).toBeInTheDocument();
   });
 
+  it('renders normal single-answer quiz questions as radio groups', async () => {
+    renderRoute('/quiz/fpt-m1', 'fully-complete');
+    expect((await screen.findAllByText('Select one answer')).length).toBe(10);
+    expect(screen.getAllByRole('radio')).toHaveLength(40);
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('uses checkboxes only when select_kind is multi', async () => {
+    const mixedProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getQuiz(quizId, learner) {
+        const payload = await mockProvider.getQuiz(quizId, learner);
+        return {
+          ...payload,
+          questions: payload.questions.map((question, index) => ({
+            ...question,
+            select_kind: index === 0 ? 'multi' as const : 'single' as const,
+          })),
+        };
+      },
+    };
+    renderRoute('/quiz/fpt-m1', 'fully-complete', testAuthProvider(signedInSession), mixedProvider);
+    expect(await screen.findByText('Select all that apply')).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(4);
+    expect(screen.getAllByRole('radio')).toHaveLength(36);
+  });
+
+  it('uses question points, not question count, for attempt-history denominators', async () => {
+    const weightedProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getQuiz(quizId, learner) {
+        const payload = await mockProvider.getQuiz(quizId, learner);
+        return {
+          ...payload,
+          questions: payload.questions.map((question, index) => ({
+            ...question,
+            points: index === 0 ? 2 : 1,
+          })),
+        };
+      },
+    };
+    renderRoute('/quiz/fpt-m1', 'fully-complete', testAuthProvider(signedInSession), weightedProvider);
+    expect(await screen.findByText(/\/11/)).toBeInTheDocument();
+    expect(screen.queryByText(/\/10/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the learner snapshot visible when profile save succeeds but refresh fails', async () => {
+    let snapshotReads = 0;
+    const refreshFailingProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        snapshotReads += 1;
+        if (snapshotReads > 1) throw new Error('refresh unavailable');
+        return mockProvider.getLearnerSnapshot(learner);
+      },
+      async updateProfile(profile) {
+        return profile;
+      },
+    };
+    renderRoute('/account', 'fully-complete', testAuthProvider(signedInSession), refreshFailingProvider);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save profile' }));
+    expect(await screen.findByText(/Account details were saved, but refreshed learner data could not be loaded/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Profile and credentials' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('shows a learner mutation failure without removing the current snapshot', async () => {
+    const mutationFailingProvider: LmsDataProvider = {
+      ...mockProvider,
+      async updateProfile() {
+        throw new Error('write failed');
+      },
+    };
+    renderRoute('/account', 'fully-complete', testAuthProvider(signedInSession), mutationFailingProvider);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save profile' }));
+    expect(await screen.findByText(/Account details could not be saved. No change was confirmed/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Profile and credentials' })).toBeInTheDocument();
+  });
+
+  it('renders expired access with no date without a 1970 artifact', async () => {
+    const nullExpiryProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        return {
+          ...snapshot,
+          enrollments: snapshot.enrollments.map((enrollment) => ({
+            ...enrollment,
+            status: 'expired' as const,
+            expires_at: null,
+          })),
+        };
+      },
+    };
+    renderRoute('/course/fpt-sandbox/module/1', 'fully-complete', testAuthProvider(signedInSession), nullExpiryProvider);
+    expect(await screen.findByText(/marked expired without an expiry date/i)).toBeInTheDocument();
+    expect(screen.queryByText(/1970/)).not.toBeInTheDocument();
+  });
+
+  it('surfaces password-reset transport failure instead of showing anti-enumeration success', async () => {
+    const transportFailingAuth: LmsAuthProvider = {
+      ...testAuthProvider(null),
+      async requestPasswordReset() {
+        return {
+          ok: false,
+          message: 'Unable to request reset instructions. Check your connection and try again.',
+          session: null,
+        };
+      },
+    };
+    renderRoute('/reset', 'fresh', transportFailingAuth);
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'fresh@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send reset instructions' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to request reset instructions');
+    expect(screen.queryByRole('heading', { name: 'Check your email' })).not.toBeInTheDocument();
+  });
+
   it('redirects an unauthenticated protected route to login', async () => {
     renderRoute('/dashboard', 'fully-complete', testAuthProvider(null));
     expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to continue' })).toBeInTheDocument();
@@ -421,5 +538,96 @@ describe('D6 operator routes', () => {
     );
     expect(await screen.findByDisplayValue('70%')).toHaveAttribute('readonly');
     expect(screen.getByText(/published program requirement/i)).toBeInTheDocument();
+  });
+
+  it('keeps the admin snapshot visible when a mutation succeeds but refresh fails', async () => {
+    let catalogReads = 0;
+    const refreshFailingAdmin: LmsAdminProvider = {
+      async adminRequest<T>(action: string) {
+        if (action === 'list_catalog') {
+          catalogReads += 1;
+          if (catalogReads > 1) throw new Error('refresh unavailable');
+          return (await mockProvider.getCatalog()) as T;
+        }
+        if (action === 'list_audit') return [] as T;
+        if (action === 'update_course') return {} as T;
+        throw new Error(`Unexpected admin action: ${action}`);
+      },
+    };
+    const route = '/admin/course/course-fpt';
+    window.history.replaceState({}, '', route);
+    render(
+      <MemoryRouter initialEntries={[route]}>
+        <AuthSessionProvider provider={testAuthProvider(operatorSession)}>
+          <LmsProvider provider={mockProvider}>
+            <App adminProvider={refreshFailingAdmin} />
+          </LmsProvider>
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Save course settings' }));
+    expect(await screen.findByText(/update course succeeded, but refreshed admin data could not be loaded/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'FPT Sandbox' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('shows an admin mutation failure without removing the current workspace', async () => {
+    const mutationFailingAdmin: LmsAdminProvider = {
+      async adminRequest<T>(action: string) {
+        if (action === 'list_catalog') return (await mockProvider.getCatalog()) as T;
+        if (action === 'list_audit') return [] as T;
+        if (action === 'update_course') throw new Error('write failed');
+        throw new Error(`Unexpected admin action: ${action}`);
+      },
+    };
+    const route = '/admin/course/course-fpt';
+    window.history.replaceState({}, '', route);
+    render(
+      <MemoryRouter initialEntries={[route]}>
+        <AuthSessionProvider provider={testAuthProvider(operatorSession)}>
+          <LmsProvider provider={mockProvider}>
+            <App adminProvider={mutationFailingAdmin} />
+          </LmsProvider>
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Save course settings' }));
+    expect(await screen.findByText(/update course failed. No change was confirmed/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'FPT Sandbox' })).toBeInTheDocument();
+  });
+
+  it('uploads a text resource and reports confirmed success', async () => {
+    const adminRequestCalls = vi.fn();
+    const uploadAdminProvider: LmsAdminProvider = {
+      async adminRequest<T>(action: string, payload = {}) {
+        adminRequestCalls(action, payload);
+        if (action === 'list_catalog') return (await mockProvider.getCatalog()) as T;
+        if (action === 'list_audit') return [] as T;
+        if (action === 'upload_resource') return { id: 'resource-new' } as T;
+        throw new Error(`Unexpected admin action: ${action}`);
+      },
+    };
+    const route = '/admin/course/course-fpt';
+    window.history.replaceState({}, '', route);
+    render(
+      <MemoryRouter initialEntries={[route]}>
+        <AuthSessionProvider provider={testAuthProvider(operatorSession)}>
+          <LmsProvider provider={mockProvider}>
+            <App adminProvider={uploadAdminProvider} />
+          </LmsProvider>
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.change((await screen.findAllByLabelText('Resource title'))[0], { target: { value: 'Operator guide' } });
+    fireEvent.change(screen.getAllByPlaceholderText('Paste sandbox text content when no file is selected.')[0], { target: { value: 'Sandbox resource body' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Upload' })[0]);
+
+    expect(await screen.findByText('Private lesson resource uploaded.')).toBeInTheDocument();
+    expect(adminRequestCalls).toHaveBeenCalledWith('upload_resource', expect.objectContaining({
+      lesson_id: 'fpt-m1-video',
+      title: 'Operator guide',
+      file_name: 'sandbox-resource.txt',
+    }));
+    expect(screen.getByText('upload resource succeeded.')).toBeInTheDocument();
   });
 });

@@ -100,7 +100,7 @@ export function LessonPage() {
           </div>
         </section>
       ) : lesson.kind === 'video' ? (
-        <LessonPlayer course={course} lesson={lesson} progress={progress} />
+        <LessonPlayer key={lesson.id} course={course} lesson={lesson} progress={progress} />
       ) : (
         <article className="card p-6 sm:p-8">
           <div className="flex items-center gap-3 text-brand-royal">

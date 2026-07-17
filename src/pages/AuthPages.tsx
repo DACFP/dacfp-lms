@@ -234,7 +234,7 @@ export function ResetPage() {
     setSubmitting(true);
     const response = await requestPasswordReset(email);
     setSubmitting(false);
-    setSuccessful(true);
+    setSuccessful(response.ok);
     setMessage(response.message);
   };
 
@@ -304,6 +304,7 @@ export function ResetPage() {
             {submitting ? 'Sending…' : 'Send reset instructions'}
             {!submitting ? <ArrowRight size={17} aria-hidden="true" /> : null}
           </button>
+          {message ? <AuthMessage successful={successful} message={message} /> : null}
           <Link className="button-quiet w-full" to="/login">Back to sign in</Link>
         </form>
       )}

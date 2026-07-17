@@ -94,7 +94,9 @@ export function ModulePage() {
                   {!courseIsUnlocked
                     ? 'Complete FPT to unlock this bonus curriculum.'
                     : accessState === 'expired'
-                      ? `Course access expired on ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(enrollment.expires_at!))}. Designation standing is governed separately.`
+                      ? enrollment.expires_at
+                        ? `Course access expired on ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(enrollment.expires_at))}. Designation standing is governed separately.`
+                        : 'Course access is marked expired without an expiry date. Designation standing is governed separately.'
                       : accessState === 'revoked'
                         ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
                     : !termsAccepted
