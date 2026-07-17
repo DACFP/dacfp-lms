@@ -1,13 +1,13 @@
 import {
   CheckCircle2,
   Circle,
-  Download,
   FileText,
   LockKeyhole,
   PlayCircle,
   ChevronLeft,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import { SecureResourceLink } from '../components/SecureResourceLink';
 import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
 import { useLms } from '../context/LmsContext';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
@@ -148,14 +148,10 @@ export function ModulePage() {
                         {lessonResources.map((resource) => (
                           <li key={resource.id}>
                             {contentAccessible ? (
-                              <a
+                              <SecureResourceLink
                                 className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-royal hover:underline"
-                                download
-                                href={resource.file_ref}
-                              >
-                                <Download size={16} aria-hidden="true" />
-                                <span>{resource.title}</span>
-                              </a>
+                                resource={resource}
+                              />
                             ) : (
                               <span className="inline-flex min-h-11 items-center gap-2 text-sm text-dacfp-slate">
                                 <LockKeyhole size={15} aria-hidden="true" />

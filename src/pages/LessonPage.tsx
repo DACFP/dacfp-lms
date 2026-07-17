@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
 import { LessonPlayer } from '../components/LessonPlayer';
+import { SecureResourceLink } from '../components/SecureResourceLink';
 import { useLms } from '../context/LmsContext';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import {
@@ -140,10 +141,10 @@ export function LessonPage() {
             {resources.map((resource) => (
               <li key={resource.id}>
                 {accessible ? (
-                  <a className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-brand-royal hover:bg-dacfp-wash-blue" href={resource.file_ref} download>
-                    <span>{resource.title}</span>
-                    <Download size={17} aria-hidden="true" />
-                  </a>
+                  <SecureResourceLink
+                    className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-brand-royal hover:bg-dacfp-wash-blue"
+                    resource={resource}
+                  />
                 ) : (
                   <span className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-dacfp-slate" aria-disabled="true">
                     <span>{resource.title}</span>

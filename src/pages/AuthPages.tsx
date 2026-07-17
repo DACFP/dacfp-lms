@@ -102,7 +102,14 @@ export function LoginPage() {
 
     if (response.ok && response.session) {
       const requested = (location.state as { from?: string } | null)?.from;
-      navigate(requested?.startsWith('/') ? requested : '/dashboard', {
+      const defaultDestination = response.session.user.role === 'operator' ? '/admin' : '/dashboard';
+      const destination =
+        requested?.startsWith('/admin') && response.session.user.role !== 'operator'
+          ? '/dashboard'
+          : requested?.startsWith('/')
+            ? requested
+            : defaultDestination;
+      navigate(destination, {
         replace: true,
       });
     }

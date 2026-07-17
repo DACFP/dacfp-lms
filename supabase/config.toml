@@ -9,3 +9,9 @@ verify_jwt = true
 
 [functions.lms-grade-attempt]
 verify_jwt = true
+
+[functions.lms-admin]
+verify_jwt = true
+
+[functions.lms-resource-token]
+verify_jwt = true

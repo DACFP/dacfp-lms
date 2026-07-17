@@ -9,6 +9,7 @@ import type {
   LmsAuthProvider,
   LmsAuthSession,
   LmsProvider as LmsDataProvider,
+  LmsAdminProvider,
 } from './data/provider';
 import { LmsDataError } from './data/provider';
 
@@ -18,6 +19,23 @@ const signedInSession: LmsAuthSession = {
     email: 'complete@example.test',
     displayName: 'Fully complete',
     role: 'learner',
+  },
+};
+
+const operatorSession: LmsAuthSession = {
+  user: {
+    id: 'auth-operator',
+    email: 'operator@example.test',
+    displayName: 'Synthetic operator',
+    role: 'operator',
+  },
+};
+
+const mockAdminProvider: LmsAdminProvider = {
+  async adminRequest<T>(action: string) {
+    if (action === 'list_catalog') return (await mockProvider.getCatalog()) as T;
+    if (action === 'list_audit') return [] as T;
+    throw new Error(`Unexpected admin action: ${action}`);
   },
 };
 
@@ -363,5 +381,45 @@ describe('D0 route shell', () => {
     expect(getCatalog).not.toHaveBeenCalled();
     expect(listLearners).not.toHaveBeenCalled();
     expect(getLearnerSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+describe('D6 operator routes', () => {
+  it('hard-redirects a learner away from /admin', async () => {
+    renderRoute('/admin', 'fully-complete');
+    expect(await screen.findByRole('heading', { name: 'Welcome, Fully complete' })).toBeInTheDocument();
+    expect(screen.queryByText('Operator console')).not.toBeInTheDocument();
+  });
+
+  it('renders the operator catalog through the admin provider only', async () => {
+    const route = '/admin';
+    window.history.replaceState({}, '', route);
+    render(
+      <MemoryRouter initialEntries={[route]}>
+        <AuthSessionProvider provider={testAuthProvider(operatorSession)}>
+          <LmsProvider provider={mockProvider}>
+            <App adminProvider={mockAdminProvider} />
+          </LmsProvider>
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('heading', { name: 'Course catalog' })).toBeInTheDocument();
+    expect(screen.getByText('Operator console')).toBeInTheDocument();
+  });
+
+  it('shows pass_pct as read-only published policy', async () => {
+    const route = '/admin/course/course-fpt';
+    window.history.replaceState({}, '', route);
+    render(
+      <MemoryRouter initialEntries={[route]}>
+        <AuthSessionProvider provider={testAuthProvider(operatorSession)}>
+          <LmsProvider provider={mockProvider}>
+            <App adminProvider={mockAdminProvider} />
+          </LmsProvider>
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByDisplayValue('70%')).toHaveAttribute('readonly');
+    expect(screen.getByText(/published program requirement/i)).toBeInTheDocument();
   });
 });
