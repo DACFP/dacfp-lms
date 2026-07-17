@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { AlertTriangle, LogOut, RefreshCw } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { IconTile } from '../components/IconTile';
 import {
   MutationStatusBanner,
   type MutationNotice,
@@ -351,15 +352,15 @@ function AuthenticatedLmsProvider({
       const denied = loadError === 'denied';
       return (
         <main className="grid min-h-dvh place-items-center bg-dacfp-wash px-4 py-12">
+          {/* A page-level error region, not an inline alert: role="alert" stays
+              on the section so the whole recovery story is announced. */}
           <section className="card w-full max-w-xl p-6 text-center sm:p-8" role="alert">
-            <div className="mx-auto grid size-12 place-items-center rounded-xl bg-brand-gold/15 text-brand-navy">
-              <AlertTriangle aria-hidden="true" size={24} />
-            </div>
+            <IconTile icon={AlertTriangle} size="lg" tone="gold" className="mx-auto" />
             <p className="eyebrow mt-5">{denied ? 'No learner access' : 'Connection issue'}</p>
-            <h1 className="mt-2 text-2xl font-bold text-brand-navy">
+            <h1 className="mt-2 text-2xl font-bold text-dacfp-navy">
               {denied ? 'Learning access is unavailable' : 'We could not load the learning portal'}
             </h1>
-            <p className="mx-auto mt-3 max-w-md leading-7 text-dacfp-slate">
+            <p className="mx-auto mt-3 max-w-md leading-7 text-dacfp-gray-text">
               {denied
                 ? 'Your session is valid, but it does not currently have learner access. Sign in again or contact DACFP support if this continues.'
                 : 'Check your connection and try again. Your course progress has not been changed.'}
@@ -370,7 +371,7 @@ function AuthenticatedLmsProvider({
                 onClick={() => setReloadKey((current) => current + 1)}
                 type="button"
               >
-                <RefreshCw aria-hidden="true" size={17} />
+                <RefreshCw className="size-icon-sm" aria-hidden="true" />
                 Retry loading
               </button>
               <button
@@ -378,7 +379,7 @@ function AuthenticatedLmsProvider({
                 onClick={() => void logout()}
                 type="button"
               >
-                <LogOut aria-hidden="true" size={17} />
+                <LogOut className="size-icon-sm" aria-hidden="true" />
                 Sign out
               </button>
             </div>
@@ -389,7 +390,7 @@ function AuthenticatedLmsProvider({
 
     return (
       <div className="grid min-h-dvh place-items-center bg-dacfp-wash px-6">
-        <p className="text-sm font-semibold text-brand-navy" role="status">
+        <p className="text-sm font-semibold text-dacfp-navy" role="status">
           Loading the learning portal…
         </p>
       </div>

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Alert } from '../components/Alert';
 import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
 import { LessonPlayer } from '../components/LessonPlayer';
 import { SecureResourceLink } from '../components/SecureResourceLink';
@@ -84,10 +85,10 @@ export function LessonPage() {
 
       {!accessible ? (
         <section className="card flex gap-4 p-6">
-          <LockKeyhole className="mt-0.5 shrink-0 text-brand-gold" aria-hidden="true" size={22} />
+          <LockKeyhole className="mt-0.5 shrink-0 text-dacfp-gold size-icon-lg" aria-hidden="true" />
           <div>
-            <h2 className="font-bold text-brand-navy">This lesson is locked</h2>
-            <p className="mt-1 text-sm leading-6 text-dacfp-slate">
+            <h2 className="font-bold text-dacfp-navy">This lesson is locked</h2>
+            <p className="mt-1 text-sm leading-6 text-dacfp-gray-text">
               {accessState === 'expired'
                 ? 'Course access has expired. This does not itself change designation standing.'
                 : accessState === 'revoked'
@@ -103,13 +104,13 @@ export function LessonPage() {
         <LessonPlayer key={lesson.id} course={course} lesson={lesson} progress={progress} />
       ) : (
         <article className="card p-6 sm:p-8">
-          <div className="flex items-center gap-3 text-brand-royal">
-            <FileText aria-hidden="true" size={22} />
+          <div className="flex items-center gap-3 text-dacfp-blue">
+            <FileText className="size-icon-lg" aria-hidden="true" />
             <p className="eyebrow">Required reading</p>
           </div>
-          <h2 className="mt-5 text-2xl font-bold text-brand-navy">Key concepts</h2>
-          <p className="mt-4 max-w-3xl leading-8 text-dacfp-slate">{lesson.body_md}</p>
-          <div className="mt-6 flex flex-col items-start gap-3 rounded-lg border border-dacfp-line bg-dacfp-wash p-4 text-sm leading-6 text-dacfp-slate">
+          <h2 className="mt-5 text-2xl font-bold text-dacfp-navy">Key concepts</h2>
+          <p className="mt-4 max-w-3xl leading-8 text-dacfp-gray-text">{lesson.body_md}</p>
+          <div className="mt-6 flex flex-col items-start gap-3 rounded-lg border border-dacfp-line bg-dacfp-wash p-4 text-sm leading-6 text-dacfp-gray-text">
             <p>Reading completion is recorded securely against your enrollment.</p>
             <button
               className="button-primary"
@@ -123,18 +124,18 @@ export function LessonPage() {
               }}
               type="button"
             >
-              <CheckCircle2 size={17} aria-hidden="true" />
+              <CheckCircle2 className="size-icon-sm" aria-hidden="true" />
               {complete ? 'Reading complete' : savingReading ? 'Saving…' : 'Mark reading complete'}
             </button>
-            {readingError ? <p className="font-semibold text-status-danger" role="alert">{readingError}</p> : null}
+            {readingError ? <Alert tone="danger">{readingError}</Alert> : null}
           </div>
         </article>
       )}
 
       <section aria-labelledby="resources-heading" className="card p-6">
         <div className="flex items-center gap-3">
-          <Download className="text-brand-royal" aria-hidden="true" size={21} />
-          <h2 id="resources-heading" className="text-lg font-bold text-brand-navy">Lesson resources</h2>
+          <Download className="text-dacfp-blue size-icon-md" aria-hidden="true" />
+          <h2 id="resources-heading" className="text-lg font-bold text-dacfp-navy">Lesson resources</h2>
         </div>
         {resources.length > 0 ? (
           <ul className="mt-4 divide-y divide-dacfp-line rounded-lg border border-dacfp-line">
@@ -142,36 +143,36 @@ export function LessonPage() {
               <li key={resource.id}>
                 {accessible ? (
                   <SecureResourceLink
-                    className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-brand-royal hover:bg-dacfp-wash-blue"
+                    className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-dacfp-blue hover:bg-dacfp-wash-blue"
                     resource={resource}
                   />
                 ) : (
-                  <span className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-dacfp-slate" aria-disabled="true">
+                  <span className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-dacfp-gray-text" aria-disabled="true">
                     <span>{resource.title}</span>
-                    <LockKeyhole size={17} aria-hidden="true" />
+                    <LockKeyhole className="size-icon-sm" aria-hidden="true" />
                   </span>
                 )}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-3 text-sm leading-6 text-dacfp-slate">No downloads accompany this synthetic lesson.</p>
+          <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">No downloads accompany this synthetic lesson.</p>
         )}
       </section>
 
       <nav aria-label="Lesson navigation" className="flex flex-col gap-3 border-t border-dacfp-line pt-6 sm:flex-row sm:justify-between">
         {accessible && previous ? (
           <Link className="button-secondary" to={learnerPath(`/lesson/${previous.id}`, selectedLearner)}>
-            <ArrowLeft size={17} aria-hidden="true" /> Previous lesson
+            <ArrowLeft className="size-icon-sm" aria-hidden="true" /> Previous lesson
           </Link>
         ) : <span />}
         {accessible && next ? (
           <Link className="button-primary" to={learnerPath(`/lesson/${next.id}`, selectedLearner)}>
-            Next lesson <ArrowRight size={17} aria-hidden="true" />
+            Next lesson <ArrowRight className="size-icon-sm" aria-hidden="true" />
           </Link>
         ) : (
           <Link className="button-primary" to={learnerPath(`/course/${course.slug}/module/${module.position}`, selectedLearner)}>
-            Module overview <CheckCircle2 size={17} aria-hidden="true" />
+            Module overview <CheckCircle2 className="size-icon-sm" aria-hidden="true" />
           </Link>
         )}
       </nav>

@@ -1,6 +1,14 @@
 import { FileCheck2, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { LmsCourse, LmsEnrollment } from '../data/types';
+import { Alert } from './Alert';
+import { IconTile } from './IconTile';
 
 export function TermsModal({
   course,
@@ -26,44 +34,56 @@ export function TermsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-brand-navy-deep/70 p-4" role="presentation">
-      <section
-        className="w-full max-w-2xl rounded-card border border-dacfp-line bg-white shadow-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="terms-title"
+    // This is a gate, not a disclosure. It renders only while terms are
+    // outstanding and has never had a dismiss path; Radix would add three
+    // (Esc, outside-press, close button), so all three are refused. Behaviour
+    // is unchanged from the hand-rolled version — what Radix adds is the focus
+    // trap, inert background and scroll lock the hand-rolled one never had.
+    <Dialog open>
+      <DialogContent
+        showCloseButton={false}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
         aria-describedby="terms-description"
+        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto rounded-card border border-dacfp-line bg-white p-0 shadow-card sm:max-w-2xl"
       >
-        <div className="h-1.5 rounded-t-card bg-gradient-to-r from-brand-royal via-brand-royal-bright to-brand-gold" />
+        <div className="brand-strip h-1.5" />
         <div className="p-6 sm:p-8">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-dacfp-wash-blue text-brand-royal">
-            <FileCheck2 aria-hidden="true" size={24} />
-          </div>
+          <IconTile icon={FileCheck2} size="lg" tone="brand" />
           <p className="eyebrow mt-6">First entry</p>
-          <h2 id="terms-title" className="mt-2 text-2xl font-bold text-brand-navy">
+          <DialogTitle className="mt-2 font-sans text-2xl font-bold text-dacfp-navy">
             Accept the program terms to continue
-          </h2>
-          <p id="terms-description" className="mt-3 leading-7 text-dacfp-slate">
+          </DialogTitle>
+          <DialogDescription
+            id="terms-description"
+            className="mt-3 text-base leading-7 text-dacfp-gray-text"
+          >
             {course.title} uses sequential lessons, required quizzes, and compliance-style video progress. Your learning access and designation standing are managed separately.
-          </p>
+          </DialogDescription>
           <div className="mt-6 rounded-lg border border-dacfp-line bg-dacfp-wash p-4">
             <div className="flex gap-3">
-              <ShieldCheck className="mt-0.5 shrink-0 text-status-positive" aria-hidden="true" size={20} />
-              <p className="text-sm leading-6 text-dacfp-ink">
+              <ShieldCheck className="mt-0.5 size-icon-md shrink-0 text-status-positive" aria-hidden="true" />
+              <p className="text-sm leading-6 text-dacfp-navy">
                 This dark-build acknowledgment updates synthetic state only. It does not send email or contact any external service.
               </p>
             </div>
           </div>
-          <button className="button-primary mt-7 w-full sm:w-auto" type="button" onClick={() => void accept()} disabled={accepting}>
+          <button
+            className="button-primary mt-7 w-full sm:w-auto"
+            type="button"
+            onClick={() => void accept()}
+            disabled={accepting}
+          >
             {accepting ? 'Accepting…' : 'I accept and want to continue'}
           </button>
           {error ? (
-            <p className="mt-3 text-sm font-semibold text-status-danger" role="alert">
+            <Alert tone="danger" className="mt-3">
               {error}
-            </p>
+            </Alert>
           ) : null}
         </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -9,6 +9,8 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { IconTile } from '../components/IconTile';
+import { LockedBadge } from '../components/LockedBadge';
 import {
   EmptyState,
   PageHeader,
@@ -42,10 +44,10 @@ export function DashboardPage() {
         description="Continue your courses, see exactly what is available next, and keep annual learning access in view."
         action={
           <div className="rounded-lg border border-dacfp-line bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-dacfp-slate">
+            <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
               Learning access
             </p>
-            <p className="mt-1 font-bold text-brand-navy">
+            <p className="mt-1 font-bold text-dacfp-navy">
               {activeEnrollmentCount} active {activeEnrollmentCount === 1 ? 'course' : 'courses'}
             </p>
           </div>
@@ -55,7 +57,7 @@ export function DashboardPage() {
       <section aria-labelledby="course-heading">
         <div className="mb-4">
           <p className="eyebrow">My learning</p>
-          <h2 id="course-heading" className="mt-1 text-2xl font-bold text-brand-navy">
+          <h2 id="course-heading" className="mt-1 text-2xl font-bold text-dacfp-navy">
             Enrolled courses
           </h2>
         </div>
@@ -81,20 +83,18 @@ export function DashboardPage() {
                 return (
                   <article key={enrollment.id} className="card flex flex-col p-5 sm:p-6">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-gold/15 text-brand-navy">
-                        <ShieldAlert aria-hidden="true" size={22} />
-                      </div>
+                      <IconTile icon={ShieldAlert} size="md" tone="gold" />
                       <StatusPill tone="warning">
                         {hiddenAccessState === 'expired' ? 'Access expired' : 'Access unavailable'}
                       </StatusPill>
                     </div>
-                    <h3 className="mt-5 text-xl font-bold text-brand-navy">
+                    <h3 className="mt-5 text-xl font-bold text-dacfp-navy">
                       {hiddenAccessState === 'expired' ? 'Expired course access' : 'Course access unavailable'}
                     </h3>
-                    <p className="mt-2 text-sm leading-6 text-dacfp-slate">
+                    <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
                       Course details are no longer available to this session. The enrollment remains visible so its access status is not hidden.
                     </p>
-                    <p className="mt-5 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-4 text-sm leading-6 text-brand-navy">
+                    <p className="mt-5 rounded-lg border border-dacfp-gold/40 bg-dacfp-gold/10 p-4 text-sm leading-6 text-dacfp-navy">
                       {hiddenAccessState === 'expired'
                         ? `Course access expired ${formatDate(enrollment.expires_at)}. This does not itself change designation standing.`
                         : 'Course access is unavailable. Contact DACFP support if you expected this course to remain active.'}
@@ -154,16 +154,14 @@ export function DashboardPage() {
 
               return (
                 <article key={enrollment.id} className="card flex flex-col overflow-hidden">
-                  <div className="h-1 bg-gradient-to-r from-brand-royal to-brand-gold" />
+                  <div className="brand-strip h-1" />
                   <div className="flex flex-1 flex-col p-5 sm:p-6">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-dacfp-wash-blue text-brand-royal">
-                        {contentAvailable ? (
-                          <BookOpen aria-hidden="true" size={22} />
-                        ) : (
-                          <LockKeyhole aria-hidden="true" size={22} />
-                        )}
-                      </div>
+                      <IconTile
+                        icon={contentAvailable ? BookOpen : LockKeyhole}
+                        size="md"
+                        tone="brand"
+                      />
                       {accessState === 'expired' ? (
                         <StatusPill tone="warning">Access expired</StatusPill>
                       ) : accessState === 'revoked' ? (
@@ -171,7 +169,7 @@ export function DashboardPage() {
                       ) : complete ? (
                         <StatusPill tone="positive">Complete</StatusPill>
                       ) : !unlocked ? (
-                        <StatusPill tone="warning">Locked</StatusPill>
+                        <LockedBadge reason={`${course.title} unlocks once you complete the prerequisite course.`} />
                       ) : !termsAccepted ? (
                         <StatusPill tone="warning">Terms required</StatusPill>
                       ) : (
@@ -179,26 +177,26 @@ export function DashboardPage() {
                       )}
                     </div>
 
-                    <h3 className="mt-5 text-xl font-bold text-brand-navy">
+                    <h3 className="mt-5 text-xl font-bold text-dacfp-navy">
                       {course.title}
                     </h3>
-                    <p className="mt-2 text-sm leading-6 text-dacfp-slate">
+                    <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
                       {course.description}
                     </p>
 
                     <div className="mt-5 grid gap-3 border-y border-dacfp-line py-4 text-sm sm:grid-cols-2">
-                      <div className="flex items-center gap-2 text-dacfp-slate">
-                        <Award size={17} aria-hidden="true" className="text-brand-gold" />
+                      <div className="flex items-center gap-2 text-dacfp-gray-text">
+                        <Award aria-hidden="true" className="text-dacfp-gold size-icon-sm" />
                         <span>
-                          <strong className="text-brand-navy">{course.ce_credits ?? 0}</strong>{' '}
+                          <strong className="text-dacfp-navy">{course.ce_credits ?? 0}</strong>{' '}
                           CE credits
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-dacfp-slate">
-                        <CalendarClock size={17} aria-hidden="true" className="text-brand-royal" />
+                      <div className="flex items-center gap-2 text-dacfp-gray-text">
+                        <CalendarClock aria-hidden="true" className="text-dacfp-blue size-icon-sm" />
                         <span>
                           Access {accessState === 'expired' ? 'expired' : 'through'}{' '}
-                          <strong className="text-brand-navy">
+                          <strong className="text-dacfp-navy">
                             {formatDate(enrollment.expires_at)}
                           </strong>
                         </span>
@@ -206,14 +204,14 @@ export function DashboardPage() {
                     </div>
 
                     {accessState === 'expired' ? (
-                      <div className="mt-5 flex gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-4 text-sm leading-6 text-brand-navy">
-                        <ShieldAlert className="mt-0.5 shrink-0" size={19} aria-hidden="true" />
+                      <div className="mt-5 flex gap-3 rounded-lg border border-dacfp-gold/40 bg-dacfp-gold/10 p-4 text-sm leading-6 text-dacfp-navy">
+                        <ShieldAlert className="mt-0.5 shrink-0 size-icon-md" aria-hidden="true" />
                         <p>
                           This course can no longer be opened. Course access expiry does not itself change designation standing.
                         </p>
                       </div>
                     ) : !unlocked ? (
-                      <div className="mt-5 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-4 text-sm leading-6 text-brand-navy">
+                      <div className="mt-5 rounded-lg border border-dacfp-gold/40 bg-dacfp-gold/10 p-4 text-sm leading-6 text-dacfp-navy">
                         Complete FPT to unlock this bonus course. Your enrollment is ready and waiting.
                       </div>
                     ) : (
@@ -223,7 +221,7 @@ export function DashboardPage() {
                     )}
 
                     <div className="mt-5 rounded-lg border border-dacfp-line bg-dacfp-wash p-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-dacfp-slate">
+                      <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
                         Module status
                       </p>
                       <ol className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -237,16 +235,16 @@ export function DashboardPage() {
                               className="flex min-h-10 items-center justify-between gap-3 rounded-md bg-white px-3 py-2 text-sm"
                               key={module.id}
                             >
-                              <span className="min-w-0 truncate font-semibold text-brand-navy">
+                              <span className="min-w-0 truncate font-semibold text-dacfp-navy">
                                 Module {module.position}
                               </span>
-                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-dacfp-slate">
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-dacfp-gray-text">
                                 {passed ? (
-                                  <CheckCircle2 className="text-status-positive" size={15} aria-hidden="true" />
+                                  <CheckCircle2 className="text-status-positive size-icon-sm" aria-hidden="true" />
                                 ) : moduleUnlocked ? (
-                                  <Clock3 className="text-brand-royal" size={15} aria-hidden="true" />
+                                  <Clock3 className="text-dacfp-blue size-icon-sm" aria-hidden="true" />
                                 ) : (
-                                  <LockKeyhole size={14} aria-hidden="true" />
+                                  <LockKeyhole className="size-icon-xs" aria-hidden="true" />
                                 )}
                                 {passed ? 'Passed' : moduleUnlocked ? 'Available' : 'Locked'}
                               </span>
@@ -257,7 +255,7 @@ export function DashboardPage() {
                     </div>
 
                     <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-xs leading-5 text-dacfp-slate">
+                      <p className="text-xs leading-5 text-dacfp-gray-text">
                         Learning access and designation status are governed separately.
                       </p>
                       {contentAvailable && resumeModule ? (
@@ -266,14 +264,14 @@ export function DashboardPage() {
                           to={learnerPath(resumePath, selectedLearner)}
                         >
                           {complete ? 'Review course' : resumeLesson ? 'Resume lesson' : 'Continue'}
-                          <ChevronRight size={17} aria-hidden="true" />
+                          <ChevronRight className="size-icon-sm" aria-hidden="true" />
                         </Link>
                       ) : (
                         <span
-                          className="inline-flex min-h-11 items-center gap-2 self-start rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-slate"
+                          className="inline-flex min-h-11 items-center gap-2 self-start rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-gray-text"
                           aria-disabled="true"
                         >
-                          <LockKeyhole size={16} aria-hidden="true" /> Unavailable
+                          <LockKeyhole className="size-icon-sm" aria-hidden="true" /> Unavailable
                         </span>
                       )}
                     </div>
@@ -286,19 +284,17 @@ export function DashboardPage() {
       </section>
 
       <section className="card grid gap-5 p-6 md:grid-cols-[auto_1fr_auto] md:items-center">
-        <div className="grid size-12 place-items-center rounded-xl bg-status-positive/10 text-status-positive">
-          <CheckCircle2 aria-hidden="true" size={24} />
-        </div>
+        <IconTile icon={CheckCircle2} size="lg" tone="positive" />
         <div>
-          <h2 className="text-lg font-bold text-brand-navy">
+          <h2 className="text-lg font-bold text-dacfp-navy">
             Keep credential details ready for CE reporting
           </h2>
-          <p className="mt-1 text-sm leading-6 text-dacfp-slate">
+          <p className="mt-1 text-sm leading-6 text-dacfp-gray-text">
             Add optional CFP, IWI, and CFA IDs in your account. This portal collects them; CE reporting is a later workflow.
           </p>
         </div>
         <Link className="button-quiet" to={learnerPath('/account', selectedLearner)}>
-          Review account <ChevronRight size={17} aria-hidden="true" />
+          Review account <ChevronRight className="size-icon-sm" aria-hidden="true" />
         </Link>
       </section>
     </div>

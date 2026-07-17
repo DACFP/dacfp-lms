@@ -15,10 +15,10 @@ export function PageHeader({
     <header className="flex flex-col gap-5 border-b border-dacfp-line pb-7 md:flex-row md:items-end md:justify-between">
       <div className="max-w-3xl">
         <p className="eyebrow">{eyebrow}</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-brand-navy md:text-4xl">
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-dacfp-navy md:text-4xl">
           {title}
         </h1>
-        <p className="mt-3 max-w-2xl text-base leading-7 text-dacfp-slate">{description}</p>
+        <p className="mt-3 max-w-2xl text-base leading-7 text-dacfp-gray-text">{description}</p>
       </div>
       {action}
     </header>
@@ -29,8 +29,8 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-4 text-sm">
-        <span className="font-semibold text-brand-navy">{label}</span>
-        <span className="tabular-nums text-dacfp-slate">{value}%</span>
+        <span className="font-semibold text-dacfp-navy">{label}</span>
+        <span className="tabular-nums text-dacfp-gray-text">{value}%</span>
       </div>
       <div
         className="h-2.5 overflow-hidden rounded-full bg-dacfp-wash-blue"
@@ -41,7 +41,7 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
         aria-valuenow={value}
       >
         <div
-          className="h-full rounded-full bg-brand-royal transition-[width] duration-200 motion-reduce:transition-none"
+          className="h-full rounded-full bg-dacfp-blue transition-[width] duration-200 motion-reduce:transition-none"
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>
@@ -52,8 +52,8 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
 export function StatusPill({ tone, children }: { tone: 'positive' | 'warning' | 'neutral'; children: ReactNode }) {
   const className = {
     positive: 'border-status-positive/25 bg-status-positive/10 text-status-positive',
-    warning: 'border-brand-gold/40 bg-brand-gold/10 text-brand-navy',
-    neutral: 'border-dacfp-line bg-dacfp-wash-blue text-brand-royal',
+    warning: 'border-dacfp-gold/40 bg-dacfp-gold/10 text-dacfp-navy',
+    neutral: 'border-dacfp-line bg-dacfp-wash-blue text-dacfp-blue',
   }[tone];
 
   return (
@@ -74,8 +74,8 @@ export function EmptyState({
 }) {
   return (
     <div className="card px-6 py-12 text-center">
-      <h2 className="text-lg font-bold text-brand-navy">{title}</h2>
-      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-dacfp-slate">{description}</p>
+      <h2 className="text-lg font-bold text-dacfp-navy">{title}</h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-dacfp-gray-text">{description}</p>
       {action ? <div className="mt-6 flex justify-center">{action}</div> : null}
     </div>
   );

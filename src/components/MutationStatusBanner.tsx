@@ -26,22 +26,21 @@ export function MutationStatusBanner({
           error
             ? 'border-status-danger/35'
             : warning
-              ? 'border-brand-gold/50'
+              ? 'border-dacfp-gold/50'
               : 'border-status-positive/35'
         }`}
         role={error ? 'alert' : 'status'}
       >
         <Icon
           aria-hidden="true"
-          className={error ? 'text-status-danger' : warning ? 'text-brand-gold-deep' : 'text-status-positive'}
-          size={20}
+          className={`size-icon-md ${error ? 'text-status-danger' : warning ? 'text-dacfp-gold-text' : 'text-status-positive'}`}
         />
-        <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-brand-navy">
+        <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-dacfp-navy">
           {notice.message}
         </p>
         {notice.retry ? (
           <button className="button-quiet min-h-9 px-2" onClick={notice.retry} type="button">
-            <RefreshCw aria-hidden="true" size={15} /> Retry
+            <RefreshCw className="size-icon-sm" aria-hidden="true" /> Retry
           </button>
         ) : null}
         <button
@@ -50,7 +49,7 @@ export function MutationStatusBanner({
           onClick={onDismiss}
           type="button"
         >
-          <X aria-hidden="true" size={16} />
+          <X className="size-icon-sm" aria-hidden="true" />
         </button>
       </div>
     </div>

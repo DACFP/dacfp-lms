@@ -1,37 +1,195 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Class-based dark variant, deliberately never activated: no element in this
+   app carries `.dark`. Keeping the custom variant (rather than deleting it)
+   is what makes the `dark:` utilities baked into the shadcn primitives inert.
+   Removing it would hand `dark:` back to `prefers-color-scheme`, and every
+   dark-OS learner would get half-dark chrome in a light-only product. */
+@custom-variant dark (&:is(.dark *));
+
+/* ===========================================================================
+   DACFP BRAND PALETTE — authoritative values from Brand/TOKENS.md
+   (measured from Brand/ assets; commit 02582e1). Do not eyeball new values.
+
+   THE ALLOWED-BACKGROUND LAW (Brand/TOKENS.md "Contrast facts"; every ratio
+   below was recomputed per WCAG 2.x and matched the source table exactly).
+   AA text = 4.5:1, large-text/UI = 3.0:1.
+
+     token           | allowed background        | ratio  | verdict
+     ----------------|---------------------------|--------|-------------------
+     maroon #802124  | white                     |  9.72  | text+UI, unrestricted
+     white           | maroon #802124            |  9.72  | button-foreground pair
+     blue #1756a7    | white                     |  7.18  | links/secondary, unrestricted
+     navy #172c4a    | white                     | 14.04  | ink pair
+     white           | navy #172c4a              | 14.04  | ink pair
+     gray #969ca0    | white                     |  2.78  | DECORATIVE ONLY — never text
+     gray #969ca0    | navy #172c4a              |  5.05  | full text use permitted
+     gold #a67e41    | white                     |  3.70  | large-text/UI/icons ONLY
+     gold #a67e41    | navy #172c4a              |  3.80  | large-text/UI ONLY
+     gold-hi #dec583 | navy #172c4a              |  8.30  | THE gold for text on dark
+     gray-text #57616c | white                   |  6.30  | ONLY gray permitted as light-surface text
+     gold-text #7d5a24 | white                   |  6.25  | ONLY gold permitted as light-surface text
+
+   RULE 1 (Brand/TOKENS.md §"Rules for O1"): dacfp-gray and dacfp-gold NEVER
+   as body text on light. The derived -text variants exist for exactly that.
+   RULE 3: no new colors without a flagged justification.
+   =========================================================================== */
 
 @theme {
   --font-sans: "Open Sans", "Helvetica Neue", Arial, sans-serif;
 
-  --color-brand-navy-deep: #0e1b30;
-  --color-brand-navy: #14243f;
-  --color-brand-royal: #1e3a8a;
-  --color-brand-royal-bright: #1f47b0;
-  --color-brand-maroon: #8f1a25;
-  --color-brand-maroon-deep: #731019;
-  --color-brand-gold: #c79a3b;
-  --color-dacfp-ink: #1c2733;
-  --color-dacfp-slate: #54626f;
-  --color-dacfp-mist: #8a97a3;
+  /* --- Core palette (measured) --- */
+  --color-dacfp-maroon: #802124;
+  --color-dacfp-blue: #1756a7;
+  --color-dacfp-navy: #172c4a;
+  --color-dacfp-navy-2: #15335c;
+  --color-dacfp-gray: #969ca0;
+  --color-dacfp-gold: #a67e41;
+  --color-dacfp-gold-hi: #dec583;
+  --color-dacfp-gold-dk: #826535;
+
+  /* --- Derived accessible variants (required; see RULE 1) --- */
+  /* ONLY gray permitted as text on light surfaces — 6.30:1 on white. */
+  --color-dacfp-gray-text: #57616c;
+  /* ONLY gold permitted as text on light surfaces — 6.25:1 on white. */
+  --color-dacfp-gold-text: #7d5a24;
+  /* Darkened maroon. Doubles as --destructive per Brand/TOKENS.md
+     ("derive from maroon family (darkened), not a new red") and as the
+     primary-button hover ground. 11.60:1 both directions against white. */
+  --color-dacfp-maroon-deep: #6b1c1e;
+
+  /* --- Neutral surfaces (pre-existing app tokens; not brand marks) --- */
   --color-dacfp-wash: #f4f7fb;
   --color-dacfp-wash-blue: #eaf0f9;
   --color-dacfp-line: #dce4ee;
+
+  /* --- Status --- */
+  /* Pre-existing success green. The brand palette has no success hue, and
+     removing success signalling is out of O1 scope. Passes AA at 5.32:1 on
+     white / 4.95:1 on wash. Flagged in gate evidence as pre-existing. */
   --color-status-positive: #1f7a4d;
-  --color-status-danger: #b42318;
+  /* Danger now resolves to the maroon family per Brand/TOKENS.md rather than
+     the previous off-brand red (#b42318). Aliased so existing
+     `text-status-danger` call sites become brand-correct without churn. */
+  --color-status-danger: var(--color-dacfp-maroon-deep);
+
+  /* --- Eyebrow tracking (brief #20) --- */
+  --tracking-eyebrow: 0.16em;
+
+  /* --- Grid widths (brief #20) --- */
+  --container-shell: 80rem; /* app shell / header / footer gutter */
+  --container-prose: 48rem; /* reading + banner measure */
+  --container-form: 32rem; /* auth + single-column forms */
+
+  /* --- Icon sizes (brief #20). Replaces 11 ad-hoc px values (14..24). --- */
+  --spacing-icon-xs: 0.875rem; /* 14px — inline with small text */
+  --spacing-icon-sm: 1rem; /* 16px — default inline/button icon */
+  --spacing-icon-md: 1.25rem; /* 20px — alert + emphasis icons */
+  --spacing-icon-lg: 1.5rem; /* 24px — icon-tile glyphs */
 
   --radius-card: 0.625rem;
-  --shadow-card: 0 1px 2px rgba(20, 36, 63, 0.05), 0 10px 28px rgba(20, 36, 63, 0.09), 0 2px 6px rgba(20, 36, 63, 0.05);
-  --shadow-card-hover: 0 12px 32px rgba(20, 36, 63, 0.14);
+  --shadow-card: 0 1px 2px rgba(23, 44, 74, 0.05), 0 10px 28px rgba(23, 44, 74, 0.09), 0 2px 6px rgba(23, 44, 74, 0.05);
+  --shadow-card-hover: 0 12px 32px rgba(23, 44, 74, 0.14);
+}
+
+/* shadcn CSS-variable mapping — implements Brand/TOKENS.md
+   §"shadcn CSS-variable mapping (O1 implements exactly)". */
+@theme inline {
+  --font-heading: var(--font-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* ink pair — navy on white, 14.04:1 */
+  --background: #ffffff;
+  --foreground: var(--color-dacfp-navy);
+  --card: #ffffff;
+  --card-foreground: var(--color-dacfp-navy);
+  --popover: #ffffff;
+  --popover-foreground: var(--color-dacfp-navy);
+
+  /* primary — maroon; white on maroon 9.72:1 */
+  --primary: var(--color-dacfp-maroon);
+  --primary-foreground: #ffffff;
+
+  /* secondary — navy; white on navy 14.04:1 */
+  --secondary: var(--color-dacfp-navy);
+  --secondary-foreground: #ffffff;
+
+  --muted: var(--color-dacfp-wash);
+  /* gray-text on wash 5.87:1 / on white 6.30:1 */
+  --muted-foreground: var(--color-dacfp-gray-text);
+
+  /* accent — gold, DECORATIVE SURFACES ONLY, foreground navy (3.80:1).
+     That pair clears the 3.0 large-text/UI bar but NOT the 4.5 body-text bar.
+     See gate evidence DEVIATION 3: shadcn overloads --accent as the
+     small-text hover ground in dropdown-menu/select. Neither is mounted in
+     O1, so nothing ships below AA; this needs a decision before O3 wires
+     either primitive. */
+  --accent: var(--color-dacfp-gold);
+  --accent-foreground: var(--color-dacfp-navy);
+
+  /* destructive — darkened maroon, not a new red. 11.60:1 both ways. */
+  --destructive: var(--color-dacfp-maroon-deep);
+  --destructive-foreground: #ffffff;
+
+  --border: var(--color-dacfp-line);
+  --input: var(--color-dacfp-line);
+
+  /* ring — blue, 7.18:1 on white. Overridden to gold-hi on navy grounds
+     below, where blue would collapse to 1.96:1. */
+  --ring: var(--color-dacfp-blue);
+}
+
+/* Dark brand surfaces (hero / masthead / shell header). Brand/TOKENS.md:
+   "navy ground, white/gold-hi text, gray permitted." Redefines only the
+   tokens whose light-surface values would fail against navy. */
+@layer base {
+  .on-navy {
+    --ring: var(--color-dacfp-gold-hi); /* 8.30:1 on navy vs blue's 1.96:1 */
+    --muted-foreground: var(--color-dacfp-gray); /* 5.05:1 on navy */
+    --border: rgba(255, 255, 255, 0.2);
+  }
 }
 
 @layer base {
   * {
     box-sizing: border-box;
+    @apply border-border outline-ring/50;
   }
 
   html {
     min-width: 20rem;
     background: var(--color-dacfp-wash);
+    @apply font-sans;
   }
 
   body {
@@ -39,7 +197,7 @@
     min-width: 20rem;
     min-height: 100vh;
     background: var(--color-dacfp-wash);
-    color: var(--color-dacfp-ink);
+    color: var(--foreground);
     font-family: var(--font-sans);
     font-size: 1rem;
     line-height: 1.5;
@@ -63,7 +221,7 @@
   }
 
   :focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--color-brand-gold) 85%, white);
+    outline: 3px solid var(--ring);
     outline-offset: 3px;
   }
 
@@ -89,33 +247,46 @@
   }
 
   .eyebrow {
-    @apply text-xs font-bold uppercase tracking-[0.16em] text-brand-royal;
+    @apply text-xs font-bold uppercase tracking-eyebrow text-dacfp-blue;
   }
 
+  /* Buttons stay on these classes for O1. Button is not one of §1's four
+     extractions, and the shadcn base is 32px tall against this product's
+     44px touch target — migrating it belongs with the O2/O3 page redesigns,
+     not with a token pass. Values below are now token-driven, so they carry
+     the brand correction without a call-site change. Focus comes from the
+     global :focus-visible rule, which reads --ring (gold-hi on .on-navy). */
   .button-primary,
   .button-secondary,
   .button-quiet {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-brand-gold disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold disabled:opacity-50;
   }
 
   .button-primary {
-    @apply bg-brand-maroon text-white hover:bg-brand-maroon-deep;
+    @apply bg-primary text-primary-foreground hover:bg-dacfp-maroon-deep;
   }
 
   .button-secondary {
-    @apply border border-brand-royal bg-white text-brand-royal hover:bg-dacfp-wash-blue;
+    @apply border border-dacfp-blue bg-white text-dacfp-blue hover:bg-dacfp-wash-blue;
   }
 
   .button-quiet {
-    @apply text-brand-royal hover:bg-dacfp-wash-blue;
+    @apply text-dacfp-blue hover:bg-dacfp-wash-blue;
   }
 
-  .field {
-    @apply min-h-11 w-full rounded-lg border border-dacfp-line bg-white px-3.5 py-2.5 text-base text-dacfp-ink shadow-sm placeholder:text-dacfp-mist focus:border-brand-royal focus:outline-none focus:ring-3 focus:ring-brand-royal/15;
+  /* The brand gradient strip — navy → navy-2 → gold-hi. Tokenized once here
+     (Brand/TOKENS.md); every strip in the app is this class. */
+  .brand-strip {
+    background-image: linear-gradient(
+      to right,
+      var(--color-dacfp-navy),
+      var(--color-dacfp-navy-2),
+      var(--color-dacfp-gold-hi)
+    );
   }
 
   .skip-link {
-    @apply fixed left-4 top-4 z-50 -translate-y-24 rounded-lg bg-white px-4 py-3 font-bold text-brand-navy shadow-card focus:translate-y-0;
+    @apply fixed left-4 top-4 z-50 -translate-y-24 rounded-lg bg-white px-4 py-3 font-bold text-dacfp-navy shadow-card focus:translate-y-0;
   }
 }
 
