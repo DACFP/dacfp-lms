@@ -187,6 +187,16 @@ export function buildLearnerSnapshot(rows: SnapshotRows): LearnerSnapshot {
   };
 }
 
+export function quizQuestionsContainCorrectKey(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.some(
+    (question) =>
+      question !== null &&
+      typeof question === 'object' &&
+      Object.prototype.hasOwnProperty.call(question, 'correct'),
+  );
+}
+
 async function currentUser() {
   const { data, error } = await getClient().auth.getSession();
   if (error || !data.session?.user) {
@@ -305,17 +315,25 @@ const contentProvider: LmsProvider = {
   },
 
   async acceptTerms(enrollmentId) {
-    const termsAcceptedAt = new Date().toISOString();
-    const { data, error } = await getClient()
+    const { data: enrollment, error: enrollmentError } = await getClient()
       .from('lms_enrollments')
-      .update({ terms_accepted_at: termsAcceptedAt })
-      .eq('id', enrollmentId)
       .select('*')
+      .eq('id', enrollmentId)
       .single();
-    if (error || !data) {
-      throw dataError(error, 'Unable to accept course terms.');
+    if (enrollmentError || !enrollment) {
+      throw dataError(enrollmentError, 'Unable to accept course terms.');
     }
-    return data as LmsEnrollment;
+    const { data: acceptedAt, error: acceptError } = await getClient().rpc(
+      'lms_accept_terms',
+      { p_course_id: enrollment.course_id },
+    );
+    if (acceptError || typeof acceptedAt !== 'string') {
+      throw dataError(acceptError, 'Unable to accept course terms.');
+    }
+    return {
+      ...(enrollment as LmsEnrollment),
+      terms_accepted_at: acceptedAt,
+    };
   },
 
   async updateProfile(profile) {
@@ -401,7 +419,7 @@ const contentProvider: LmsProvider = {
       !data ||
       !data.quiz ||
       !Array.isArray(data.questions) ||
-      JSON.stringify(data).includes('"correct"')
+      quizQuestionsContainCorrectKey(data.questions)
     ) {
       throw dataError(error, 'Unable to load this quiz.');
     }

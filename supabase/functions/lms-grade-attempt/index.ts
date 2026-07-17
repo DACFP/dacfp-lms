@@ -3,11 +3,16 @@ import {
   courseComplete,
   courseUnlocked,
   meetsPassThreshold,
-  nextAttemptNumber,
   quizAttemptable,
   termsGateSatisfied,
   type ProgressionContext,
 } from './progression.ts';
+import {
+  InvalidQuizSubmission,
+  normalizeAnswers,
+  scoreAnswers,
+} from './grading.ts';
+import { insertWithAttemptNumberRetry } from './attempt-retry.ts';
 
 const DENIED_BODY = { error: 'Quiz is unavailable.' };
 const REJECTED_BODY = { error: 'Submission was rejected.' };
@@ -29,15 +34,7 @@ interface QuizAccess {
   context: ProgressionContext;
 }
 
-interface QuizQuestion {
-  id: string;
-  correct: unknown;
-  choices: unknown;
-  points: number;
-}
-
 class AccessDenied extends Error {}
-class SubmissionRejected extends Error {}
 
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -194,59 +191,6 @@ async function requireQuizAccess(
   return { enrollmentId: enrollment.id, quiz, context };
 }
 
-function choiceIds(question: QuizQuestion) {
-  if (!Array.isArray(question.choices)) throw new SubmissionRejected();
-  return new Set(
-    question.choices.flatMap((choice) =>
-      choice &&
-      typeof choice === 'object' &&
-      typeof (choice as { id?: unknown }).id === 'string'
-        ? [(choice as { id: string }).id]
-        : [],
-    ),
-  );
-}
-
-function normalizeAnswers(raw: unknown, questions: QuizQuestion[]) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new SubmissionRejected();
-  }
-  const input = raw as Record<string, unknown>;
-  const questionIds = new Set(questions.map((question) => question.id));
-  if (Object.keys(input).some((questionId) => !questionIds.has(questionId))) {
-    throw new SubmissionRejected();
-  }
-
-  return Object.fromEntries(
-    questions.map((question) => {
-      const submitted = input[question.id] ?? [];
-      if (
-        !Array.isArray(submitted) ||
-        submitted.some((choiceId) => typeof choiceId !== 'string')
-      ) {
-        throw new SubmissionRejected();
-      }
-      const allowedChoices = choiceIds(question);
-      const normalized = [...new Set(submitted as string[])].sort();
-      if (normalized.some((choiceId) => !allowedChoices.has(choiceId))) {
-        throw new SubmissionRejected();
-      }
-      return [question.id, normalized];
-    }),
-  );
-}
-
-function exactSetMatch(submitted: string[], expected: unknown) {
-  if (!Array.isArray(expected) || expected.some((item) => typeof item !== 'string')) {
-    throw new Error('Quiz answer key is invalid.');
-  }
-  const normalizedExpected = [...new Set(expected as string[])].sort();
-  return (
-    submitted.length === normalizedExpected.length &&
-    submitted.every((choiceId, index) => choiceId === normalizedExpected[index])
-  );
-}
-
 async function insertAttempt(
   admin: SupabaseClient,
   access: QuizAccess,
@@ -254,35 +198,36 @@ async function insertAttempt(
   score: number,
   passed: boolean,
 ) {
-  let attempts = access.context.attempts;
-  for (let retry = 0; retry < 4; retry += 1) {
-    const attemptNumber = nextAttemptNumber(access.quiz.id, attempts);
-    const now = new Date().toISOString();
-    const { data, error } = await admin
-      .from('lms_quiz_attempts')
-      .insert({
-        enrollment_id: access.enrollmentId,
-        quiz_id: access.quiz.id,
-        attempt_number: attemptNumber,
-        started_at: now,
-        submitted_at: now,
-        answers,
-        score,
-        passed,
-      })
-      .select('*')
-      .single();
-    if (!error && data) return data;
-    if (error?.code !== '23505') assertQuery(error);
-
-    const { data: refreshed, error: refreshedError } = await admin
-      .from('lms_quiz_attempts')
-      .select('quiz_id,attempt_number,passed')
-      .eq('enrollment_id', access.enrollmentId);
-    assertQuery(refreshedError);
-    attempts = refreshed ?? [];
-  }
-  throw new Error('Unable to allocate an attempt number.');
+  return insertWithAttemptNumberRetry(
+    access.quiz.id,
+    access.context.attempts,
+    async (attemptNumber) => {
+      const now = new Date().toISOString();
+      const { data, error } = await admin
+        .from('lms_quiz_attempts')
+        .insert({
+          enrollment_id: access.enrollmentId,
+          quiz_id: access.quiz.id,
+          attempt_number: attemptNumber,
+          started_at: now,
+          submitted_at: now,
+          answers,
+          score,
+          passed,
+        })
+        .select('*')
+        .single();
+      return { data, error };
+    },
+    async () => {
+      const { data, error } = await admin
+        .from('lms_quiz_attempts')
+        .select('quiz_id,attempt_number,passed')
+        .eq('enrollment_id', access.enrollmentId);
+      assertQuery(error);
+      return data ?? [];
+    },
+  );
 }
 
 Deno.serve(async (req: Request) => {
@@ -312,18 +257,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const answers = normalizeAnswers(body.answers, questions);
-    const possiblePoints = questions.reduce(
-      (sum, question) => sum + question.points,
-      0,
-    );
-    const score = questions.reduce(
-      (sum, question) =>
-        sum +
-        (exactSetMatch(answers[question.id], question.correct)
-          ? question.points
-          : 0),
-      0,
-    );
+    const { score, possiblePoints } = scoreAnswers(answers, questions);
     const passed = meetsPassThreshold(
       score,
       possiblePoints,
@@ -380,7 +314,7 @@ Deno.serve(async (req: Request) => {
     if (error instanceof AccessDenied) {
       return jsonResponse(403, DENIED_BODY);
     }
-    if (error instanceof SubmissionRejected) {
+    if (error instanceof InvalidQuizSubmission) {
       return jsonResponse(422, REJECTED_BODY);
     }
     console.error(

@@ -1,4 +1,10 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import {
+  courseUnlocked,
+  moduleUnlocked,
+  termsGateSatisfied,
+  type ProgressionContext,
+} from './progression.ts';
 
 const BUCKET = 'lms-resources';
 const SIGNED_URL_TTL_SECONDS = 300;
@@ -36,9 +42,7 @@ function serviceClient() {
 async function callerId(req: Request, admin: SupabaseClient) {
   const authorization = req.headers.get('Authorization') ?? '';
   if (!authorization.startsWith('Bearer ')) throw new AccessDenied();
-  const { data, error } = await admin.auth.getUser(
-    authorization.slice('Bearer '.length),
-  );
+  const { data, error } = await admin.auth.getUser(authorization.slice('Bearer '.length));
   if (error || !data.user) throw new AccessDenied();
   return data.user.id;
 }
@@ -62,7 +66,7 @@ async function requireResourceAccess(
 
   const { data: lesson, error: lessonError } = await admin
     .from('lms_lessons')
-    .select('id,module_id')
+    .select('id,module_id,kind,duration_seconds,is_required')
     .eq('id', resource.lesson_id)
     .maybeSingle();
   assertQuery(lessonError);
@@ -95,87 +99,58 @@ async function requireResourceAccess(
   if (enrollment.expires_at && new Date(enrollment.expires_at).getTime() <= Date.now()) {
     throw new AccessDenied();
   }
-  if (course.requires_terms_acceptance && !enrollment.terms_accepted_at) {
+
+  const { data: userEnrollments, error: userEnrollmentsError } = await admin
+    .from('lms_enrollments')
+    .select('id,course_id')
+    .eq('auth_user_id', userId);
+  assertQuery(userEnrollmentsError);
+  const enrollmentIds = (userEnrollments ?? []).map((item) => item.id);
+  const { data: completionRows, error: completionError } = enrollmentIds.length
+    ? await admin.from('lms_completion_events').select('enrollment_id').in('enrollment_id', enrollmentIds)
+    : { data: [], error: null };
+  assertQuery(completionError);
+  const courseByEnrollment = new Map(
+    (userEnrollments ?? []).map((item) => [item.id, item.course_id]),
+  );
+  const completions = (completionRows ?? []).flatMap((item) => {
+    const courseId = courseByEnrollment.get(item.enrollment_id);
+    return courseId ? [{ course_id: courseId }] : [];
+  });
+  if (!courseUnlocked(course, completions) || !termsGateSatisfied(course, enrollment)) {
     throw new AccessDenied();
   }
 
-  if (course.prerequisite_course_id) {
-    const { data: prerequisiteEnrollment, error: prerequisiteError } = await admin
-      .from('lms_enrollments')
-      .select('id')
-      .eq('auth_user_id', userId)
-      .eq('course_id', course.prerequisite_course_id)
-      .maybeSingle();
-    assertQuery(prerequisiteError);
-    if (!prerequisiteEnrollment) throw new AccessDenied();
-    const { data: completion, error: completionError } = await admin
-      .from('lms_completion_events')
-      .select('id')
-      .eq('enrollment_id', prerequisiteEnrollment.id)
-      .limit(1)
-      .maybeSingle();
-    assertQuery(completionError);
-    if (!completion) throw new AccessDenied();
-  }
-
-  if (course.progression === 'sequential' && module.position > 1) {
-    const { data: previousModule, error: previousModuleError } = await admin
-      .from('lms_modules')
-      .select('id')
-      .eq('course_id', course.id)
-      .eq('position', module.position - 1)
-      .maybeSingle();
-    assertQuery(previousModuleError);
-    if (!previousModule) throw new AccessDenied();
-
-    const { data: previousQuiz, error: previousQuizError } = await admin
-      .from('lms_module_quizzes')
-      .select('id')
-      .eq('module_id', previousModule.id)
-      .maybeSingle();
-    assertQuery(previousQuizError);
-
-    if (previousQuiz) {
-      const { data: passedAttempt, error: attemptError } = await admin
-        .from('lms_quiz_attempts')
-        .select('id')
-        .eq('enrollment_id', enrollment.id)
-        .eq('quiz_id', previousQuiz.id)
-        .eq('passed', true)
-        .limit(1)
-        .maybeSingle();
-      assertQuery(attemptError);
-      if (!passedAttempt) throw new AccessDenied();
-    } else {
-      const { data: requiredLessons, error: requiredLessonsError } = await admin
-        .from('lms_lessons')
-        .select('id,kind,duration_seconds')
-        .eq('module_id', previousModule.id)
-        .eq('is_required', true);
-      assertQuery(requiredLessonsError);
-      const requiredIds = (requiredLessons ?? []).map((item) => item.id);
-      const { data: progressRows, error: progressError } = requiredIds.length
-        ? await admin
-            .from('lms_lesson_progress')
-            .select('lesson_id,completed_at,max_watched_seconds')
-            .eq('enrollment_id', enrollment.id)
-            .in('lesson_id', requiredIds)
-        : { data: [], error: null };
-      assertQuery(progressError);
-      const progressByLesson = new Map(
-        (progressRows ?? []).map((item) => [item.lesson_id, item]),
-      );
-      const complete = (requiredLessons ?? []).every((requiredLesson) => {
-        const progress = progressByLesson.get(requiredLesson.id);
-        if (!progress) return false;
-        if (requiredLesson.kind === 'reading') return Boolean(progress.completed_at);
-        return Boolean(requiredLesson.duration_seconds) &&
-          progress.max_watched_seconds >= Number(requiredLesson.duration_seconds) * 0.95;
-      });
-      if (!complete) throw new AccessDenied();
-    }
-  }
-
+  const { data: modules, error: modulesError } = await admin
+    .from('lms_modules')
+    .select('id,course_id,position')
+    .eq('course_id', course.id);
+  assertQuery(modulesError);
+  const moduleIds = (modules ?? []).map((item) => item.id);
+  const [lessonsResult, quizzesResult, progressResult, attemptsResult] = await Promise.all([
+    moduleIds.length
+      ? admin.from('lms_lessons').select('id,module_id,kind,duration_seconds,is_required').in('module_id', moduleIds)
+      : Promise.resolve({ data: [], error: null }),
+    moduleIds.length
+      ? admin.from('lms_module_quizzes').select('id,module_id').in('module_id', moduleIds)
+      : Promise.resolve({ data: [], error: null }),
+    admin.from('lms_lesson_progress').select('lesson_id,completed_at,max_watched_seconds').eq('enrollment_id', enrollment.id),
+    admin.from('lms_quiz_attempts').select('quiz_id,attempt_number,passed').eq('enrollment_id', enrollment.id),
+  ]);
+  assertQuery(lessonsResult.error);
+  assertQuery(quizzesResult.error);
+  assertQuery(progressResult.error);
+  assertQuery(attemptsResult.error);
+  const context: ProgressionContext = {
+    course,
+    module,
+    modules: modules ?? [],
+    lessons: lessonsResult.data ?? [],
+    quizzes: quizzesResult.data ?? [],
+    progress: progressResult.data ?? [],
+    attempts: attemptsResult.data ?? [],
+  };
+  if (!moduleUnlocked(context)) throw new AccessDenied();
   return resource;
 }
 
@@ -205,7 +180,7 @@ Deno.serve(async (req: Request) => {
   try {
     const admin = serviceClient();
     const userId = await callerId(req, admin);
-    const body = await req.json() as { resource_id?: unknown };
+    const body = await req.json().catch(() => ({}));
     if (typeof body.resource_id !== 'string') throw new AccessDenied();
     const resource = await requireResourceAccess(admin, userId, body.resource_id);
     await ensureSeedResource(admin, resource.file_ref);
