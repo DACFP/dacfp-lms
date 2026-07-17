@@ -5,12 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Alert } from '../components/Alert';
 import { Field } from '../components/Field';
 import { IconTile } from '../components/IconTile';
-import { PageHeader, learnerPath } from '../components/common';
+import { PageHeader } from '../components/common';
 import { useLms } from '../context/LmsContext';
 import type { CredentialIds } from '../data/types';
 
 export function AccountPage() {
-  const { snapshot, selectedLearner, saveProfile } = useLms();
+  const { snapshot, saveProfile } = useLms();
   const [displayName, setDisplayName] = useState(snapshot.profile.display_name);
   const [credentialIds, setCredentialIds] = useState<CredentialIds>(snapshot.profile.credential_ids);
   const [saving, setSaving] = useState(false);
@@ -115,7 +115,7 @@ export function AccountPage() {
           <IconTile icon={KeyRound} size="sm" tone="brand" />
           <h2 id="password-heading" className="mt-4 font-bold text-dacfp-navy">Password</h2>
           <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">Password changes use a secure email recovery link sent to {snapshot.profile.email}.</p>
-          <Link className="button-secondary mt-5 w-full" to={learnerPath('/reset', selectedLearner)}>
+          <Link className="button-secondary mt-5 w-full" to={'/reset'}>
             Change or reset password
           </Link>
         </aside>

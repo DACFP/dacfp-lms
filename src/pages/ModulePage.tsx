@@ -10,9 +10,10 @@ import { Link, useParams } from 'react-router-dom';
 import { IconTile } from '../components/IconTile';
 import { LockedBadge } from '../components/LockedBadge';
 import { SecureResourceLink } from '../components/SecureResourceLink';
-import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
+import { EmptyState, PageHeader, StatusPill } from '../components/common';
 import { useLms } from '../context/LmsContext';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
+import { formatClock } from '../lib/time';
 import {
   enrollmentAccessState,
   enrollmentForCourse,
@@ -23,7 +24,7 @@ import {
 
 export function ModulePage() {
   const { slug, n } = useParams();
-  const { catalog, snapshot, selectedLearner } = useLms();
+  const { catalog, snapshot } = useLms();
   const course = catalog.courses.find((item) => item.slug === slug);
   const module = catalog.modules.find(
     (item) => item.course_id === course?.id && item.position === Number(n),
@@ -34,7 +35,7 @@ export function ModulePage() {
       <EmptyState
         title="Module not found"
         description="This module is unavailable or the link is no longer current."
-        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+        action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
   }
@@ -45,7 +46,7 @@ export function ModulePage() {
       <EmptyState
         title="No course access"
         description="This account is not enrolled in the requested course."
-        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+        action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
   }
@@ -119,7 +120,7 @@ export function ModulePage() {
             <EmptyState
               title="No lessons published"
               description="This module does not contain learner lessons yet. Return to the dashboard and choose another available course."
-              action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+              action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
             />
           ) : (
           <ol className="space-y-3">
@@ -140,11 +141,11 @@ export function ModulePage() {
                         {!lesson.is_required ? <StatusPill tone="neutral">Optional</StatusPill> : null}
                       </div>
                       <p className="mt-1 text-sm text-dacfp-gray-text">
-                        {lesson.kind === 'video' ? `${Math.round((lesson.duration_seconds ?? 0) / 60)} min compliance video · 1×` : 'Reading'}
+                        {lesson.kind === 'video' ? `${formatClock(lesson.duration_seconds)} compliance video · 1×` : 'Reading'}
                       </p>
                     </div>
                     {contentAccessible ? (
-                      <Link className="button-secondary shrink-0" to={learnerPath(`/lesson/${lesson.id}`, selectedLearner)}>
+                      <Link className="button-secondary shrink-0" to={`/lesson/${lesson.id}`}>
                         {complete ? 'Review' : 'Open'}
                       </Link>
                     ) : (
@@ -195,7 +196,7 @@ export function ModulePage() {
               {canAttemptQuiz && contentAccessible ? (
                 <Link
                   className="button-primary"
-                  to={learnerPath(`/quiz/${module.id}`, selectedLearner)}
+                  to={`/quiz/${module.id}`}
                 >
                   {passed ? 'Review or retake quiz' : 'Open quiz'}
                 </Link>
@@ -244,7 +245,7 @@ export function ModulePage() {
                 <li key={item.id}>
                   {outlineAvailable ? (
                     <Link
-                      to={learnerPath(`/course/${course.slug}/module/${item.position}`, selectedLearner)}
+                      to={`/course/${course.slug}/module/${item.position}`}
                       aria-current={active ? 'page' : undefined}
                       className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-dacfp-navy text-white' : 'text-dacfp-navy hover:bg-dacfp-wash-blue'}`}
                     >
@@ -268,7 +269,7 @@ export function ModulePage() {
         </aside>
       </div>
 
-      <Link className="button-quiet" to={learnerPath('/dashboard', selectedLearner)}>
+      <Link className="button-quiet" to={'/dashboard'}>
         <ChevronLeft className="size-icon-sm" aria-hidden="true" /> Back to dashboard
       </Link>
     </div>

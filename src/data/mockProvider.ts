@@ -410,9 +410,6 @@ function upsertMockProgress(
 }
 
 export const mockProvider: LmsProvider = {
-  async listLearners() {
-    return clone(learnerSummaries);
-  },
   async getCatalog() {
     return clone(mockCatalog);
   },

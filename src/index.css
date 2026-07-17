@@ -148,13 +148,17 @@
   /* gray-text on wash 5.87:1 / on white 6.30:1 */
   --muted-foreground: var(--color-dacfp-gray-text);
 
-  /* accent — gold, DECORATIVE SURFACES ONLY, foreground navy (3.80:1).
-     That pair clears the 3.0 large-text/UI bar but NOT the 4.5 body-text bar.
-     See gate evidence DEVIATION 3: shadcn overloads --accent as the
-     small-text hover ground in dropdown-menu/select. Neither is mounted in
-     O1, so nothing ships below AA; this needs a decision before O3 wires
-     either primitive. */
-  --accent: var(--color-dacfp-gold);
+  /* accent — RATIFIED AMENDMENT (O2), resolving O1's D1 finding.
+     --accent is divorced from brand gold. shadcn overloads --accent as the
+     small-text hover ground in dropdown-menu/select/tabs; gold carried navy at
+     only 3.80:1 there, which clears the 3.0 UI bar but not the 4.5 body-text
+     bar. It is now the neutral navy-tinted wash already in the palette:
+     navy on wash-blue is 12.26:1, so every menu and select hover ground is
+     permanently AA-safe no matter which primitive O3 mounts.
+     Gold now expresses ONLY through the explicit dacfp-gold-* utilities,
+     under Brand/TOKENS.md law: decorative / large UI, -hi on dark (8.30:1),
+     -text on light (6.25:1). */
+  --accent: var(--color-dacfp-wash-blue);
   --accent-foreground: var(--color-dacfp-navy);
 
   /* destructive — darkened maroon, not a new red. 11.60:1 both ways. */
