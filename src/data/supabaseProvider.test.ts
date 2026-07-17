@@ -3,6 +3,7 @@ import {
   buildLearnerSnapshot,
   learnerSummaryForEmail,
   quizQuestionsContainCorrectKey,
+  quizQuestionsHaveValidSelectionKind,
 } from './supabaseProvider';
 
 describe('supabaseProvider row mapping', () => {
@@ -74,5 +75,18 @@ describe('supabaseProvider row mapping', () => {
         { id: 'question-1', prompt: 'Question', correct: ['a'] },
       ]),
     ).toBe(true);
+  });
+
+  it('requires only the learner-safe single or multi selection hint', () => {
+    expect(quizQuestionsHaveValidSelectionKind([
+      { id: 'one', select_kind: 'single' },
+      { id: 'many', select_kind: 'multi' },
+    ])).toBe(true);
+    expect(quizQuestionsHaveValidSelectionKind([
+      { id: 'missing' },
+    ])).toBe(false);
+    expect(quizQuestionsHaveValidSelectionKind([
+      { id: 'invalid', select_kind: 'all' },
+    ])).toBe(false);
   });
 });

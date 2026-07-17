@@ -116,14 +116,20 @@ export function QuizPage() {
 
   const accessState = enrollmentAccessState(enrollment);
 
-  const toggleChoice = (questionId: string, choiceId: string) => {
+  const selectChoice = (
+    questionId: string,
+    choiceId: string,
+    selectKind: 'single' | 'multi',
+  ) => {
     setAnswers((current) => {
       const selected = current[questionId] ?? [];
       return {
         ...current,
-        [questionId]: selected.includes(choiceId)
-          ? selected.filter((item) => item !== choiceId)
-          : [...selected, choiceId],
+        [questionId]: selectKind === 'single'
+          ? [choiceId]
+          : selected.includes(choiceId)
+            ? selected.filter((item) => item !== choiceId)
+            : [...selected, choiceId],
       };
     });
   };
@@ -135,7 +141,7 @@ export function QuizPage() {
     try {
       setResult(await submitQuiz(payload.quiz.id, answers));
     } catch {
-      setError('Unable to grade this attempt. Your answers were not changed.');
+      setError('Quiz submission failed. Your selections remain on this page so you can try again.');
     } finally {
       setSubmitting(false);
     }
@@ -148,6 +154,9 @@ export function QuizPage() {
   const unlockedCourses = catalog.courses.filter(
     (item) => item.prerequisite_course_id === course.id,
   );
+  const possiblePoints = payload
+    ? payload.questions.reduce((total, question) => total + question.points, 0)
+    : null;
 
   return (
     <div className="space-y-8">
@@ -262,7 +271,7 @@ export function QuizPage() {
                     {questionIndex + 1}. {question.prompt}
                   </legend>
                   <p className="mt-2 text-xs font-semibold uppercase tracking-[0.08em] text-dacfp-slate">
-                    Select all that apply
+                    {question.select_kind === 'single' ? 'Select one answer' : 'Select all that apply'}
                   </p>
                   <div className="mt-4 grid gap-3">
                     {question.choices.map((choice) => (
@@ -271,8 +280,8 @@ export function QuizPage() {
                           checked={(answers[question.id] ?? []).includes(choice.id)}
                           className="mt-1 size-4 accent-brand-royal"
                           name={question.id}
-                          onChange={() => toggleChoice(question.id, choice.id)}
-                          type="checkbox"
+                          onChange={() => selectChoice(question.id, choice.id, question.select_kind)}
+                          type={question.select_kind === 'single' ? 'radio' : 'checkbox'}
                           value={choice.id}
                         />
                         <span className="text-sm leading-6 text-brand-navy">{choice.text}</span>
@@ -319,7 +328,7 @@ export function QuizPage() {
                     <span className="font-bold text-brand-navy">Attempt {attempt.attempt_number}</span>
                   </div>
                   <p className="mt-2 text-sm text-dacfp-slate">
-                    Score <strong className="tabular-nums text-brand-navy">{attempt.score}/{quiz.question_count}</strong> · {attempt.passed ? 'Passed' : 'Not passed'}
+                    Score <strong className="tabular-nums text-brand-navy">{attempt.score}{possiblePoints === null ? '' : `/${possiblePoints}`}</strong> · {attempt.passed ? 'Passed' : 'Not passed'}
                   </p>
                 </li>
               ))}

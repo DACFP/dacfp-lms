@@ -15,7 +15,12 @@ import { allowedPlaybackRate, clampSeekTarget } from '../lib/player';
 import { ProgressBar } from './common';
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const TOKEN_REFRESH_LEAD_MS = 10_000;
+const TOKEN_EXPIRY_GRACE_MS = 250;
+
+interface QueuedHeartbeat {
+  positionSeconds: number;
+  allowAfterUnmount: boolean;
+}
 
 export function LessonPlayer({
   course,
@@ -31,6 +36,9 @@ export function LessonPlayer({
   const heartbeatTimer = useRef<number | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const heartbeatInFlight = useRef(false);
+  const queuedHeartbeat = useRef<QueuedHeartbeat | null>(null);
+  const active = useRef(false);
+  const playbackRequestId = useRef(0);
   const errorRefreshAttempted = useRef(false);
   const sourceRef = useRef('');
   const furthestWatched = useRef(progress?.max_watched_seconds ?? 0);
@@ -52,36 +60,65 @@ export function LessonPlayer({
   }, []);
 
   const persistHeartbeat = useCallback(
-    async (positionSeconds?: number) => {
+    async (positionSeconds?: number, allowAfterUnmount = false) => {
       const video = videoRef.current;
-      if (!video || heartbeatInFlight.current) return;
+      if (!active.current && !allowAfterUnmount) return;
+      if (!video && positionSeconds === undefined) return;
+      const position = Math.max(
+        0,
+        Math.floor(positionSeconds ?? video?.currentTime ?? 0),
+      );
+      if (heartbeatInFlight.current) {
+        queuedHeartbeat.current = {
+          positionSeconds: position,
+          allowAfterUnmount:
+            allowAfterUnmount ||
+            (queuedHeartbeat.current?.allowAfterUnmount ?? false),
+        };
+        return;
+      }
       heartbeatInFlight.current = true;
       try {
         const next = await recordHeartbeat(
           lesson.id,
-          Math.max(0, Math.floor(positionSeconds ?? video.currentTime)),
+          position,
         );
         furthestWatched.current = Math.max(
           furthestWatched.current,
           next.max_watched_seconds,
         );
-        setSavedMax(next.max_watched_seconds);
-        setMessage(
-          next.completed_at ? 'Lesson complete.' : 'Progress saved.',
-        );
-        setError('');
+        if (active.current) {
+          setSavedMax((current) => Math.max(current, next.max_watched_seconds));
+          setMessage(
+            next.completed_at ? 'Lesson complete.' : 'Progress saved.',
+          );
+          setError('');
+        }
       } catch {
-        setError('Progress could not be saved. Playback may continue while you retry.');
+        if (active.current) {
+          setError('Progress could not be saved. Playback may continue while you retry.');
+        }
       } finally {
         heartbeatInFlight.current = false;
+        const queued = queuedHeartbeat.current;
+        queuedHeartbeat.current = null;
+        if (queued && (active.current || queued.allowAfterUnmount)) {
+          void persistHeartbeat(
+            queued.positionSeconds,
+            queued.allowAfterUnmount,
+          );
+        }
       }
     },
     [lesson.id, recordHeartbeat],
   );
 
   const fetchPlayback = useCallback(async () => {
+    if (!active.current) return;
+    const requestId = playbackRequestId.current + 1;
+    playbackRequestId.current = requestId;
     const video = videoRef.current;
-    if (video) {
+    if (video && sourceRef.current) {
       pendingResume.current = video.currentTime;
       resumePlaying.current = !video.paused && !video.ended;
     }
@@ -90,18 +127,17 @@ export function LessonPlayer({
     setError('');
     try {
       const token = await requestPlayback(lesson.id);
+      if (!active.current || requestId !== playbackRequestId.current) return;
       furthestWatched.current = Math.max(
         furthestWatched.current,
         token.max_watched_seconds,
       );
-      setSavedMax(token.max_watched_seconds);
+      setSavedMax((current) => Math.max(current, token.max_watched_seconds));
       sourceRef.current = token.url;
       setSource(token.url);
       const refreshIn = Math.max(
         1_000,
-        new Date(token.expires_at).getTime() -
-          Date.now() -
-          TOKEN_REFRESH_LEAD_MS,
+        new Date(token.expires_at).getTime() - Date.now() + TOKEN_EXPIRY_GRACE_MS,
       );
       if (refreshTimer.current !== null) {
         window.clearTimeout(refreshTimer.current);
@@ -110,27 +146,38 @@ export function LessonPlayer({
         void fetchPlayback();
       }, refreshIn);
     } catch {
+      if (!active.current || requestId !== playbackRequestId.current) return;
       setError('This lesson is unavailable right now.');
       setMessage('Secure playback unavailable.');
     } finally {
-      setLoading(false);
+      if (active.current && requestId === playbackRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [lesson.id, requestPlayback]);
 
   useEffect(() => {
+    active.current = true;
     void fetchPlayback();
     return () => {
+      const finalPosition = videoRef.current?.currentTime;
+      active.current = false;
+      playbackRequestId.current += 1;
       clearHeartbeatTimer();
       if (refreshTimer.current !== null) {
         window.clearTimeout(refreshTimer.current);
+        refreshTimer.current = null;
+      }
+      if (finalPosition !== undefined) {
+        void persistHeartbeat(finalPosition, true);
       }
     };
-  }, [clearHeartbeatTimer, fetchPlayback]);
+  }, [clearHeartbeatTimer, fetchPlayback, persistHeartbeat]);
 
   useEffect(() => {
     const maxWatched = progress?.max_watched_seconds ?? 0;
     furthestWatched.current = Math.max(furthestWatched.current, maxWatched);
-    setSavedMax(maxWatched);
+    setSavedMax((current) => Math.max(current, maxWatched));
   }, [progress?.max_watched_seconds]);
 
   const handleLoadedMetadata = useCallback(() => {

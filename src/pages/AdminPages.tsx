@@ -27,6 +27,14 @@ function SuccessMessage({ message }: { message: string }) {
   return message ? <p className="rounded-lg border border-status-positive/25 bg-status-positive/10 p-3 text-sm font-semibold text-status-positive" role="status">{message}</p> : null;
 }
 
+async function handleMutation(promise: Promise<unknown>) {
+  try {
+    await promise;
+  } catch {
+    // AdminContext already surfaced the mutation failure in the shared banner.
+  }
+}
+
 export function AdminCoursesPage() {
   const { catalog, mutate } = useAdmin();
   const navigate = useNavigate();
@@ -185,7 +193,7 @@ function QuestionBankPanel({ module }: { module: LmsModule }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="font-bold text-brand-navy">Question bank</h4><p className="text-sm text-dacfp-slate">Exactly 10 questions · 70% fixed pass policy</p></div><button className="button-secondary" type="button" onClick={() => void exportBank()}><Download size={16} aria-hidden="true" />Export CSV</button></div>
       <div className="mt-4 flex gap-4"><label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'csv'} onChange={() => setFormat('csv')} type="radio" />CSV</label><label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'json'} onChange={() => setFormat('json')} type="radio" />JSON</label></div>
       <label className="mt-4 block"><span className="mb-2 block text-sm font-bold text-brand-navy">Paste or load question bank</span><textarea className="field min-h-40 font-mono text-sm" value={input} onChange={(event) => setInput(event.target.value)} /></label>
-      <input className="mt-3 block max-w-full text-sm" accept=".csv,.json,text/csv,application/json" type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then(setInput); }} />
+      <input className="mt-3 block max-w-full text-sm" accept=".csv,.json,text/csv,application/json" type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then(setInput).catch(() => setError('Question bank file could not be read.')); }} />
       <div className="mt-4 space-y-3"><ErrorMessage message={error} /><SuccessMessage message={message} /><button className="button-primary" type="button" onClick={() => void importBank()}><FileUp size={16} aria-hidden="true" />Import and replace</button></div>
     </div>
   );
@@ -214,7 +222,8 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
 
   const upload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setError(''); setMessage('');
-    const values = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const values = new FormData(form);
     const selected = values.get('file');
     const textContent = String(values.get('text_content') ?? '').trim();
     const file = selected instanceof File && selected.size
@@ -226,7 +235,7 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
     try {
       await mutate('upload_resource', { lesson_id: lesson.id, title: values.get('resource_title'), file_name: file.name, mime_type: file.type || 'text/plain', base64: bytesToBase64(await file.arrayBuffer()) });
       setMessage('Private lesson resource uploaded.');
-      event.currentTarget.reset();
+      form.reset();
     } catch { setError('Resource upload failed. Check its type and 5 MB size limit.'); }
   };
 
@@ -239,7 +248,7 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
         <label><span className="mb-1 block text-xs font-bold uppercase text-dacfp-slate">Duration seconds</span><input className="field" name="duration_seconds" type="number" min="1" defaultValue={lesson.duration_seconds ?? ''} /></label>
         <label className="md:col-span-2"><span className="mb-1 block text-xs font-bold uppercase text-dacfp-slate">Reading body</span><textarea className="field" name="body_md" defaultValue={lesson.body_md ?? ''} /></label>
         <label className="flex min-h-11 items-center gap-2"><input className="size-5" type="checkbox" name="is_required" defaultChecked={lesson.is_required} /><span className="font-bold">Required</span></label>
-        <div className="flex flex-wrap gap-2 md:justify-end"><button className="button-secondary" type="submit">Save lesson</button><button className="button-quiet text-status-danger" type="button" onClick={() => { if (window.confirm('Delete this lesson and its content?')) void mutate('delete_lesson', { id: lesson.id }); }}><Trash2 size={16} aria-hidden="true" />Delete</button></div>
+        <div className="flex flex-wrap gap-2 md:justify-end"><button className="button-secondary" type="submit">Save lesson</button><button className="button-quiet text-status-danger" type="button" onClick={async () => { if (window.confirm('Delete this lesson and its content?')) await handleMutation(mutate('delete_lesson', { id: lesson.id })); }}><Trash2 size={16} aria-hidden="true" />Delete</button></div>
       </form>
       <form className="mt-4 grid gap-3 border-t border-dacfp-line pt-4 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => void upload(event)}>
         <input className="field" name="resource_title" required placeholder="Resource title" aria-label="Resource title" />
@@ -260,28 +269,28 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
 
   const reorderLessons = (next: LmsLesson[]) => mutate('reorder', { kind: 'lessons', parent_id: module.id, ordered_ids: next.map((item) => item.id) });
   return (
-    <article className="card p-5 sm:p-6" draggable onDragStart={() => setDragged(module.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragged && dragged !== module.id) { const source = modules.findIndex((item) => item.id === dragged); const target = modules.findIndex((item) => item.id === module.id); const next = [...modules]; const [moved] = next.splice(source, 1); next.splice(target, 0, moved); void mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: next.map((item) => item.id) }); } setDragged(''); }}>
+    <article className="card p-5 sm:p-6" draggable onDragStart={() => setDragged(module.id)} onDragOver={(event) => event.preventDefault()} onDrop={async () => { if (dragged && dragged !== module.id) { const source = modules.findIndex((item) => item.id === dragged); const target = modules.findIndex((item) => item.id === module.id); const next = [...modules]; const [moved] = next.splice(source, 1); next.splice(target, 0, moved); await handleMutation(mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: next.map((item) => item.id) })); } setDragged(''); }}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <GripVertical className="hidden text-dacfp-mist sm:block" aria-hidden="true" />
-        <form className="flex flex-1 flex-col gap-3 sm:flex-row" onSubmit={(event) => { event.preventDefault(); const title = new FormData(event.currentTarget).get('title'); void mutate('update_module', { id: module.id, title }); }}>
+        <form className="flex flex-1 flex-col gap-3 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); const title = new FormData(event.currentTarget).get('title'); await handleMutation(mutate('update_module', { id: module.id, title })); }}>
           <input className="field" name="title" defaultValue={module.title} aria-label={`Module ${module.position} title`} />
           <button className="button-secondary" type="submit">Save module</button>
         </form>
         <div className="flex gap-1">
-          <button className="button-quiet px-3" disabled={module.position === 1} aria-label={`Move ${module.title} up`} type="button" onClick={() => void mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: orderMove(modules, module.id, -1).map((item) => item.id) })}><ArrowUp size={17} /></button>
-          <button className="button-quiet px-3" disabled={module.position === modules.length} aria-label={`Move ${module.title} down`} type="button" onClick={() => void mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: orderMove(modules, module.id, 1).map((item) => item.id) })}><ArrowDown size={17} /></button>
-          <button className="button-quiet px-3 text-status-danger" aria-label={`Delete ${module.title}`} type="button" onClick={() => { if (window.confirm('Delete this module and all lessons?')) void mutate('delete_module', { id: module.id }); }}><Trash2 size={17} /></button>
+          <button className="button-quiet px-3" disabled={module.position === 1} aria-label={`Move ${module.title} up`} type="button" onClick={async () => handleMutation(mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: orderMove(modules, module.id, -1).map((item) => item.id) }))}><ArrowUp size={17} /></button>
+          <button className="button-quiet px-3" disabled={module.position === modules.length} aria-label={`Move ${module.title} down`} type="button" onClick={async () => handleMutation(mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: orderMove(modules, module.id, 1).map((item) => item.id) }))}><ArrowDown size={17} /></button>
+          <button className="button-quiet px-3 text-status-danger" aria-label={`Delete ${module.title}`} type="button" onClick={async () => { if (window.confirm('Delete this module and all lessons?')) await handleMutation(mutate('delete_module', { id: module.id })); }}><Trash2 size={17} /></button>
         </div>
       </div>
       <div className="mt-5 space-y-3">
         {lessons.map((lesson) => (
           <div key={lesson.id} className="space-y-2">
-            <div className="flex justify-end gap-1"><button className="button-quiet px-3" disabled={lesson.position === 1} aria-label={`Move ${lesson.title} up`} onClick={() => void reorderLessons(orderMove(lessons, lesson.id, -1))} type="button"><ArrowUp size={16} /></button><button className="button-quiet px-3" disabled={lesson.position === lessons.length} aria-label={`Move ${lesson.title} down`} onClick={() => void reorderLessons(orderMove(lessons, lesson.id, 1))} type="button"><ArrowDown size={16} /></button></div>
+            <div className="flex justify-end gap-1"><button className="button-quiet px-3" disabled={lesson.position === 1} aria-label={`Move ${lesson.title} up`} onClick={async () => handleMutation(reorderLessons(orderMove(lessons, lesson.id, -1)))} type="button"><ArrowUp size={16} /></button><button className="button-quiet px-3" disabled={lesson.position === lessons.length} aria-label={`Move ${lesson.title} down`} onClick={async () => handleMutation(reorderLessons(orderMove(lessons, lesson.id, 1)))} type="button"><ArrowDown size={16} /></button></div>
             <LessonEditor lesson={lesson} />
           </div>
         ))}
       </div>
-      <form className="mt-4 flex flex-col gap-3 rounded-lg border border-dashed border-dacfp-mist p-4 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void mutate('create_lesson', { module_id: module.id, title: lessonTitle, kind: 'video', is_required: true, duration_seconds: 4 }).then(() => setLessonTitle('')); }}>
+      <form className="mt-4 flex flex-col gap-3 rounded-lg border border-dashed border-dacfp-mist p-4 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); await handleMutation(mutate('create_lesson', { module_id: module.id, title: lessonTitle, kind: 'video', is_required: true, duration_seconds: 4 }).then(() => setLessonTitle(''))); }}>
         <input className="field" value={lessonTitle} onChange={(event) => setLessonTitle(event.target.value)} required placeholder="New lesson title" aria-label="New lesson title" /><button className="button-secondary" type="submit"><Plus size={16} aria-hidden="true" />Add lesson</button>
       </form>
       <QuestionBankPanel module={module} />
@@ -305,7 +314,7 @@ export function AdminCoursePage() {
       <section className="space-y-4" aria-labelledby="modules-heading">
         <div><p className="eyebrow">Curriculum</p><h2 id="modules-heading" className="mt-1 text-2xl font-bold text-brand-navy">Modules and lessons</h2><p className="mt-2 text-sm text-dacfp-slate">Drag modules on larger screens, or use the up/down controls on any device.</p></div>
         {modules.map((module) => <ModuleEditor key={module.id} module={module} modules={modules} />)}
-        <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void mutate('create_module', { course_id: course.id, title: moduleTitle, ce_credits: null }).then(() => setModuleTitle('')); }}>
+        <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); await handleMutation(mutate('create_module', { course_id: course.id, title: moduleTitle, ce_credits: null }).then(() => setModuleTitle(''))); }}>
           <input className="field" value={moduleTitle} onChange={(event) => setModuleTitle(event.target.value)} required placeholder="New module title" aria-label="New module title" /><button className="button-primary" type="submit"><Plus size={16} aria-hidden="true" />Add module</button>
         </form>
       </section>
@@ -328,11 +337,19 @@ export function AdminLearnersPage() {
 
   const support = async (action: string, payload: Record<string, unknown>) => {
     setError(''); setMessage('');
+    let result: Record<string, unknown>;
     try {
-      const result = await mutate<Record<string, unknown>>(action, payload);
-      setMessage(`${action.replaceAll('_', ' ')} completed: ${JSON.stringify(result)}`);
+      result = await mutate<Record<string, unknown>>(action, payload);
+    } catch {
+      setError('Support action failed. No change was confirmed.');
+      return;
+    }
+    setMessage(`${action.replaceAll('_', ' ')} completed: ${JSON.stringify(result)}`);
+    try {
       setInspection(await inspectLearner(email));
-    } catch { setError('Support action failed.'); }
+    } catch {
+      setError('The support action completed, but the learner inspector could not be refreshed.');
+    }
   };
 
   return (

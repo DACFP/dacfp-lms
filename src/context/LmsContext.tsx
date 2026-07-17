@@ -9,6 +9,10 @@ import {
 } from 'react';
 import { AlertTriangle, LogOut, RefreshCw } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import {
+  MutationStatusBanner,
+  type MutationNotice,
+} from '../components/MutationStatusBanner';
 import { useAuth } from './AuthContext';
 import type {
   LmsPlaybackToken,
@@ -29,6 +33,7 @@ import type {
   LmsLessonProgress,
 } from '../data/types';
 import { learnerStateKeys } from '../data/types';
+import { runMutationLifecycle } from '../lib/mutationStatus';
 
 interface LmsContextValue {
   catalog: Catalog;
@@ -99,6 +104,7 @@ function AuthenticatedLmsProvider({
   const [snapshot, setSnapshot] = useState<LearnerSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<'denied' | 'unavailable' | null>(null);
+  const [mutationNotice, setMutationNotice] = useState<MutationNotice | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const loadSnapshot = useCallback(async (learner: LearnerStateKey) => {
@@ -108,7 +114,6 @@ function AuthenticatedLmsProvider({
       const next = await provider.getLearnerSnapshot(learner);
       setSnapshot(next);
     } catch (error) {
-      setSnapshot(null);
       setLoadError(isLmsAccessDenied(error) ? 'denied' : 'unavailable');
       throw error;
     } finally {
@@ -127,8 +132,6 @@ function AuthenticatedLmsProvider({
       setCatalog(nextCatalog);
       setSnapshot(nextSnapshot);
     } catch (error) {
-      setCatalog(null);
-      setSnapshot(null);
       setLoadError(isLmsAccessDenied(error) ? 'denied' : 'unavailable');
       throw error;
     } finally {
@@ -188,17 +191,39 @@ function AuthenticatedLmsProvider({
 
   const acceptTerms = useCallback(
     async (enrollmentId: string) => {
-      await provider.acceptTerms(enrollmentId);
-      // Terms and prerequisites affect which catalog rows RLS exposes.
-      await refreshLearnerAccess(selectedLearner);
+      await runMutationLifecycle({
+        mutate: () => provider.acceptTerms(enrollmentId),
+        // Terms and prerequisites affect which catalog rows RLS exposes.
+        refresh: () => refreshLearnerAccess(selectedLearner),
+        onMutationSuccess: () => setMutationNotice({ kind: 'success', message: 'Terms accepted.' }),
+        onMutationFailure: () => setMutationNotice({ kind: 'error', message: 'Terms acceptance failed. No change was confirmed.' }),
+        onRefreshFailure: () => setMutationNotice({
+          kind: 'warning',
+          message: 'Terms were accepted, but updated access could not be loaded. Your current view is still shown.',
+          retry: () => void refreshLearnerAccess(selectedLearner)
+            .then(() => setMutationNotice(null))
+            .catch(() => undefined),
+        }),
+      });
     },
     [provider, refreshLearnerAccess, selectedLearner],
   );
 
   const saveProfile = useCallback(
     async (profile: LmsLearnerProfile) => {
-      await provider.updateProfile(profile);
-      await loadSnapshot(selectedLearner);
+      await runMutationLifecycle({
+        mutate: () => provider.updateProfile(profile),
+        refresh: () => loadSnapshot(selectedLearner),
+        onMutationSuccess: () => setMutationNotice({ kind: 'success', message: 'Account details saved.' }),
+        onMutationFailure: () => setMutationNotice({ kind: 'error', message: 'Account details could not be saved. No change was confirmed.' }),
+        onRefreshFailure: () => setMutationNotice({
+          kind: 'warning',
+          message: 'Account details were saved, but refreshed learner data could not be loaded. Your current view is still shown.',
+          retry: () => void loadSnapshot(selectedLearner)
+            .then(() => setMutationNotice(null))
+            .catch(() => undefined),
+        }),
+      });
     },
     [loadSnapshot, provider, selectedLearner],
   );
@@ -228,22 +253,26 @@ function AuthenticatedLmsProvider({
 
   const recordHeartbeat = useCallback(
     async (lessonId: string, positionSeconds: number) => {
-      const progress = await provider.recordHeartbeat(
-        lessonId,
-        positionSeconds,
-        selectedLearner,
-      );
-      applyProgress(progress);
-      return progress;
+      return runMutationLifecycle({
+        mutate: () => provider.recordHeartbeat(
+          lessonId,
+          positionSeconds,
+          selectedLearner,
+        ),
+        refresh: async (progress) => applyProgress(progress),
+      });
     },
     [applyProgress, provider, selectedLearner],
   );
 
   const completeReading = useCallback(
     async (lessonId: string) => {
-      const progress = await provider.completeReading(lessonId, selectedLearner);
-      applyProgress(progress);
-      return progress;
+      return runMutationLifecycle({
+        mutate: () => provider.completeReading(lessonId, selectedLearner),
+        refresh: async (progress) => applyProgress(progress),
+        onMutationSuccess: () => setMutationNotice({ kind: 'success', message: 'Reading marked complete.' }),
+        onMutationFailure: () => setMutationNotice({ kind: 'error', message: 'Reading completion could not be saved. No change was confirmed.' }),
+      });
     },
     [applyProgress, provider, selectedLearner],
   );
@@ -255,14 +284,26 @@ function AuthenticatedLmsProvider({
 
   const submitQuiz = useCallback(
     async (quizId: string, answers: LmsQuizAnswers) => {
-      const result = await provider.gradeQuiz(quizId, answers, selectedLearner);
-      if (result.completion_fired) {
-        // A completion event can expose a prerequisite-gated course through RLS.
-        await refreshLearnerAccess(selectedLearner);
-      } else {
-        await loadSnapshot(selectedLearner);
-      }
-      return result;
+      return runMutationLifecycle({
+        mutate: () => provider.gradeQuiz(quizId, answers, selectedLearner),
+        refresh: (result) => result.completion_fired
+          // A completion event can expose a prerequisite-gated course through RLS.
+          ? refreshLearnerAccess(selectedLearner)
+          : loadSnapshot(selectedLearner),
+        onMutationFailure: () => setMutationNotice({
+          kind: 'error',
+          message: 'Quiz submission failed. Your selections remain on this page so you can try again.',
+        }),
+        onRefreshFailure: (_error, result) => setMutationNotice({
+          kind: 'warning',
+          message: 'The quiz was graded, but updated progress could not be loaded. Your current view and result are still shown.',
+          retry: () => void (result.completion_fired
+            ? refreshLearnerAccess(selectedLearner)
+            : loadSnapshot(selectedLearner))
+            .then(() => setMutationNotice(null))
+            .catch(() => undefined),
+        }),
+      });
     },
     [loadSnapshot, provider, refreshLearnerAccess, selectedLearner],
   );
@@ -355,7 +396,12 @@ function AuthenticatedLmsProvider({
     );
   }
 
-  return <LmsContext.Provider value={value}>{children}</LmsContext.Provider>;
+  return (
+    <LmsContext.Provider value={value}>
+      <MutationStatusBanner notice={mutationNotice} onDismiss={() => setMutationNotice(null)} />
+      {children}
+    </LmsContext.Provider>
+  );
 }
 
 export function useLms() {

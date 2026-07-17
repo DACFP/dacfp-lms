@@ -72,6 +72,7 @@ export interface LmsQuizQuestionPublic {
   prompt: string;
   choices: QuizChoice[];
   points: number;
+  select_kind: 'single' | 'multi';
 }
 
 export interface CredentialIds {

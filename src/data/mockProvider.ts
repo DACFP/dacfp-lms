@@ -555,6 +555,7 @@ export const mockProvider: LmsProvider = {
           { id: 'd', text: 'Synthetic choice D' },
         ],
         points: 1,
+        select_kind: 'single',
       })),
     };
   },

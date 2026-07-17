@@ -55,6 +55,7 @@ describe('mockProvider synthetic catalog', () => {
   it('returns a learner-safe quiz payload with no answer-key field', async () => {
     const payload = await mockProvider.getQuiz('quiz-fpt-m1', 'fresh');
     expect(payload.questions).toHaveLength(10);
+    expect(payload.questions.every((question) => question.select_kind === 'single')).toBe(true);
     expect(JSON.stringify(payload)).not.toContain('"correct"');
   });
 });
