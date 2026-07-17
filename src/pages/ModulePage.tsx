@@ -148,9 +148,13 @@ export function ModulePage() {
                         {complete ? 'Review' : 'Open'}
                       </Link>
                     ) : (
-                      <span className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 text-sm font-bold text-dacfp-gray-text" aria-disabled="true">
-                        <LockKeyhole className="size-icon-sm" aria-hidden="true" /> Locked
-                      </span>
+                      // A badge, not a button-shaped span with aria-disabled:
+                      // there is no action here, so it should not wear an
+                      // action's clothes.
+                      <LockedBadge
+                        className="shrink-0 self-start sm:self-auto"
+                        reason={`${lesson.title} opens once this module is available to you.`}
+                      />
                     )}
                   </div>
                   {lessonResources.length > 0 ? (
