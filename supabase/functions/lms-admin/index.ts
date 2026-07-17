@@ -75,6 +75,11 @@ function requiredUuid(value: unknown, field: string) {
   return result;
 }
 
+function optionalUuid(value: unknown, field: string) {
+  if (value === null || value === undefined || value === '') return null;
+  return requiredUuid(value, field);
+}
+
 function asNumber(value: unknown, field: string, nullable = false) {
   if (nullable && (value === null || value === '')) return null;
   const number = Number(value);
@@ -100,6 +105,21 @@ async function audit(
     target,
   });
   assertQuery(error);
+}
+
+async function adminCrud(
+  admin: SupabaseClient,
+  actorId: string,
+  action: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } = await admin.rpc('lms_admin_crud', {
+    p_actor_auth_user_id: actorId,
+    p_action: action,
+    p_payload: payload,
+  });
+  assertQuery(error);
+  return data;
 }
 
 async function catalog(admin: SupabaseClient) {
@@ -129,14 +149,11 @@ async function createCourse(admin: SupabaseClient, actorId: string, input: Recor
     description: requiredString(input.description, 'description'),
     status: input.status === 'published' || input.status === 'archived' ? input.status : 'draft',
     progression: input.progression === 'open' ? 'open' : 'sequential',
-    prerequisite_course_id: optionalString(input.prerequisite_course_id),
+    prerequisite_course_id: optionalUuid(input.prerequisite_course_id, 'prerequisite_course_id'),
     ce_credits: asNumber(input.ce_credits, 'ce_credits', true),
     requires_terms_acceptance: input.requires_terms_acceptance === true,
   };
-  const { data, error } = await admin.from('lms_courses').insert(row).select('*').single();
-  assertQuery(error);
-  await audit(admin, actorId, 'create_course', { course_id: data.id, slug: data.slug });
-  return data;
+  return adminCrud(admin, actorId, 'create_course', row);
 }
 
 async function updateCourse(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {
@@ -156,43 +173,35 @@ async function updateCourse(admin: SupabaseClient, actorId: string, input: Recor
     if (!['sequential', 'open'].includes(String(input.progression))) throw new InvalidRequest('progression is invalid.');
     patch.progression = input.progression;
   }
-  if (input.prerequisite_course_id !== undefined) patch.prerequisite_course_id = optionalString(input.prerequisite_course_id);
+  if (input.prerequisite_course_id !== undefined) {
+    const prerequisiteId = optionalUuid(input.prerequisite_course_id, 'prerequisite_course_id');
+    if (prerequisiteId === courseId) throw new InvalidRequest('A course cannot require itself.');
+    patch.prerequisite_course_id = prerequisiteId;
+  }
   if (input.ce_credits !== undefined) patch.ce_credits = asNumber(input.ce_credits, 'ce_credits', true);
   if (input.requires_terms_acceptance !== undefined) patch.requires_terms_acceptance = input.requires_terms_acceptance === true;
-  const { data, error } = await admin.from('lms_courses').update(patch).eq('id', courseId).select('*').single();
-  assertQuery(error);
-  await audit(admin, actorId, 'update_course', { course_id: courseId, fields: Object.keys(patch) });
-  return data;
+  return adminCrud(admin, actorId, 'update_course', { id: courseId, ...patch });
 }
 
 async function deleteRow(
   admin: SupabaseClient,
   actorId: string,
-  table: string,
-  entity: string,
+  action: 'delete_course' | 'delete_module' | 'delete_lesson',
   input: Record<string, unknown>,
 ) {
   const id = requiredUuid(input.id, 'id');
-  const { error } = await admin.from(table).delete().eq('id', id);
-  assertQuery(error);
-  await audit(admin, actorId, `delete_${entity}`, { [`${entity}_id`]: id });
-  return { id };
+  return adminCrud(admin, actorId, action, { id });
 }
 
 async function createModule(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {
   const courseId = requiredUuid(input.course_id, 'course_id');
-  const { count, error: countError } = await admin.from('lms_modules').select('id', { count: 'exact', head: true }).eq('course_id', courseId);
-  assertQuery(countError);
   const row = {
     course_id: courseId,
-    position: input.position === undefined ? (count ?? 0) + 1 : asNumber(input.position, 'position'),
+    ...(input.position === undefined ? {} : { position: asNumber(input.position, 'position') }),
     title: requiredString(input.title, 'title'),
     ce_credits: asNumber(input.ce_credits, 'ce_credits', true),
   };
-  const { data, error } = await admin.from('lms_modules').insert(row).select('*').single();
-  assertQuery(error);
-  await audit(admin, actorId, 'create_module', { module_id: data.id, course_id: courseId });
-  return data;
+  return adminCrud(admin, actorId, 'create_module', row);
 }
 
 async function updateModule(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {
@@ -200,20 +209,15 @@ async function updateModule(admin: SupabaseClient, actorId: string, input: Recor
   const patch: Record<string, unknown> = {};
   if (input.title !== undefined) patch.title = requiredString(input.title, 'title');
   if (input.ce_credits !== undefined) patch.ce_credits = asNumber(input.ce_credits, 'ce_credits', true);
-  const { data, error } = await admin.from('lms_modules').update(patch).eq('id', id).select('*').single();
-  assertQuery(error);
-  await audit(admin, actorId, 'update_module', { module_id: id, fields: Object.keys(patch) });
-  return data;
+  return adminCrud(admin, actorId, 'update_module', { id, ...patch });
 }
 
 async function createLesson(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {
   const moduleId = requiredUuid(input.module_id, 'module_id');
-  const { count, error: countError } = await admin.from('lms_lessons').select('id', { count: 'exact', head: true }).eq('module_id', moduleId);
-  assertQuery(countError);
   const kind = input.kind === 'reading' ? 'reading' : 'video';
   const row = {
     module_id: moduleId,
-    position: input.position === undefined ? (count ?? 0) + 1 : asNumber(input.position, 'position'),
+    ...(input.position === undefined ? {} : { position: asNumber(input.position, 'position') }),
     title: requiredString(input.title, 'title'),
     kind,
     video_ref: kind === 'video' ? optionalString(input.video_ref) : null,
@@ -221,10 +225,7 @@ async function createLesson(admin: SupabaseClient, actorId: string, input: Recor
     body_md: kind === 'reading' ? optionalString(input.body_md) : null,
     is_required: input.is_required !== false,
   };
-  const { data, error } = await admin.from('lms_lessons').insert(row).select('*').single();
-  assertQuery(error);
-  await audit(admin, actorId, 'create_lesson', { lesson_id: data.id, module_id: moduleId });
-  return data;
+  return adminCrud(admin, actorId, 'create_lesson', row);
 }
 
 async function updateLesson(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {
@@ -245,14 +246,16 @@ async function updateLesson(admin: SupabaseClient, actorId: string, input: Recor
   if (input.duration_seconds !== undefined) patch.duration_seconds = asNumber(input.duration_seconds, 'duration_seconds', true);
   if (input.body_md !== undefined) patch.body_md = optionalString(input.body_md);
   if (input.is_required !== undefined) patch.is_required = input.is_required === true;
-  const { data, error } = await admin.from('lms_lessons').update(patch).eq('id', id).select('*').single();
-  assertQuery(error);
-  await audit(admin, actorId, 'update_lesson', { lesson_id: id, fields: Object.keys(patch) });
-  return data;
+  return adminCrud(admin, actorId, 'update_lesson', { id, ...patch });
 }
 
 function decodeBase64(value: string) {
-  const binary = atob(value);
+  let binary: string;
+  try {
+    binary = atob(value);
+  } catch {
+    throw new InvalidRequest('File content is invalid.');
+  }
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
@@ -268,7 +271,11 @@ async function uploadResource(admin: SupabaseClient, actorId: string, input: Rec
   const fileName = safeFileName(requiredString(input.file_name, 'file_name'));
   const mimeType = requiredString(input.mime_type, 'mime_type').toLowerCase();
   if (!RESOURCE_MIME_TYPES.has(mimeType)) throw new InvalidRequest('File type is not allowed.');
-  const content = decodeBase64(requiredString(input.base64, 'base64'));
+  const encoded = requiredString(input.base64, 'base64');
+  if (encoded.length > Math.ceil(MAX_RESOURCE_BYTES * 4 / 3) + 4) {
+    throw new InvalidRequest('File size is not allowed.');
+  }
+  const content = decodeBase64(encoded);
   if (content.byteLength === 0 || content.byteLength > MAX_RESOURCE_BYTES) throw new InvalidRequest('File size is not allowed.');
   const objectPath = `${lessonId}/${crypto.randomUUID()}-${fileName}`;
   const { error: uploadError } = await admin.storage.from(RESOURCE_BUCKET).upload(objectPath, content, {
@@ -319,9 +326,11 @@ async function exportQuestionBank(admin: SupabaseClient, moduleId: string) {
 
 async function inspectLearner(admin: SupabaseClient, email: string) {
   const normalized = email.trim().toLowerCase();
-  const { data: users, error: userError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const { data: user, error: userError } = await admin.rpc(
+    'lms_admin_find_auth_user_by_email',
+    { p_email: normalized },
+  );
   assertQuery(userError);
-  const user = users.users.find((candidate) => candidate.email?.toLowerCase() === normalized);
   if (!user) return null;
   const [profile, enrollments] = await Promise.all([
     admin.from('lms_learner_profiles').select('*').eq('auth_user_id', user.id).maybeSingle(),
@@ -376,7 +385,7 @@ Deno.serve(async (req: Request) => {
   try {
     const admin = serviceClient();
     const actor = await requireOperator(req, admin);
-    const body = await req.json() as Record<string, unknown>;
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const action = requiredString(body.action, 'action');
     const payload = body.payload && typeof body.payload === 'object'
       ? body.payload as Record<string, unknown>
@@ -395,13 +404,13 @@ Deno.serve(async (req: Request) => {
       case 'export_question_bank': data = await exportQuestionBank(admin, requiredUuid(payload.module_id, 'module_id')); break;
       case 'create_course': data = await createCourse(admin, actor.id, payload); break;
       case 'update_course': data = await updateCourse(admin, actor.id, payload); break;
-      case 'delete_course': data = await deleteRow(admin, actor.id, 'lms_courses', 'course', payload); break;
+      case 'delete_course': data = await deleteRow(admin, actor.id, 'delete_course', payload); break;
       case 'create_module': data = await createModule(admin, actor.id, payload); break;
       case 'update_module': data = await updateModule(admin, actor.id, payload); break;
-      case 'delete_module': data = await deleteRow(admin, actor.id, 'lms_modules', 'module', payload); break;
+      case 'delete_module': data = await deleteRow(admin, actor.id, 'delete_module', payload); break;
       case 'create_lesson': data = await createLesson(admin, actor.id, payload); break;
       case 'update_lesson': data = await updateLesson(admin, actor.id, payload); break;
-      case 'delete_lesson': data = await deleteRow(admin, actor.id, 'lms_lessons', 'lesson', payload); break;
+      case 'delete_lesson': data = await deleteRow(admin, actor.id, 'delete_lesson', payload); break;
       case 'reorder': {
         const { data: result, error } = await admin.rpc('lms_admin_reorder', {
           p_actor_auth_user_id: actor.id,

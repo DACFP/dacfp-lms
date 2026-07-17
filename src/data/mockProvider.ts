@@ -196,6 +196,7 @@ function completedProgress(
     completed_at: '2026-07-16T16:30:00.000Z',
     last_position_seconds: lesson.duration_seconds ?? 0,
     max_watched_seconds: lesson.duration_seconds ?? 0,
+    max_watched_updated_at: '2026-07-16T16:30:00.000Z',
     updated_at: '2026-07-16T16:30:00.000Z',
   }));
 }
@@ -295,6 +296,7 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
       completed_at: null,
       last_position_seconds: 240,
       max_watched_seconds: 240,
+      max_watched_updated_at: '2026-07-16T16:49:00.000Z',
       updated_at: '2026-07-16T16:49:00.000Z',
     },
   );
@@ -510,6 +512,10 @@ export const mockProvider: LmsProvider = {
           (maxWatched >= lesson.duration_seconds! * 0.95 ? now : null),
         last_position_seconds: position,
         max_watched_seconds: maxWatched,
+        max_watched_updated_at:
+          maxWatched > (current?.max_watched_seconds ?? 0)
+            ? now
+            : current?.max_watched_updated_at ?? now,
         updated_at: now,
       };
     });
@@ -528,6 +534,7 @@ export const mockProvider: LmsProvider = {
       completed_at: current?.completed_at ?? now,
       last_position_seconds: current?.last_position_seconds ?? 0,
       max_watched_seconds: current?.max_watched_seconds ?? 0,
+      max_watched_updated_at: current?.max_watched_updated_at ?? now,
       updated_at: now,
     }));
   },

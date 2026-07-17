@@ -110,6 +110,7 @@ export interface LmsLessonProgress {
   completed_at: string | null;
   last_position_seconds: number;
   max_watched_seconds: number;
+  max_watched_updated_at: string;
   updated_at: string;
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLearnerSnapshot,
   learnerSummaryForEmail,
+  quizQuestionsContainCorrectKey,
 } from './supabaseProvider';
 
 describe('supabaseProvider row mapping', () => {
@@ -60,5 +61,18 @@ describe('supabaseProvider row mapping', () => {
       expect.objectContaining({ course_id: 'course-fpt' }),
     ]);
     expect(snapshot).not.toHaveProperty('questions');
+  });
+
+  it('detects a correct key without false-positive prompt text', () => {
+    expect(
+      quizQuestionsContainCorrectKey([
+        { id: 'question-1', prompt: 'Which answer is "correct"?' },
+      ]),
+    ).toBe(false);
+    expect(
+      quizQuestionsContainCorrectKey([
+        { id: 'question-1', prompt: 'Question', correct: ['a'] },
+      ]),
+    ).toBe(true);
   });
 });

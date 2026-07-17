@@ -68,6 +68,7 @@ const completeProgress = (lesson: LmsLesson): LmsLessonProgress => ({
   completed_at: '2026-01-01T00:10:00.000Z',
   last_position_seconds: lesson.duration_seconds ?? 0,
   max_watched_seconds: lesson.duration_seconds ?? 0,
+  max_watched_updated_at: '2026-01-01T00:10:00.000Z',
   updated_at: '2026-01-01T00:10:00.000Z',
 });
 
