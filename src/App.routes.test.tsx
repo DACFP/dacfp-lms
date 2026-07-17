@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -12,6 +12,7 @@ import type {
   LmsAdminProvider,
 } from './data/provider';
 import { LmsDataError } from './data/provider';
+import type { LearnerStateKey } from './data/types';
 
 const signedInSession: LmsAuthSession = {
   user: {
@@ -65,24 +66,67 @@ function testAuthProvider(session: LmsAuthSession | null): LmsAuthProvider {
   };
 }
 
+/**
+ * M-10 removed ?learner= from the learner app, so a test can no longer pick a
+ * synthetic state through the URL. It binds the state to the provider instead,
+ * which is where it always belonged: only mockProvider honours the learner key
+ * at all — every supabaseProvider method ignores it and scopes to auth.uid().
+ *
+ * Wrapping (rather than replacing) keeps each test's own overrides intact: an
+ * override still receives the bound learner as its argument.
+ */
+function scopedProvider(
+  base: LmsDataProvider,
+  learner: LearnerStateKey,
+): LmsDataProvider {
+  return {
+    ...base,
+    getLearnerSnapshot: () => base.getLearnerSnapshot(learner),
+    getPlaybackToken: (lessonId) => base.getPlaybackToken(lessonId, learner),
+    getResourceToken: (resourceId) => base.getResourceToken(resourceId, learner),
+    recordHeartbeat: (lessonId, positionSeconds) =>
+      base.recordHeartbeat(lessonId, positionSeconds, learner),
+    completeReading: (lessonId) => base.completeReading(lessonId, learner),
+    getQuiz: (quizId) => base.getQuiz(quizId, learner),
+    gradeQuiz: (quizId, answers) => base.gradeQuiz(quizId, answers, learner),
+  };
+}
+
 function renderRoute(
   path: string,
-  learner = 'fully-complete',
+  learner: LearnerStateKey = 'fully-complete',
   authProvider = testAuthProvider(signedInSession),
   dataProvider: LmsDataProvider = mockProvider,
 ) {
-  const separator = path.includes('?') ? '&' : '?';
-  const route = `${path}${separator}learner=${learner}`;
-  window.history.replaceState({}, '', route);
+  window.history.replaceState({}, '', path);
   render(
-    <MemoryRouter initialEntries={[route]}>
+    <MemoryRouter initialEntries={[path]}>
       <AuthSessionProvider provider={authProvider}>
-        <LmsProvider provider={dataProvider}>
+        <LmsProvider provider={scopedProvider(dataProvider, learner)}>
           <App />
         </LmsProvider>
       </AuthSessionProvider>
     </MemoryRouter>,
   );
+}
+
+/**
+ * The O2 quiz is a stepper (brief #1-#4): one question per screen, then a
+ * review screen that owns the only Submit control. Reaching Submit therefore
+ * means walking the steps. This helper does exactly what a learner does.
+ */
+async function walkToReview() {
+  // Advance until the review screen's Submit appears.
+  for (let guard = 0; guard < 25; guard += 1) {
+    const submit = screen.queryByRole('button', { name: 'Submit attempt' });
+    if (submit) return submit;
+    const next =
+      screen.queryByRole('button', { name: 'Review answers' }) ??
+      screen.queryByRole('button', { name: 'Next' });
+    if (!next) break;
+    fireEvent.click(next);
+  }
+  return await screen.findByRole('button', { name: 'Submit attempt' });
 }
 
 describe('D0 route shell', () => {
@@ -154,7 +198,7 @@ describe('D0 route shell', () => {
     expect(getCatalog).toHaveBeenCalledTimes(2);
   });
 
-  it.each([
+  it.each<[string, LearnerStateKey, string]>([
     ['/course/fpt-sandbox/module/4', 'quiz-failed-on-3', 'Content is not available yet'],
     ['/lesson/fpt-m4-video', 'quiz-failed-on-3', 'This lesson is locked'],
     ['/quiz/fpt-m4', 'quiz-failed-on-3', 'Quiz unavailable'],
@@ -323,7 +367,9 @@ describe('D0 route shell', () => {
       testAuthProvider(signedInSession),
       quizProvider,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Submit attempt' }));
+    // Wait for the first question before stepping (the payload loads async).
+    await screen.findByText('Select one answer');
+    fireEvent.click(await walkToReview());
     expect(await screen.findByText('7/10')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retake quiz' })).toBeInTheDocument();
     expect(screen.getByText('All course requirements are complete.')).toBeInTheDocument();
@@ -350,15 +396,25 @@ describe('D0 route shell', () => {
       testAuthProvider(signedInSession),
       quizProvider,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Submit attempt' }));
+    await screen.findByText('Select one answer');
+    fireEvent.click(await walkToReview());
     expect(await screen.findByText('Module 4 unlocked. You can continue immediately.')).toBeInTheDocument();
   });
 
   it('renders normal single-answer quiz questions as radio groups', async () => {
     renderRoute('/quiz/fpt-m1', 'fully-complete');
-    expect((await screen.findAllByText('Select one answer')).length).toBe(10);
-    expect(screen.getAllByRole('radio')).toHaveLength(40);
-    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    // The stepper shows one question per screen (brief #1), so the counts are
+    // per-step now rather than 10 prompts / 40 radios in one scroll. The
+    // property under test is unchanged: single-select renders radios, never
+    // checkboxes. Walking every step proves it holds for all ten, which the
+    // old single assertion could not.
+    expect(await screen.findByText('Select one answer')).toBeInTheDocument();
+    for (let step = 1; step <= 10; step += 1) {
+      expect(screen.getByText(`Question ${step} of 10`)).toBeInTheDocument();
+      expect(screen.getAllByRole('radio')).toHaveLength(4);
+      expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+      if (step < 10) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
   });
 
   it('uses checkboxes only when select_kind is multi', async () => {
@@ -376,9 +432,17 @@ describe('D0 route shell', () => {
       },
     };
     renderRoute('/quiz/fpt-m1', 'fully-complete', testAuthProvider(signedInSession), mixedProvider);
+    // Per-step counts under the stepper (brief #1). Question 1 is the multi
+    // question: checkboxes and no radios. Stepping to question 2 flips it —
+    // which is the actual property, that select_kind drives the control.
     expect(await screen.findByText('Select all that apply')).toBeInTheDocument();
     expect(screen.getAllByRole('checkbox')).toHaveLength(4);
-    expect(screen.getAllByRole('radio')).toHaveLength(36);
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Select one answer')).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(4);
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
   });
 
   it('uses question points, not question count, for attempt-history denominators', async () => {
@@ -396,8 +460,15 @@ describe('D0 route shell', () => {
       },
     };
     renderRoute('/quiz/fpt-m1', 'fully-complete', testAuthProvider(signedInSession), weightedProvider);
-    expect(await screen.findByText(/\/11/)).toBeInTheDocument();
-    expect(screen.queryByText(/\/10/)).not.toBeInTheDocument();
+    // Scoped to the attempt-history region. The page-wide /\/10/ guard was
+    // valid when the quiz had no other fractions on it; the stepper's progress
+    // counter ("0/10 answered") is a different quantity — questions answered,
+    // not points scored — and would trip a page-wide match. Scoping keeps the
+    // F2 fix guarded: the denominator here must be possible_points (11), never
+    // question_count (10).
+    const history = await screen.findByRole('complementary');
+    expect(await within(history).findByText(/\/11/)).toBeInTheDocument();
+    expect(within(history).queryByText(/\/10/)).not.toBeInTheDocument();
   });
 
   it('keeps the learner snapshot visible when profile save succeeds but refresh fails', async () => {
@@ -478,12 +549,13 @@ describe('D0 route shell', () => {
 
   it('sends a cold logged-out root visit to login without loading LMS data', async () => {
     const getCatalog = vi.fn(mockProvider.getCatalog);
-    const listLearners = vi.fn(mockProvider.listLearners);
     const getLearnerSnapshot = vi.fn(mockProvider.getLearnerSnapshot);
+    // The listLearners spy went with the method (M-10). The property under
+    // test — a logged-out visit issues no LMS reads — is unchanged, and the
+    // two surviving spies are the only reads boot can make.
     const guardedProvider: LmsDataProvider = {
       ...mockProvider,
       getCatalog,
-      listLearners,
       getLearnerSnapshot,
     };
 
@@ -496,7 +568,6 @@ describe('D0 route shell', () => {
       }),
     ).toBeInTheDocument();
     expect(getCatalog).not.toHaveBeenCalled();
-    expect(listLearners).not.toHaveBeenCalled();
     expect(getLearnerSnapshot).not.toHaveBeenCalled();
   });
 });

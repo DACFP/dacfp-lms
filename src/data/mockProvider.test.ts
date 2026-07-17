@@ -4,8 +4,16 @@ import { learnerStateKeys } from './types';
 
 describe('mockProvider synthetic catalog', () => {
   it('implements all six named learner states', async () => {
-    const learners = await mockProvider.listLearners();
-    expect(learners.map((learner) => learner.id)).toEqual(learnerStateKeys);
+    // M-10 removed listLearners(), which this asserted through. The property
+    // under test is unchanged — every named state resolves to its own distinct
+    // snapshot — so it is asserted through the surviving surface instead.
+    const snapshots = await Promise.all(
+      learnerStateKeys.map((learnerId) => mockProvider.getLearnerSnapshot(learnerId)),
+    );
+    expect(snapshots).toHaveLength(learnerStateKeys.length);
+    expect(new Set(snapshots.map((snapshot) => snapshot.profile.email)).size).toBe(
+      learnerStateKeys.length,
+    );
   });
 
   it('contains the three required sandbox courses and the expected structure', () => {

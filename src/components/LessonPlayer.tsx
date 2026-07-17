@@ -12,6 +12,7 @@ import type {
   LmsLessonProgress,
 } from '../data/types';
 import { allowedPlaybackRate, clampSeekTarget } from '../lib/player';
+import { formatClock, formatClockLabel } from '../lib/time';
 import { Alert } from './Alert';
 import { ProgressBar } from './common';
 
@@ -195,7 +196,7 @@ export function LessonPlayer({
       course.progression,
     );
     setMessage(
-      resumeAt > 0 ? `Resumed at ${Math.floor(resumeAt)}s.` : 'Ready to play.',
+      resumeAt > 0 ? `Resumed at ${formatClock(resumeAt)}.` : 'Ready to play.',
     );
     void persistHeartbeat(resumeAt);
     if (resumePlaying.current) {
@@ -337,13 +338,53 @@ export function LessonPlayer({
         <div className="mt-5">
           <ProgressBar value={watchPercent} label="Furthest point watched" />
         </div>
-        <p className="mt-3 text-sm text-dacfp-gray-text">
-          Resume at{' '}
-          <span className="font-semibold tabular-nums text-dacfp-navy">
-            {progress?.last_position_seconds ?? 0}s
-          </span>{' '}
-          · Complete at 95%
-        </p>
+        {/* brief #7: mm:ss through the one shared formatter. This printed the
+            raw value with an "s" suffix ("847s"), which a learner has to do
+            arithmetic on to place against a video scrubber. */}
+        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-dacfp-line pt-4 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
+              Resume at
+            </dt>
+            <dd
+              className="mt-1 font-semibold tabular-nums text-dacfp-navy"
+              aria-label={formatClockLabel(progress?.last_position_seconds ?? 0)}
+            >
+              {formatClock(progress?.last_position_seconds ?? 0)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
+              Furthest watched
+            </dt>
+            <dd
+              className="mt-1 font-semibold tabular-nums text-dacfp-navy"
+              aria-label={formatClockLabel(savedMax)}
+            >
+              {formatClock(savedMax)}
+              {lesson.duration_seconds ? (
+                <span className="font-normal text-dacfp-gray-text">
+                  {' / '}
+                  {formatClock(lesson.duration_seconds)}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <dt className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
+              Completes at
+            </dt>
+            <dd className="mt-1 font-semibold tabular-nums text-dacfp-navy">
+              95%
+              {lesson.duration_seconds ? (
+                <span className="font-normal text-dacfp-gray-text">
+                  {' · '}
+                  {formatClock(lesson.duration_seconds * 0.95)}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        </dl>
       </div>
     </section>
   );

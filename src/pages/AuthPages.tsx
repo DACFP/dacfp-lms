@@ -9,6 +9,8 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Alert } from '../components/Alert';
+import { DarkBuildOnly, darkBuildCopy } from '../components/DarkBuild';
+import { BrandLockup } from '../components/BrandLockup';
 import { Field } from '../components/Field';
 import { IconTile } from '../components/IconTile';
 import { useAuth } from '../context/AuthContext';
@@ -28,25 +30,22 @@ function AuthShell({
     <main className="grid min-h-dvh bg-dacfp-wash lg:grid-cols-[minmax(20rem,0.9fr)_minmax(28rem,1.1fr)]">
       <section className="on-navy relative hidden overflow-hidden bg-dacfp-navy p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="brand-strip absolute inset-x-0 top-0 h-1.5" />
-        <div className="flex items-center gap-3">
-          <IconTile icon={BookOpen} size="lg" tone="on-navy" />
-          <div>
-            <p className="text-xl font-bold">DACFP</p>
-            <p className="text-xs font-bold uppercase tracking-eyebrow text-white/65">
-              Learning portal
-            </p>
-          </div>
-        </div>
+        <BrandLockup surface="navy" priority className="h-14 w-auto" />
         <div className="max-w-form">
-          {/* gold-hi, not raw gold: this is text on a navy ground (8.30:1). */}
-          <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">
-            Dark-build preview
-          </p>
+          <DarkBuildOnly>
+            {/* gold-hi, not raw gold: this is text on a navy ground (8.30:1). */}
+            <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">
+              Dark-build preview
+            </p>
+          </DarkBuildOnly>
           <p className="mt-4 text-4xl font-bold leading-tight">
             Professional learning, with progress you can trust.
           </p>
           <p className="mt-5 max-w-md leading-7 text-white/70">
-            Sandbox authentication protects synthetic learner content, progress, and quiz attempts end to end.
+            {darkBuildCopy(
+              'Sandbox authentication protects synthetic learner content, progress, and quiz attempts end to end.',
+              'Authentication protects your learner content, progress, and quiz attempts end to end.',
+            )}
           </p>
         </div>
         <p className="text-sm text-white/70">
@@ -55,14 +54,8 @@ function AuthShell({
       </section>
       <section className="flex items-center justify-center px-5 py-12 sm:px-8">
         <div className="w-full max-w-form">
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <IconTile icon={BookOpen} size="md" tone="brand" />
-            <div>
-              <p className="font-bold text-dacfp-navy">DACFP</p>
-              <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
-                Learning portal
-              </p>
-            </div>
+          <div className="mb-8 lg:hidden">
+            <BrandLockup surface="light" priority className="h-11 w-auto" />
           </div>
           <p className="eyebrow">{eyebrow}</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-dacfp-navy sm:text-4xl">
@@ -125,7 +118,10 @@ export function LoginPage() {
     <AuthShell
       eyebrow="Learner access"
       title={mode === 'login' ? 'Sign in to continue' : 'Create your learner account'}
-      description="Sandbox authentication protects learner access. Sign-in failures use one generic response to prevent account enumeration."
+      description={darkBuildCopy(
+        'Sandbox authentication protects learner access. Sign-in failures use one generic response to prevent account enumeration.',
+        'Sign-in failures use one generic response to prevent account enumeration.',
+      )}
     >
       {/*
         brief #12. This was role="tablist" + role="tab" + aria-selected with no

@@ -6,12 +6,15 @@ import {
   FileText,
   LockKeyhole,
 } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Alert } from '../components/Alert';
-import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
+import { LockedBadge } from '../components/LockedBadge';
+import { EmptyState, PageHeader, StatusPill } from '../components/common';
 import { LessonPlayer } from '../components/LessonPlayer';
 import { SecureResourceLink } from '../components/SecureResourceLink';
+import { darkBuildCopy } from '../components/DarkBuild';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useLms } from '../context/LmsContext';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import {
@@ -20,9 +23,32 @@ import {
   moduleIsUnlocked,
 } from '../lib/progress';
 
+/**
+ * react-markdown brings the whole unified/remark/rehype pipeline (~190 kB raw)
+ * — more than every other learner dependency combined. Only reading lessons
+ * need it, so it is a chunk of its own rather than a tax on the dashboard, the
+ * quiz and the player. Same reasoning as the /admin split (M-12).
+ */
+const Markdown = lazy(() =>
+  import('../components/Markdown').then((module) => ({ default: module.Markdown })),
+);
+
+function ReadingSkeleton() {
+  return (
+    <div role="status" aria-live="polite" className="mt-4">
+      <span className="sr-only">Loading reading</span>
+      <div aria-hidden="true" className="space-y-3">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+    </div>
+  );
+}
+
 export function LessonPage() {
   const { id } = useParams();
-  const { catalog, snapshot, selectedLearner, completeReading } = useLms();
+  const { catalog, snapshot, completeReading } = useLms();
   const [savingReading, setSavingReading] = useState(false);
   const [readingError, setReadingError] = useState('');
   const lesson = catalog.lessons.find((item) => item.id === id);
@@ -34,7 +60,7 @@ export function LessonPage() {
       <EmptyState
         title="Lesson not found"
         description="This lesson is unavailable or the link is no longer current."
-        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+        action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
   }
@@ -45,7 +71,7 @@ export function LessonPage() {
       <EmptyState
         title="No course access"
         description="This account is not enrolled in the course that contains this lesson."
-        action={<Link className="button-secondary" to={learnerPath('/dashboard', selectedLearner)}>Back to dashboard</Link>}
+        action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
   }
@@ -95,7 +121,7 @@ export function LessonPage() {
                   ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
                   : 'Complete the prerequisite course, terms acknowledgment, or previous module before opening this content.'}
             </p>
-            <Link className="button-quiet mt-3" to={learnerPath(`/course/${course.slug}/module/${module.position}`, selectedLearner)}>
+            <Link className="button-quiet mt-3" to={`/course/${course.slug}/module/${module.position}`}>
               Return to module
             </Link>
           </div>
@@ -109,8 +135,13 @@ export function LessonPage() {
             <p className="eyebrow">Required reading</p>
           </div>
           <h2 className="mt-5 text-2xl font-bold text-dacfp-navy">Key concepts</h2>
-          <p className="mt-4 max-w-3xl leading-8 text-dacfp-gray-text">{lesson.body_md}</p>
-          <div className="mt-6 flex flex-col items-start gap-3 rounded-lg border border-dacfp-line bg-dacfp-wash p-4 text-sm leading-6 text-dacfp-gray-text">
+          {/* brief #16: authored markdown, rendered and sanitised. This was
+              {lesson.body_md} inside a <p>, so "## " and "**" reached the
+              learner as literal characters. */}
+          <Suspense fallback={<ReadingSkeleton />}>
+            <Markdown className="mt-4">{lesson.body_md ?? ''}</Markdown>
+          </Suspense>
+          <div className="mt-8 flex flex-col items-start gap-3 rounded-lg border border-dacfp-line bg-dacfp-wash p-4 text-sm leading-6 text-dacfp-gray-text">
             <p>Reading completion is recorded securely against your enrollment.</p>
             <button
               className="button-primary"
@@ -147,31 +178,31 @@ export function LessonPage() {
                     resource={resource}
                   />
                 ) : (
-                  <span className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-dacfp-gray-text" aria-disabled="true">
+                  <span className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 font-semibold text-dacfp-gray-text">
                     <span>{resource.title}</span>
-                    <LockKeyhole className="size-icon-sm" aria-hidden="true" />
+                    <LockedBadge reason={`${resource.title} unlocks with this lesson.`} />
                   </span>
                 )}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">No downloads accompany this synthetic lesson.</p>
+          <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">{darkBuildCopy('No downloads accompany this synthetic lesson.', 'No downloads accompany this lesson.')}</p>
         )}
       </section>
 
       <nav aria-label="Lesson navigation" className="flex flex-col gap-3 border-t border-dacfp-line pt-6 sm:flex-row sm:justify-between">
         {accessible && previous ? (
-          <Link className="button-secondary" to={learnerPath(`/lesson/${previous.id}`, selectedLearner)}>
+          <Link className="button-secondary" to={`/lesson/${previous.id}`}>
             <ArrowLeft className="size-icon-sm" aria-hidden="true" /> Previous lesson
           </Link>
         ) : <span />}
         {accessible && next ? (
-          <Link className="button-primary" to={learnerPath(`/lesson/${next.id}`, selectedLearner)}>
+          <Link className="button-primary" to={`/lesson/${next.id}`}>
             Next lesson <ArrowRight className="size-icon-sm" aria-hidden="true" />
           </Link>
         ) : (
-          <Link className="button-primary" to={learnerPath(`/course/${course.slug}/module/${module.position}`, selectedLearner)}>
+          <Link className="button-primary" to={`/course/${course.slug}/module/${module.position}`}>
             Module overview <CheckCircle2 className="size-icon-sm" aria-hidden="true" />
           </Link>
         )}

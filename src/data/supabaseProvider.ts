@@ -235,20 +235,6 @@ function progressFromPayload(value: unknown): LmsLessonProgress {
 }
 
 const contentProvider: LmsProvider = {
-  async listLearners() {
-    const user = await currentUser();
-    const profiles = await tableRows<Omit<LmsLearnerProfile, 'email'>>(
-      'lms_learner_profiles',
-    );
-    const profile = profiles.find((item) => item.auth_user_id === user.id);
-    return [
-      learnerSummaryForEmail(
-        user.email ?? '',
-        profile?.display_name ?? user.user_metadata.display_name ?? '',
-      ),
-    ];
-  },
-
   async getCatalog() {
     const [courses, modules, lessons, resources, quizzes] = await Promise.all([
       tableRows<LmsCourse>('lms_courses', ['created_at']),

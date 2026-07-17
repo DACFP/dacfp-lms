@@ -47,6 +47,13 @@ strip: navy → navy-2 → gold-hi (tokenized once per SPEC-OVERHAUL §1)
 Dark surfaces (hero/masthead regions): navy ground, white/gold-hi
 text, gray permitted.
 
+AMENDED O2 (ratified from O1 finding D1): --accent is divorced from
+brand gold and is now dacfp-wash-blue with foreground navy (12.26:1),
+because shadcn uses --accent as a small-text hover ground where gold
+carried navy at only 3.80:1. Gold expresses ONLY via the explicit
+dacfp-gold-* utilities under the law above. The .on-navy ring override
+(--ring: gold-hi, 8.30:1, where dacfp-blue would be 1.96:1) is ratified.
+
 ## Logos & marks (usage)
 - DACFPStackedBlackText.png → light surfaces
 - DACFPStackedWhiteText.png → navy/dark surfaces

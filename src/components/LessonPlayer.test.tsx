@@ -69,6 +69,11 @@ afterEach(() => {
   lms.recordHeartbeat.mockReset();
 });
 
+/** The resume position now lives in the <dd> beside its <dt> (brief #7). */
+function resumeValue() {
+  return screen.getByText('Resume at').nextElementSibling?.textContent;
+}
+
 describe('LessonPlayer lifecycle', () => {
   it('starts a different keyed lesson with its own resume and watermark', async () => {
     lms.requestPlayback.mockImplementation(async (lessonId: string) =>
@@ -80,13 +85,17 @@ describe('LessonPlayer lifecycle', () => {
       <LessonPlayer key="lesson-a" course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 120)} />,
     );
     await waitFor(() => expect(lms.requestPlayback).toHaveBeenCalledWith('lesson-a'));
-    expect(screen.getByText(/Resume at/).textContent).toContain('120s');
+    // brief #7 retired the raw-seconds format ("120s") for mm:ss through the
+    // one shared formatter, and the chrome moved from a sentence to a <dl>.
+    // The property under test is unchanged: each keyed lesson shows its own
+    // resume position.
+    expect(resumeValue()).toBe('2:00');
 
     rerender(
       <LessonPlayer key="lesson-b" course={course} lesson={lesson('lesson-b')} progress={progress('lesson-b', 5)} />,
     );
     await waitFor(() => expect(lms.requestPlayback).toHaveBeenCalledWith('lesson-b'));
-    expect(screen.getByText(/Resume at/).textContent).toContain('5s');
+    expect(resumeValue()).toBe('0:05');
 
     const video = screen.getByLabelText('lesson-b video') as HTMLVideoElement;
     fireEvent.loadedMetadata(video);

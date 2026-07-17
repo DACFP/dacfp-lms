@@ -89,7 +89,3 @@ export function formatDate(value: string | null) {
     year: 'numeric',
   }).format(new Date(value));
 }
-
-export function learnerPath(path: string, learner: string) {
-  return `${path}?learner=${encodeURIComponent(learner)}`;
-}

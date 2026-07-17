@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import type { LmsCourse, LmsEnrollment } from '../data/types';
 import { Alert } from './Alert';
+import { DarkBuildOnly } from './DarkBuild';
 import { IconTile } from './IconTile';
 
 export function TermsModal({
@@ -61,14 +62,16 @@ export function TermsModal({
           >
             {course.title} uses sequential lessons, required quizzes, and compliance-style video progress. Your learning access and designation standing are managed separately.
           </DialogDescription>
-          <div className="mt-6 rounded-lg border border-dacfp-line bg-dacfp-wash p-4">
-            <div className="flex gap-3">
-              <ShieldCheck className="mt-0.5 size-icon-md shrink-0 text-status-positive" aria-hidden="true" />
-              <p className="text-sm leading-6 text-dacfp-navy">
-                This dark-build acknowledgment updates synthetic state only. It does not send email or contact any external service.
-              </p>
+          <DarkBuildOnly>
+            <div className="mt-6 rounded-lg border border-dacfp-line bg-dacfp-wash p-4">
+              <div className="flex gap-3">
+                <ShieldCheck className="mt-0.5 size-icon-md shrink-0 text-status-positive" aria-hidden="true" />
+                <p className="text-sm leading-6 text-dacfp-navy">
+                  This dark-build acknowledgment updates synthetic state only. It does not send email or contact any external service.
+                </p>
+              </div>
             </div>
-          </div>
+          </DarkBuildOnly>
           <button
             className="button-primary mt-7 w-full sm:w-auto"
             type="button"

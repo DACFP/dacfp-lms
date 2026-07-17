@@ -14,6 +14,7 @@ import {
   MutationStatusBanner,
   type MutationNotice,
 } from '../components/MutationStatusBanner';
+import { BootSkeleton } from '../components/Skeletons';
 import { useAuth } from './AuthContext';
 import type {
   LmsPlaybackToken,
@@ -29,20 +30,15 @@ import type {
   Catalog,
   LearnerSnapshot,
   LearnerStateKey,
-  LearnerSummary,
   LmsLearnerProfile,
   LmsLessonProgress,
 } from '../data/types';
-import { learnerStateKeys } from '../data/types';
 import { runMutationLifecycle } from '../lib/mutationStatus';
 
 interface LmsContextValue {
   catalog: Catalog;
-  learners: LearnerSummary[];
   snapshot: LearnerSnapshot;
-  selectedLearner: LearnerStateKey;
   loading: boolean;
-  selectLearner: (learner: LearnerStateKey) => void;
   acceptTerms: (enrollmentId: string) => Promise<void>;
   saveProfile: (profile: LmsLearnerProfile) => Promise<void>;
   requestPlayback: (lessonId: string) => Promise<LmsPlaybackToken>;
@@ -61,12 +57,18 @@ interface LmsContextValue {
 
 const LmsContext = createContext<LmsContextValue | null>(null);
 
-function initialLearner(): LearnerStateKey {
-  const candidate = new URLSearchParams(window.location.search).get('learner');
-  return learnerStateKeys.includes(candidate as LearnerStateKey)
-    ? (candidate as LearnerStateKey)
-    : 'fresh';
-}
+/**
+ * M-10. This used to be initialLearner(), which read ?learner= off the URL and
+ * let anyone view another synthetic learner's state by editing the address bar.
+ *
+ * It is a constant now, and it is inert: every supabaseProvider method that
+ * takes a learner key ignores it (they are all `_learnerId` or omit the
+ * parameter) and scopes to auth.uid() instead, so the deployed app never read
+ * this value. It survives only because the LmsProvider interface — frozen —
+ * still declares the parameter. mockProvider is the only implementation that
+ * honours it, which is why tests bind their own scope.
+ */
+const LEARNER_SCOPE: LearnerStateKey = 'fresh';
 
 export function LmsProvider({
   children,
@@ -100,8 +102,6 @@ function AuthenticatedLmsProvider({
 }) {
   const { logout } = useAuth();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [learners, setLearners] = useState<LearnerSummary[]>([]);
-  const [selectedLearner, setSelectedLearner] = useState<LearnerStateKey>(initialLearner);
   const [snapshot, setSnapshot] = useState<LearnerSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<'denied' | 'unavailable' | null>(null);
@@ -147,23 +147,18 @@ function AuthenticatedLmsProvider({
       setLoading(true);
       setLoadError(null);
       try {
-        const [nextCatalog, nextLearners] = await Promise.all([
+        // M-10: this was Promise.all([getCatalog, listLearners]) and *then*
+        // getLearnerSnapshot, two sequential waves, because the snapshot call
+        // needed an id that only listLearners could supply. With the switcher
+        // gone the id is a constant, so the two independent reads collapse
+        // into the single wave refreshLearnerAccess already uses. Strictly
+        // fewer requests; no read is newly ordered against another.
+        const [nextCatalog, nextSnapshot] = await Promise.all([
           provider.getCatalog(),
-          provider.listLearners(),
+          provider.getLearnerSnapshot(LEARNER_SCOPE),
         ]);
-        const nextLearner = nextLearners.some(
-          (learner) => learner.id === selectedLearner,
-        )
-          ? selectedLearner
-          : nextLearners[0]?.id;
-        if (!nextLearner) {
-          throw new Error('No learner profile is available.');
-        }
-        const nextSnapshot = await provider.getLearnerSnapshot(nextLearner);
         if (!active) return;
         setCatalog(nextCatalog);
-        setLearners(nextLearners);
-        setSelectedLearner(nextLearner);
         setSnapshot(nextSnapshot);
       } catch (error) {
         if (!active) return;
@@ -181,52 +176,43 @@ function AuthenticatedLmsProvider({
     };
   }, [provider, reloadKey]);
 
-  const selectLearner = useCallback((learner: LearnerStateKey) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('learner', learner);
-    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-    setSelectedLearner(learner);
-    setSnapshot(null);
-    void loadSnapshot(learner).catch(() => undefined);
-  }, [loadSnapshot]);
-
   const acceptTerms = useCallback(
     async (enrollmentId: string) => {
       await runMutationLifecycle({
         mutate: () => provider.acceptTerms(enrollmentId),
         // Terms and prerequisites affect which catalog rows RLS exposes.
-        refresh: () => refreshLearnerAccess(selectedLearner),
+        refresh: () => refreshLearnerAccess(LEARNER_SCOPE),
         onMutationSuccess: () => setMutationNotice({ kind: 'success', message: 'Terms accepted.' }),
         onMutationFailure: () => setMutationNotice({ kind: 'error', message: 'Terms acceptance failed. No change was confirmed.' }),
         onRefreshFailure: () => setMutationNotice({
           kind: 'warning',
           message: 'Terms were accepted, but updated access could not be loaded. Your current view is still shown.',
-          retry: () => void refreshLearnerAccess(selectedLearner)
+          retry: () => void refreshLearnerAccess(LEARNER_SCOPE)
             .then(() => setMutationNotice(null))
             .catch(() => undefined),
         }),
       });
     },
-    [provider, refreshLearnerAccess, selectedLearner],
+    [provider, refreshLearnerAccess],
   );
 
   const saveProfile = useCallback(
     async (profile: LmsLearnerProfile) => {
       await runMutationLifecycle({
         mutate: () => provider.updateProfile(profile),
-        refresh: () => loadSnapshot(selectedLearner),
+        refresh: () => loadSnapshot(LEARNER_SCOPE),
         onMutationSuccess: () => setMutationNotice({ kind: 'success', message: 'Account details saved.' }),
         onMutationFailure: () => setMutationNotice({ kind: 'error', message: 'Account details could not be saved. No change was confirmed.' }),
         onRefreshFailure: () => setMutationNotice({
           kind: 'warning',
           message: 'Account details were saved, but refreshed learner data could not be loaded. Your current view is still shown.',
-          retry: () => void loadSnapshot(selectedLearner)
+          retry: () => void loadSnapshot(LEARNER_SCOPE)
             .then(() => setMutationNotice(null))
             .catch(() => undefined),
         }),
       });
     },
-    [loadSnapshot, provider, selectedLearner],
+    [loadSnapshot, provider],
   );
 
   const applyProgress = useCallback((progress: LmsLessonProgress) => {
@@ -243,13 +229,13 @@ function AuthenticatedLmsProvider({
   }, []);
 
   const requestPlayback = useCallback(
-    (lessonId: string) => provider.getPlaybackToken(lessonId, selectedLearner),
-    [provider, selectedLearner],
+    (lessonId: string) => provider.getPlaybackToken(lessonId, LEARNER_SCOPE),
+    [provider],
   );
 
   const requestResource = useCallback(
-    (resourceId: string) => provider.getResourceToken(resourceId, selectedLearner),
-    [provider, selectedLearner],
+    (resourceId: string) => provider.getResourceToken(resourceId, LEARNER_SCOPE),
+    [provider],
   );
 
   const recordHeartbeat = useCallback(
@@ -258,39 +244,39 @@ function AuthenticatedLmsProvider({
         mutate: () => provider.recordHeartbeat(
           lessonId,
           positionSeconds,
-          selectedLearner,
+          LEARNER_SCOPE,
         ),
         refresh: async (progress) => applyProgress(progress),
       });
     },
-    [applyProgress, provider, selectedLearner],
+    [applyProgress, provider],
   );
 
   const completeReading = useCallback(
     async (lessonId: string) => {
       return runMutationLifecycle({
-        mutate: () => provider.completeReading(lessonId, selectedLearner),
+        mutate: () => provider.completeReading(lessonId, LEARNER_SCOPE),
         refresh: async (progress) => applyProgress(progress),
         onMutationSuccess: () => setMutationNotice({ kind: 'success', message: 'Reading marked complete.' }),
         onMutationFailure: () => setMutationNotice({ kind: 'error', message: 'Reading completion could not be saved. No change was confirmed.' }),
       });
     },
-    [applyProgress, provider, selectedLearner],
+    [applyProgress, provider],
   );
 
   const loadQuiz = useCallback(
-    (quizId: string) => provider.getQuiz(quizId, selectedLearner),
-    [provider, selectedLearner],
+    (quizId: string) => provider.getQuiz(quizId, LEARNER_SCOPE),
+    [provider],
   );
 
   const submitQuiz = useCallback(
     async (quizId: string, answers: LmsQuizAnswers) => {
       return runMutationLifecycle({
-        mutate: () => provider.gradeQuiz(quizId, answers, selectedLearner),
+        mutate: () => provider.gradeQuiz(quizId, answers, LEARNER_SCOPE),
         refresh: (result) => result.completion_fired
           // A completion event can expose a prerequisite-gated course through RLS.
-          ? refreshLearnerAccess(selectedLearner)
-          : loadSnapshot(selectedLearner),
+          ? refreshLearnerAccess(LEARNER_SCOPE)
+          : loadSnapshot(LEARNER_SCOPE),
         onMutationFailure: () => setMutationNotice({
           kind: 'error',
           message: 'Quiz submission failed. Your selections remain on this page so you can try again.',
@@ -299,14 +285,14 @@ function AuthenticatedLmsProvider({
           kind: 'warning',
           message: 'The quiz was graded, but updated progress could not be loaded. Your current view and result are still shown.',
           retry: () => void (result.completion_fired
-            ? refreshLearnerAccess(selectedLearner)
-            : loadSnapshot(selectedLearner))
+            ? refreshLearnerAccess(LEARNER_SCOPE)
+            : loadSnapshot(LEARNER_SCOPE))
             .then(() => setMutationNotice(null))
             .catch(() => undefined),
         }),
       });
     },
-    [loadSnapshot, provider, refreshLearnerAccess, selectedLearner],
+    [loadSnapshot, provider, refreshLearnerAccess],
   );
 
   const value = useMemo(
@@ -314,11 +300,8 @@ function AuthenticatedLmsProvider({
       catalog && snapshot
         ? {
             catalog,
-            learners,
             snapshot,
-            selectedLearner,
             loading,
-            selectLearner,
             acceptTerms,
             saveProfile,
             requestPlayback,
@@ -332,7 +315,6 @@ function AuthenticatedLmsProvider({
     [
       acceptTerms,
       catalog,
-      learners,
       loading,
       completeReading,
       loadQuiz,
@@ -340,8 +322,6 @@ function AuthenticatedLmsProvider({
       requestPlayback,
       requestResource,
       saveProfile,
-      selectedLearner,
-      selectLearner,
       snapshot,
       submitQuiz,
     ],
@@ -388,13 +368,9 @@ function AuthenticatedLmsProvider({
       );
     }
 
-    return (
-      <div className="grid min-h-dvh place-items-center bg-dacfp-wash px-6">
-        <p className="text-sm font-semibold text-dacfp-navy" role="status">
-          Loading the learning portal…
-        </p>
-      </div>
-    );
+    // brief #15: boot skeleton. This was one centred line of text, which on a
+    // slow connection is indistinguishable from a stalled page.
+    return <BootSkeleton />;
   }
 
   return (

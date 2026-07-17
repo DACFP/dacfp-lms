@@ -2,7 +2,6 @@ import type {
   Catalog,
   LearnerSnapshot,
   LearnerStateKey,
-  LearnerSummary,
   LessonView,
   LmsEnrollment,
   LmsLessonProgress,
@@ -59,7 +58,10 @@ export function isLmsAccessDenied(error: unknown): boolean {
 }
 
 export interface LmsProvider {
-  listLearners(): Promise<LearnerSummary[]>;
+  // M-10: listLearners() removed. It existed only to populate a learner-state
+  // switcher in the learner app. In production supabaseProvider.listLearners()
+  // returned exactly one summary — the caller's own — so the switcher never
+  // rendered and the call was a wasted round trip on every boot.
   getCatalog(): Promise<Catalog>;
   getLearnerSnapshot(learnerId: LearnerStateKey): Promise<LearnerSnapshot>;
   getModuleView(courseSlug: string, position: number): Promise<ModuleView | null>;
