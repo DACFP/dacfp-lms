@@ -479,6 +479,15 @@ export const mockProvider: LmsProvider = {
       max_watched_seconds: progress?.max_watched_seconds ?? 0,
     };
   },
+  async getResourceToken(resourceId) {
+    const resource = resources.find((item) => item.id === resourceId);
+    if (!resource) throw new Error('Synthetic resource not found.');
+    return {
+      url: resource.file_ref,
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      title: resource.title,
+    };
+  },
   async recordHeartbeat(lessonId, positionSeconds, learnerId) {
     const { lesson, enrollment } = progressTarget(learnerId, lessonId);
     if (lesson.kind !== 'video' || !lesson.duration_seconds) {

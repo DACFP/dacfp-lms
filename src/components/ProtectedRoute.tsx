@@ -29,5 +29,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     );
   }
 
+  if (session.user.role === 'operator') return <Navigate replace to="/admin" />;
+
   return children;
 }

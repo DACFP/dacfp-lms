@@ -6,11 +6,13 @@ import type {
   LmsAuthResult,
   LmsAuthSession,
   LmsAuthRole,
+  LmsAdminProvider,
   LmsPlaybackToken,
   LmsProvider,
   LmsQuizAnswers,
   LmsQuizGradeResult,
   LmsQuizPayload,
+  LmsResourceToken,
 } from './provider';
 import type {
   Catalog,
@@ -349,6 +351,23 @@ const contentProvider: LmsProvider = {
     return data as LmsPlaybackToken;
   },
 
+  async getResourceToken(resourceId) {
+    const { data, error } = await getClient().functions.invoke(
+      'lms-resource-token',
+      { body: { resource_id: resourceId } },
+    );
+    if (
+      error ||
+      !data ||
+      typeof data.url !== 'string' ||
+      typeof data.expires_at !== 'string' ||
+      typeof data.title !== 'string'
+    ) {
+      throw dataError(error, 'Unable to download this resource.');
+    }
+    return data as LmsResourceToken;
+  },
+
   async recordHeartbeat(lessonId, positionSeconds) {
     const { data, error } = await getClient().functions.invoke('lms-progress', {
       body: {
@@ -409,7 +428,7 @@ const contentProvider: LmsProvider = {
   },
 };
 
-export const supabaseProvider: LmsProvider & LmsAuthProvider = {
+export const supabaseProvider: LmsProvider & LmsAuthProvider & LmsAdminProvider = {
   ...contentProvider,
   async getSession() {
     try {
@@ -491,5 +510,15 @@ export const supabaseProvider: LmsProvider & LmsAuthProvider = {
     } catch {
       return result(false, GENERIC_PASSWORD_ERROR);
     }
+  },
+
+  async adminRequest<T>(action: string, payload: Record<string, unknown> = {}) {
+    const { data, error } = await getClient().functions.invoke('lms-admin', {
+      body: { action, payload },
+    });
+    if (error || !data || !Object.prototype.hasOwnProperty.call(data, 'data')) {
+      throw dataError(error, 'Unable to complete this admin request.');
+    }
+    return data.data as T;
   },
 };

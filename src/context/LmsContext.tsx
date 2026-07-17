@@ -16,6 +16,7 @@ import type {
   LmsQuizAnswers,
   LmsQuizGradeResult,
   LmsQuizPayload,
+  LmsResourceToken,
 } from '../data/provider';
 import { isLmsAccessDenied } from '../data/provider';
 import { supabaseProvider } from '../data/supabaseProvider';
@@ -39,6 +40,7 @@ interface LmsContextValue {
   acceptTerms: (enrollmentId: string) => Promise<void>;
   saveProfile: (profile: LmsLearnerProfile) => Promise<void>;
   requestPlayback: (lessonId: string) => Promise<LmsPlaybackToken>;
+  requestResource: (resourceId: string) => Promise<LmsResourceToken>;
   recordHeartbeat: (
     lessonId: string,
     positionSeconds: number,
@@ -69,7 +71,10 @@ export function LmsProvider({
 }) {
   const { session, loading: authLoading } = useAuth();
   const location = useLocation();
-  const publicRoute = location.pathname === '/login' || location.pathname === '/reset';
+  const publicRoute =
+    location.pathname === '/login' ||
+    location.pathname === '/reset' ||
+    location.pathname.startsWith('/admin');
 
   if (publicRoute || authLoading || !session) return <>{children}</>;
 
@@ -216,6 +221,11 @@ function AuthenticatedLmsProvider({
     [provider, selectedLearner],
   );
 
+  const requestResource = useCallback(
+    (resourceId: string) => provider.getResourceToken(resourceId, selectedLearner),
+    [provider, selectedLearner],
+  );
+
   const recordHeartbeat = useCallback(
     async (lessonId: string, positionSeconds: number) => {
       const progress = await provider.recordHeartbeat(
@@ -270,6 +280,7 @@ function AuthenticatedLmsProvider({
             acceptTerms,
             saveProfile,
             requestPlayback,
+            requestResource,
             recordHeartbeat,
             completeReading,
             loadQuiz,
@@ -285,6 +296,7 @@ function AuthenticatedLmsProvider({
       loadQuiz,
       recordHeartbeat,
       requestPlayback,
+      requestResource,
       saveProfile,
       selectedLearner,
       selectLearner,

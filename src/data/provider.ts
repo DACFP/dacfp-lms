@@ -17,6 +17,12 @@ export interface LmsPlaybackToken {
   max_watched_seconds: number;
 }
 
+export interface LmsResourceToken {
+  url: string;
+  expires_at: string;
+  title: string;
+}
+
 export type LmsQuizAnswers = Record<string, string[]>;
 
 export interface LmsQuizPayload {
@@ -64,6 +70,10 @@ export interface LmsProvider {
     lessonId: string,
     learnerId: LearnerStateKey,
   ): Promise<LmsPlaybackToken>;
+  getResourceToken(
+    resourceId: string,
+    learnerId: LearnerStateKey,
+  ): Promise<LmsResourceToken>;
   recordHeartbeat(
     lessonId: string,
     positionSeconds: number,
@@ -82,6 +92,13 @@ export interface LmsProvider {
     answers: LmsQuizAnswers,
     learnerId: LearnerStateKey,
   ): Promise<LmsQuizGradeResult>;
+}
+
+export interface LmsAdminProvider {
+  adminRequest<T>(
+    action: string,
+    payload?: Record<string, unknown>,
+  ): Promise<T>;
 }
 
 export type LmsAuthRole = 'learner' | 'operator' | null;
