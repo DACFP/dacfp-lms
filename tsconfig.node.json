@@ -2,7 +2,10 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "target": "ES2023",
-    "lib": ["ES2023"],
+    // DOM is type-only here: it supplies URL and ImportMeta.url for the "@"
+    // alias in vite.config.ts. Both exist in the Node runtime that executes
+    // the config; this avoids taking on @types/node just for path resolution.
+    "lib": ["ES2023", "DOM"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "Bundler",

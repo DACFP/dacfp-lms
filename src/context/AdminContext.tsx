@@ -108,12 +108,12 @@ export function AdminProvider({
       <main className="grid min-h-dvh place-items-center bg-dacfp-wash px-5">
         <section className="card w-full max-w-lg p-7 text-center" role={error ? 'alert' : 'status'}>
           <p className="eyebrow">Operator console</p>
-          <h1 className="mt-2 text-2xl font-bold text-brand-navy">
+          <h1 className="mt-2 text-2xl font-bold text-dacfp-navy">
             {error ? 'Admin data unavailable' : 'Loading admin workspace…'}
           </h1>
           {error ? (
             <>
-              <p className="mt-3 text-sm leading-6 text-dacfp-slate">{error}</p>
+              <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">{error}</p>
               <button className="button-primary mt-5" onClick={() => void refresh().catch(() => undefined)} type="button">Retry</button>
             </>
           ) : null}

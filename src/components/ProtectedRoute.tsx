@@ -10,8 +10,8 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return (
       <main className="grid min-h-dvh place-items-center bg-dacfp-wash px-6">
         <div className="text-center" role="status" aria-live="polite">
-          <div className="mx-auto size-9 animate-spin rounded-full border-4 border-dacfp-line border-t-brand-royal motion-reduce:animate-none" />
-          <p className="mt-4 text-sm font-bold text-brand-navy">
+          <div className="mx-auto size-9 animate-spin rounded-full border-4 border-dacfp-line border-t-dacfp-blue motion-reduce:animate-none" />
+          <p className="mt-4 text-sm font-bold text-dacfp-navy">
             Checking your secure session…
           </p>
         </div>

@@ -7,6 +7,8 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import { IconTile } from '../components/IconTile';
+import { LockedBadge } from '../components/LockedBadge';
 import { SecureResourceLink } from '../components/SecureResourceLink';
 import { EmptyState, PageHeader, StatusPill, learnerPath } from '../components/common';
 import { useLms } from '../context/LmsContext';
@@ -72,9 +74,15 @@ export function ModulePage() {
             : 'Sequential progression: complete each required lesson, then pass the module quiz with 70% or higher.'
         }
         action={
-          <StatusPill tone={passed ? 'positive' : contentAccessible ? 'neutral' : 'warning'}>
-            {passed ? 'Passed' : accessState === 'expired' ? 'Access expired' : contentAccessible ? 'Available' : 'Locked'}
-          </StatusPill>
+          passed ? (
+            <StatusPill tone="positive">Passed</StatusPill>
+          ) : accessState === 'expired' ? (
+            <StatusPill tone="warning">Access expired</StatusPill>
+          ) : contentAccessible ? (
+            <StatusPill tone="neutral">Available</StatusPill>
+          ) : (
+            <LockedBadge reason={`Module ${module.position} is not open yet. Pass the previous module quiz, or accept the course terms, to unlock it.`} />
+          )
         }
       />
 
@@ -82,15 +90,15 @@ export function ModulePage() {
         <section aria-labelledby="lesson-list-heading" className="space-y-4">
           <div>
             <p className="eyebrow">Module content</p>
-            <h2 id="lesson-list-heading" className="mt-1 text-2xl font-bold text-brand-navy">Lessons and resources</h2>
+            <h2 id="lesson-list-heading" className="mt-1 text-2xl font-bold text-dacfp-navy">Lessons and resources</h2>
           </div>
 
           {!contentAccessible ? (
             <div className="card flex gap-4 p-6">
-              <LockKeyhole className="mt-0.5 shrink-0 text-brand-gold" aria-hidden="true" size={22} />
+              <LockKeyhole className="mt-0.5 shrink-0 text-dacfp-gold size-icon-lg" aria-hidden="true" />
               <div>
-                <h3 className="font-bold text-brand-navy">Content is not available yet</h3>
-                <p className="mt-1 text-sm leading-6 text-dacfp-slate">
+                <h3 className="font-bold text-dacfp-navy">Content is not available yet</h3>
+                <p className="mt-1 text-sm leading-6 text-dacfp-gray-text">
                   {!courseIsUnlocked
                     ? 'Complete FPT to unlock this bonus curriculum.'
                     : accessState === 'expired'
@@ -121,15 +129,17 @@ export function ModulePage() {
               return (
                 <li key={lesson.id} className="card overflow-hidden">
                   <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-                    <div className={`grid size-11 shrink-0 place-items-center rounded-xl ${complete ? 'bg-status-positive/10 text-status-positive' : 'bg-dacfp-wash-blue text-brand-royal'}`}>
-                      {complete ? <CheckCircle2 aria-hidden="true" size={21} /> : lesson.kind === 'video' ? <PlayCircle aria-hidden="true" size={21} /> : <FileText aria-hidden="true" size={21} />}
-                    </div>
+                    <IconTile
+                      icon={complete ? CheckCircle2 : lesson.kind === 'video' ? PlayCircle : FileText}
+                      size="md"
+                      tone={complete ? 'positive' : 'brand'}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-bold text-brand-navy">{lesson.position}. {lesson.title}</h3>
+                        <h3 className="font-bold text-dacfp-navy">{lesson.position}. {lesson.title}</h3>
                         {!lesson.is_required ? <StatusPill tone="neutral">Optional</StatusPill> : null}
                       </div>
-                      <p className="mt-1 text-sm text-dacfp-slate">
+                      <p className="mt-1 text-sm text-dacfp-gray-text">
                         {lesson.kind === 'video' ? `${Math.round((lesson.duration_seconds ?? 0) / 60)} min compliance video · 1×` : 'Reading'}
                       </p>
                     </div>
@@ -138,25 +148,29 @@ export function ModulePage() {
                         {complete ? 'Review' : 'Open'}
                       </Link>
                     ) : (
-                      <span className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 text-sm font-bold text-dacfp-slate" aria-disabled="true">
-                        <LockKeyhole size={15} aria-hidden="true" /> Locked
-                      </span>
+                      // A badge, not a button-shaped span with aria-disabled:
+                      // there is no action here, so it should not wear an
+                      // action's clothes.
+                      <LockedBadge
+                        className="shrink-0 self-start sm:self-auto"
+                        reason={`${lesson.title} opens once this module is available to you.`}
+                      />
                     )}
                   </div>
                   {lessonResources.length > 0 ? (
                     <div className="border-t border-dacfp-line bg-dacfp-wash px-5 py-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-dacfp-slate">Resources</p>
+                      <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">Resources</p>
                       <ul className="mt-2 space-y-2">
                         {lessonResources.map((resource) => (
                           <li key={resource.id}>
                             {contentAccessible ? (
                               <SecureResourceLink
-                                className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-royal hover:underline"
+                                className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-dacfp-blue hover:underline"
                                 resource={resource}
                               />
                             ) : (
-                              <span className="inline-flex min-h-11 items-center gap-2 text-sm text-dacfp-slate">
-                                <LockKeyhole size={15} aria-hidden="true" />
+                              <span className="inline-flex min-h-11 items-center gap-2 text-sm text-dacfp-gray-text">
+                                <LockKeyhole className="size-icon-sm" aria-hidden="true" />
                                 {resource.title}
                               </span>
                             )}
@@ -172,11 +186,11 @@ export function ModulePage() {
           )}
 
           {quiz ? (
-            <div className="card flex flex-col gap-5 border-l-4 border-l-brand-gold p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="card flex flex-col gap-5 border-l-4 border-l-dacfp-gold p-6 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="eyebrow">Module quiz</p>
-                <h2 className="mt-1 text-lg font-bold text-brand-navy">{quiz.question_count} questions · {quiz.pass_pct}% to pass</h2>
-                <p className="mt-1 text-sm text-dacfp-slate">Unlimited attempts. No cumulative exam.</p>
+                <h2 className="mt-1 text-lg font-bold text-dacfp-navy">{quiz.question_count} questions · {quiz.pass_pct}% to pass</h2>
+                <p className="mt-1 text-sm text-dacfp-gray-text">Unlimited attempts. No cumulative exam.</p>
               </div>
               {canAttemptQuiz && contentAccessible ? (
                 <Link
@@ -187,18 +201,18 @@ export function ModulePage() {
                 </Link>
               ) : (
                 <span
-                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-slate opacity-70"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-dacfp-wash px-4 py-2.5 text-sm font-bold text-dacfp-gray-text opacity-70"
                   aria-disabled="true"
                 >
-                  <LockKeyhole size={16} aria-hidden="true" />
+                  <LockKeyhole className="size-icon-sm" aria-hidden="true" />
                   {contentAccessible ? 'Complete required lessons' : 'Quiz unavailable'}
                 </span>
               )}
             </div>
           ) : (
             <div className="card p-6">
-              <h2 className="font-bold text-brand-navy">No quiz for this module</h2>
-              <p className="mt-1 text-sm leading-6 text-dacfp-slate">This open-course module passes when all required lessons are complete.</p>
+              <h2 className="font-bold text-dacfp-navy">No quiz for this module</h2>
+              <p className="mt-1 text-sm leading-6 text-dacfp-gray-text">This open-course module passes when all required lessons are complete.</p>
             </div>
           )}
         </section>
@@ -214,11 +228,11 @@ export function ModulePage() {
               const outlineContent = (
                 <>
                   {itemPassed ? (
-                    <CheckCircle2 size={17} aria-hidden="true" />
+                    <CheckCircle2 className="size-icon-sm" aria-hidden="true" />
                   ) : outlineAvailable ? (
-                    <Circle size={17} aria-hidden="true" />
+                    <Circle className="size-icon-sm" aria-hidden="true" />
                   ) : (
-                    <LockKeyhole size={17} aria-hidden="true" />
+                    <LockKeyhole className="size-icon-sm" aria-hidden="true" />
                   )}
                   <span className="min-w-0 flex-1">Module {item.position}: {item.title}</span>
                   <span className="text-xs opacity-75">
@@ -232,13 +246,13 @@ export function ModulePage() {
                     <Link
                       to={learnerPath(`/course/${course.slug}/module/${item.position}`, selectedLearner)}
                       aria-current={active ? 'page' : undefined}
-                      className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-brand-navy text-white' : 'text-brand-navy hover:bg-dacfp-wash-blue'}`}
+                      className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-dacfp-navy text-white' : 'text-dacfp-navy hover:bg-dacfp-wash-blue'}`}
                     >
                       {outlineContent}
                     </Link>
                   ) : (
                     <span
-                      className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-dacfp-wash-blue text-brand-navy' : 'text-dacfp-mist'}`}
+                      className={`flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${active ? 'bg-dacfp-wash-blue text-dacfp-navy' : 'text-dacfp-gray-text'}`}
                       aria-disabled="true"
                     >
                       {outlineContent}
@@ -248,14 +262,14 @@ export function ModulePage() {
               );
             })}
           </ol>
-          <p className="mt-4 border-t border-dacfp-line px-2 pt-4 text-xs leading-5 text-dacfp-slate">
+          <p className="mt-4 border-t border-dacfp-line px-2 pt-4 text-xs leading-5 text-dacfp-gray-text">
             Current module logic is derived from lesson progress and passed attempts.
           </p>
         </aside>
       </div>
 
       <Link className="button-quiet" to={learnerPath('/dashboard', selectedLearner)}>
-        <ChevronLeft size={17} aria-hidden="true" /> Back to dashboard
+        <ChevronLeft className="size-icon-sm" aria-hidden="true" /> Back to dashboard
       </Link>
     </div>
   );

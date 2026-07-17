@@ -1,13 +1,16 @@
 import {
   ArrowRight,
   BookOpen,
-  CheckCircle2,
   KeyRound,
   Mail,
   UserPlus,
 } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Input } from '@/components/ui/input';
+import { Alert } from '../components/Alert';
+import { Field } from '../components/Field';
+import { IconTile } from '../components/IconTile';
 import { useAuth } from '../context/AuthContext';
 
 function AuthShell({
@@ -23,21 +26,20 @@ function AuthShell({
 }) {
   return (
     <main className="grid min-h-dvh bg-dacfp-wash lg:grid-cols-[minmax(20rem,0.9fr)_minmax(28rem,1.1fr)]">
-      <section className="relative hidden overflow-hidden bg-gradient-to-br from-brand-navy to-brand-navy-deep p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-brand-royal via-brand-royal-bright to-brand-gold" />
+      <section className="on-navy relative hidden overflow-hidden bg-dacfp-navy p-12 text-white lg:flex lg:flex-col lg:justify-between">
+        <div className="brand-strip absolute inset-x-0 top-0 h-1.5" />
         <div className="flex items-center gap-3">
-          <div className="grid size-12 place-items-center rounded-xl border border-white/20 bg-white/10">
-            <BookOpen size={24} aria-hidden="true" />
-          </div>
+          <IconTile icon={BookOpen} size="lg" tone="on-navy" />
           <div>
             <p className="text-xl font-bold">DACFP</p>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/65">
+            <p className="text-xs font-bold uppercase tracking-eyebrow text-white/65">
               Learning portal
             </p>
           </div>
         </div>
-        <div className="max-w-lg">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-gold">
+        <div className="max-w-form">
+          {/* gold-hi, not raw gold: this is text on a navy ground (8.30:1). */}
+          <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">
             Dark-build preview
           </p>
           <p className="mt-4 text-4xl font-bold leading-tight">
@@ -47,28 +49,26 @@ function AuthShell({
             Sandbox authentication protects synthetic learner content, progress, and quiz attempts end to end.
           </p>
         </div>
-        <p className="text-sm text-white/55">
+        <p className="text-sm text-white/70">
           Learning access and designation status are managed separately.
         </p>
       </section>
       <section className="flex items-center justify-center px-5 py-12 sm:px-8">
-        <div className="w-full max-w-lg">
+        <div className="w-full max-w-form">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="grid size-11 place-items-center rounded-xl bg-brand-navy text-white">
-              <BookOpen size={22} aria-hidden="true" />
-            </div>
+            <IconTile icon={BookOpen} size="md" tone="brand" />
             <div>
-              <p className="font-bold text-brand-navy">DACFP</p>
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-dacfp-slate">
+              <p className="font-bold text-dacfp-navy">DACFP</p>
+              <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
                 Learning portal
               </p>
             </div>
           </div>
           <p className="eyebrow">{eyebrow}</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-brand-navy sm:text-4xl">
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-dacfp-navy sm:text-4xl">
             {title}
           </h1>
-          <p className="mt-3 leading-7 text-dacfp-slate">{description}</p>
+          <p className="mt-3 leading-7 text-dacfp-gray-text">{description}</p>
           <div className="card mt-8 p-6 sm:p-8">{children}</div>
         </div>
       </section>
@@ -127,21 +127,27 @@ export function LoginPage() {
       title={mode === 'login' ? 'Sign in to continue' : 'Create your learner account'}
       description="Sandbox authentication protects learner access. Sign-in failures use one generic response to prevent account enumeration."
     >
-      <div className="mb-6 grid grid-cols-2 rounded-lg bg-dacfp-wash p-1" role="tablist" aria-label="Authentication mode">
+      {/*
+        brief #12. This was role="tablist" + role="tab" + aria-selected with no
+        tabpanel, no aria-controls and no roving tabindex — a tab pattern that
+        announced itself as tabs and then behaved like nothing. Both modes drive
+        one shared <form>, so real tabpanels would mean duplicating that form;
+        these are the brief's other sanctioned option, plain buttons, which can
+        describe themselves honestly via aria-pressed.
+      */}
+      <div className="mb-6 grid grid-cols-2 rounded-lg bg-dacfp-wash p-1" role="group" aria-label="Authentication mode">
         <button
-          className={`min-h-11 rounded-md px-3 text-sm font-bold ${mode === 'login' ? 'bg-white text-brand-navy shadow-sm' : 'text-dacfp-slate'}`}
+          className={`min-h-11 rounded-md px-3 text-sm font-bold ${mode === 'login' ? 'bg-white text-dacfp-navy shadow-sm' : 'text-dacfp-gray-text'}`}
           type="button"
-          role="tab"
-          aria-selected={mode === 'login'}
+          aria-pressed={mode === 'login'}
           onClick={() => changeMode('login')}
         >
           Sign in
         </button>
         <button
-          className={`min-h-11 rounded-md px-3 text-sm font-bold ${mode === 'signup' ? 'bg-white text-brand-navy shadow-sm' : 'text-dacfp-slate'}`}
+          className={`min-h-11 rounded-md px-3 text-sm font-bold ${mode === 'signup' ? 'bg-white text-dacfp-navy shadow-sm' : 'text-dacfp-gray-text'}`}
           type="button"
-          role="tab"
-          aria-selected={mode === 'signup'}
+          aria-pressed={mode === 'signup'}
           onClick={() => changeMode('signup')}
         >
           Create account
@@ -150,21 +156,17 @@ export function LoginPage() {
 
       <form onSubmit={(event) => void submit(event)} className="space-y-5">
         {mode === 'signup' ? (
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-brand-navy">Full name</span>
-            <input
-              className="field"
+          <Field label="Full name">
+            <Input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               autoComplete="name"
               required
             />
-          </label>
+          </Field>
         ) : null}
-        <label className="block">
-          <span className="mb-2 block text-sm font-bold text-brand-navy">Email</span>
-          <input
-            className="field"
+        <Field label="Email">
+          <Input
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -172,35 +174,27 @@ export function LoginPage() {
             required
             placeholder="you@example.test"
           />
-        </label>
-        <label className="block">
-          <span className="mb-2 block text-sm font-bold text-brand-navy">Password</span>
-          <input
-            className="field"
+        </Field>
+        <Field
+          label="Password"
+          hint={
+            mode === 'signup'
+              ? 'Use at least 8 characters and avoid a password exposed in another service.'
+              : undefined
+          }
+        >
+          <Input
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             minLength={8}
             required
-            aria-describedby={mode === 'signup' ? 'password-help' : undefined}
           />
-          {mode === 'signup' ? (
-            <span id="password-help" className="mt-2 block text-xs leading-5 text-dacfp-slate">
-              Use at least 8 characters and avoid a password exposed in another service.
-            </span>
-          ) : null}
-        </label>
-        {message ? (
-          <p
-            className={`rounded-lg border p-3 text-sm leading-6 ${successful ? 'border-status-positive/25 bg-status-positive/10 text-status-positive' : 'border-status-danger/25 bg-status-danger/10 text-status-danger'}`}
-            role={successful ? 'status' : 'alert'}
-          >
-            {message}
-          </p>
-        ) : null}
+        </Field>
+        {message ? <AuthMessage successful={successful} message={message} /> : null}
         <button className="button-primary w-full" type="submit" disabled={submitting}>
-          {mode === 'signup' ? <UserPlus size={17} aria-hidden="true" /> : null}
+          {mode === 'signup' ? <UserPlus className="size-icon-sm" aria-hidden="true" /> : null}
           {submitting
             ? mode === 'login'
               ? 'Signing in…'
@@ -208,11 +202,11 @@ export function LoginPage() {
             : mode === 'login'
               ? 'Sign in'
               : 'Create account'}
-          {!submitting ? <ArrowRight size={17} aria-hidden="true" /> : null}
+          {!submitting ? <ArrowRight className="size-icon-sm" aria-hidden="true" /> : null}
         </button>
       </form>
       <div className="mt-5 border-t border-dacfp-line pt-5 text-center text-sm">
-        <Link className="font-bold text-brand-royal hover:underline" to="/reset">
+        <Link className="font-bold text-dacfp-blue hover:underline" to="/reset">
           Forgot your password?
         </Link>
       </div>
@@ -264,45 +258,36 @@ export function ResetPage() {
     >
       {recoveryMode ? (
         <form onSubmit={(event) => void submitPassword(event)} className="space-y-5">
-          <div className="grid size-11 place-items-center rounded-xl bg-dacfp-wash-blue text-brand-royal">
-            <KeyRound size={22} aria-hidden="true" />
-          </div>
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-brand-navy">New password</span>
-            <input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-brand-navy">Confirm new password</span>
-            <input className="field" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
-          </label>
+          <IconTile icon={KeyRound} size="md" tone="brand" />
+          <Field label="New password">
+            <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
+          </Field>
+          <Field label="Confirm new password">
+            <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
+          </Field>
           {message ? <AuthMessage successful={successful} message={message} /> : null}
           <button className="button-primary w-full" type="submit" disabled={submitting}>
             {submitting ? 'Updating password…' : 'Update password'}
-            {!submitting ? <ArrowRight size={17} aria-hidden="true" /> : null}
+            {!submitting ? <ArrowRight className="size-icon-sm" aria-hidden="true" /> : null}
           </button>
           {successful ? <Link className="button-secondary w-full" to="/dashboard">Continue to dashboard</Link> : null}
         </form>
       ) : successful ? (
         <div role="status" className="text-center">
-          <div className="mx-auto grid size-12 place-items-center rounded-xl bg-status-positive/10 text-status-positive">
-            <Mail size={23} aria-hidden="true" />
-          </div>
-          <h2 className="mt-4 text-lg font-bold text-brand-navy">Check your email</h2>
-          <p className="mt-2 text-sm leading-6 text-dacfp-slate">{message}</p>
+          <IconTile icon={Mail} size="lg" tone="positive" className="mx-auto" />
+          <h2 className="mt-4 text-lg font-bold text-dacfp-navy">Check your email</h2>
+          <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">{message}</p>
           <Link className="button-secondary mt-6" to="/login">Return to sign in</Link>
         </div>
       ) : (
         <form onSubmit={(event) => void submitReset(event)} className="space-y-5">
-          <div className="grid size-11 place-items-center rounded-xl bg-dacfp-wash-blue text-brand-royal">
-            <KeyRound size={22} aria-hidden="true" />
-          </div>
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-brand-navy">Email</span>
-            <input className="field" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required placeholder="you@example.test" />
-          </label>
+          <IconTile icon={KeyRound} size="md" tone="brand" />
+          <Field label="Email">
+            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required placeholder="you@example.test" />
+          </Field>
           <button className="button-primary w-full" type="submit" disabled={submitting}>
             {submitting ? 'Sending…' : 'Send reset instructions'}
-            {!submitting ? <ArrowRight size={17} aria-hidden="true" /> : null}
+            {!submitting ? <ArrowRight className="size-icon-sm" aria-hidden="true" /> : null}
           </button>
           {message ? <AuthMessage successful={successful} message={message} /> : null}
           <Link className="button-quiet w-full" to="/login">Back to sign in</Link>
@@ -314,12 +299,8 @@ export function ResetPage() {
 
 function AuthMessage({ successful, message }: { successful: boolean; message: string }) {
   return (
-    <p
-      className={`flex items-start gap-2 rounded-lg border p-3 text-sm leading-6 ${successful ? 'border-status-positive/25 bg-status-positive/10 text-status-positive' : 'border-status-danger/25 bg-status-danger/10 text-status-danger'}`}
-      role={successful ? 'status' : 'alert'}
-    >
-      {successful ? <CheckCircle2 className="mt-0.5 shrink-0" size={17} aria-hidden="true" /> : null}
-      <span>{message}</span>
-    </p>
+    <Alert tone={successful ? 'positive' : 'danger'}>
+      {message}
+    </Alert>
   );
 }

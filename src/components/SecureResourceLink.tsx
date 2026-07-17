@@ -2,6 +2,7 @@ import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { useLms } from '../context/LmsContext';
 import type { LmsLessonResource } from '../data/types';
+import { Alert } from './Alert';
 
 export function SecureResourceLink({
   resource,
@@ -44,10 +45,10 @@ export function SecureResourceLink({
         }}
         aria-busy={loading}
       >
-        <Download size={16} aria-hidden="true" />
+        <Download className="size-icon-sm" aria-hidden="true" />
         <span>{loading ? 'Preparing secure download…' : resource.title}</span>
       </a>
-      {error ? <p className="mt-1 text-xs font-semibold text-status-danger" role="alert">{error}</p> : null}
+      {error ? <Alert tone="danger" className="mt-2">{error}</Alert> : null}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import type {
   LmsLessonProgress,
 } from '../data/types';
 import { allowedPlaybackRate, clampSeekTarget } from '../lib/player';
+import { Alert } from './Alert';
 import { ProgressBar } from './common';
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -283,10 +284,10 @@ export function LessonPlayer({
 
   return (
     <section aria-labelledby="player-heading" className="card overflow-hidden">
-      <div className="relative bg-brand-navy-deep">
+      <div className="relative bg-dacfp-navy">
         <video
           aria-label={`${lesson.title} video`}
-          className="aspect-video max-h-[34rem] w-full bg-brand-navy-deep"
+          className="aspect-video max-h-[34rem] w-full bg-dacfp-navy"
           controls
           controlsList={course.progression === 'sequential' ? 'nodownload noplaybackrate' : 'nodownload'}
           disablePictureInPicture
@@ -302,8 +303,8 @@ export function LessonPlayer({
           ref={videoRef}
           src={source || undefined}
         />
-        <div className="pointer-events-none absolute left-4 top-4 inline-flex min-h-8 items-center gap-2 rounded-md border border-white/20 bg-brand-navy/90 px-3 text-xs font-bold uppercase tracking-[0.12em] text-white">
-          <Gauge size={15} aria-hidden="true" />
+        <div className="pointer-events-none absolute left-4 top-4 inline-flex min-h-8 items-center gap-2 rounded-md border border-white/20 bg-dacfp-navy/90 px-3 text-xs font-bold uppercase tracking-eyebrow text-white">
+          <Gauge className="size-icon-sm" aria-hidden="true" />
           {course.progression === 'sequential'
             ? 'Required · 1× speed'
             : 'Open · flexible speed'}
@@ -312,10 +313,10 @@ export function LessonPlayer({
       <div className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="player-heading" className="font-bold text-brand-navy">
+            <h2 id="player-heading" className="font-bold text-dacfp-navy">
               Secure placeholder player
             </h2>
-            <p className="mt-1 text-sm text-dacfp-slate" role="status">
+            <p className="mt-1 text-sm text-dacfp-gray-text" role="status">
               {loading ? 'Loading signed video…' : message}
             </p>
           </div>
@@ -328,17 +329,17 @@ export function LessonPlayer({
               }}
               type="button"
             >
-              <RefreshCw size={16} aria-hidden="true" /> Retry
+              <RefreshCw className="size-icon-sm" aria-hidden="true" /> Retry
             </button>
           ) : null}
         </div>
-        {error ? <p className="mt-3 text-sm font-semibold text-status-danger" role="alert">{error}</p> : null}
+        {error ? <Alert tone="danger" className="mt-3">{error}</Alert> : null}
         <div className="mt-5">
           <ProgressBar value={watchPercent} label="Furthest point watched" />
         </div>
-        <p className="mt-3 text-sm text-dacfp-slate">
+        <p className="mt-3 text-sm text-dacfp-gray-text">
           Resume at{' '}
-          <span className="font-semibold tabular-nums text-brand-navy">
+          <span className="font-semibold tabular-nums text-dacfp-navy">
             {progress?.last_position_seconds ?? 0}s
           </span>{' '}
           · Complete at 95%
