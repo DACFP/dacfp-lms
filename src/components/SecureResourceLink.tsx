@@ -36,18 +36,18 @@ export function SecureResourceLink({
 
   return (
     <div>
-      <a
+      <button
+        type="button"
         className={className}
-        href={`/resources/${resource.id}`}
-        onClick={(event) => {
-          event.preventDefault();
+        onClick={() => {
           if (!loading) void download();
         }}
+        disabled={loading}
         aria-busy={loading}
       >
         <Download className="size-icon-sm" aria-hidden="true" />
         <span>{loading ? 'Preparing secure download…' : resource.title}</span>
-      </a>
+      </button>
       {error ? <Alert tone="danger" className="mt-2">{error}</Alert> : null}
     </div>
   );

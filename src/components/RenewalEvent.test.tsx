@@ -17,6 +17,8 @@ const course: LmsCourse = {
   created_at: '2026-01-01T00:00:00.000Z',
 };
 
+const NOW = Date.parse('2026-07-17T12:00:00.000Z');
+
 function enrollment(overrides: Partial<LmsEnrollment> = {}): LmsEnrollment {
   return {
     id: 'enrollment-renewal',
@@ -42,6 +44,7 @@ function renderEvent(props: Partial<React.ComponentProps<typeof RenewalEvent>> =
         visible
         actionable
         resumePath="/course/renewal-2026-sandbox/module/1"
+        now={NOW}
         {...props}
       />
     </MemoryRouter>,
@@ -70,6 +73,7 @@ describe('RenewalEvent — SPEC-OVERHAUL §2b', () => {
           visible
           actionable
           resumePath="/course/renewal-2026-sandbox/module/1"
+          now={NOW}
         />
       </MemoryRouter>,
     );
@@ -97,5 +101,25 @@ describe('RenewalEvent — SPEC-OVERHAUL §2b', () => {
     renderEvent({ actionable: false });
     expect(screen.queryByRole('link', { name: /Start renewal/ })).toBeNull();
     expect(screen.getByText('Not available right now')).toBeInTheDocument();
+  });
+
+  it('renders a completed renewal as reviewable instead of asking the learner to start it', () => {
+    renderEvent({ complete: true, progress: 100 });
+    expect(screen.getByText(/Renewal complete/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Review renewal/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Start renewal/ })).toBeNull();
+  });
+
+  it('names expired access instead of collapsing it into a generic unavailable state', () => {
+    renderEvent({ accessState: 'expired', actionable: false });
+    expect(screen.getByText(/Course access expired/)).toBeInTheDocument();
+    expect(screen.getByText('Access expired')).toBeInTheDocument();
+  });
+
+  it('honors opens_at and withholds the action until the renewal window opens', () => {
+    renderEvent({ window: { opens_at: '2026-08-01T12:00:00.000Z', closes_at: null } });
+    expect(screen.getByText(/Renewal access opens Aug 1, 2026/)).toBeInTheDocument();
+    expect(screen.getByText('Renewal not open yet')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });

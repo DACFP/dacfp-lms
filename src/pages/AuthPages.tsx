@@ -27,7 +27,7 @@ function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <main className="grid min-h-dvh bg-dacfp-wash lg:grid-cols-[minmax(20rem,0.9fr)_minmax(28rem,1.1fr)]">
+    <main id="main-content" tabIndex={-1} className="grid min-h-dvh bg-dacfp-wash lg:grid-cols-[minmax(20rem,0.9fr)_minmax(28rem,1.1fr)]">
       <section className="on-navy relative hidden overflow-hidden bg-dacfp-navy p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="brand-strip absolute inset-x-0 top-0 h-1.5" />
         <BrandLockup surface="navy" priority className="h-14 w-auto" />

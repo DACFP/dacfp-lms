@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminShell } from '../components/AdminShell';
 import { AdminProvider } from '../context/AdminContext';
 import type { LmsAdminProvider } from '../data/provider';
@@ -29,6 +29,7 @@ export default function AdminApp({ adminProvider }: { adminProvider?: LmsAdminPr
           <Route path="course/:id" element={<AdminCoursePage />} />
           <Route path="learners" element={<AdminLearnersPage />} />
           <Route path="audit" element={<AdminAuditPage />} />
+          <Route path="*" element={<Navigate replace to="/admin" />} />
         </Route>
       </Routes>
     </AdminProvider>

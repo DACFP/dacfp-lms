@@ -112,15 +112,33 @@ export function AdminProvider({
     });
   }, [loadAdminSnapshot, provider, refresh]);
 
+  const inspectLearner = useCallback(async (email: string) => {
+    try {
+      return await provider.adminRequest<LearnerInspection | null>('inspect_learner', { email });
+    } catch (readError) {
+      if (isLmsAccessDenied(readError)) setSessionExpired(true);
+      throw readError;
+    }
+  }, [provider]);
+
+  const exportQuestionBank = useCallback(async (moduleId: string) => {
+    try {
+      return await provider.adminRequest<QuestionBank>('export_question_bank', { module_id: moduleId });
+    } catch (readError) {
+      if (isLmsAccessDenied(readError)) setSessionExpired(true);
+      throw readError;
+    }
+  }, [provider]);
+
   const value = useMemo<AdminContextValue | null>(() => snapshot ? {
     ...snapshot,
     loading,
     error,
     refresh,
     mutate,
-    inspectLearner: (email) => provider.adminRequest<LearnerInspection | null>('inspect_learner', { email }),
-    exportQuestionBank: (moduleId) => provider.adminRequest<QuestionBank>('export_question_bank', { module_id: moduleId }),
-  } : null, [error, loading, mutate, provider, refresh, snapshot]);
+    inspectLearner,
+    exportQuestionBank,
+  } : null, [error, exportQuestionBank, inspectLearner, loading, mutate, refresh, snapshot]);
 
   if (!value) {
     // Boot failed before any snapshot loaded. If it was a denied session, the

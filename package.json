@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "tsc -b --pretty false",
+    "qa:data": "npm run qa:data:generate && npm run qa:data:verify",
+    "qa:data:generate": "node qa/scripts/generate-local-data.mjs",
+    "qa:data:verify": "node qa/scripts/verify-local-data.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -32,6 +32,7 @@ import { useAdmin } from '../context/AdminContext';
 import type { AdminEnrollment, LearnerInspection } from '../data/admin';
 import type { LmsCourse, LmsLesson, LmsModule } from '../data/types';
 import { parseQuestionBankCsv, parseQuestionBankJson, serializeQuestionBankCsv } from '../lib/adminCsv';
+import { formatClock } from '../lib/time';
 
 /**
  * Native <select> is retained rather than moving to the shadcn Select
@@ -105,7 +106,12 @@ export function AdminCoursesPage() {
       </section>
       <section aria-labelledby="catalog-heading">
         <h2 id="catalog-heading" className="text-xl font-bold text-dacfp-navy">All courses</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {catalog.courses.length === 0 ? (
+          <div className="card mt-4 p-8 text-center">
+            <h3 className="text-lg font-bold text-dacfp-navy">No courses yet</h3>
+            <p className="mt-2 text-sm text-dacfp-gray-text">Create the first draft above to begin authoring.</p>
+          </div>
+        ) : <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {catalog.courses.map((course) => (
             <article key={course.id} className="card flex flex-col p-5">
               <div className="flex items-start justify-between gap-3"><p className="eyebrow">{course.slug}</p><StatusPill tone={course.status === 'published' ? 'positive' : course.status === 'archived' ? 'warning' : 'neutral'}>{course.status}</StatusPill></div>
@@ -115,7 +121,7 @@ export function AdminCoursesPage() {
               <Link className="button-secondary mt-5" to={`/admin/course/${course.id}`}>Edit course</Link>
             </article>
           ))}
-        </div>
+        </div>}
       </section>
     </div>
   );
@@ -278,7 +284,10 @@ function bytesToBase64(buffer: ArrayBuffer) {
 }
 
 function LessonEditor({ lesson }: { lesson: LmsLesson }) {
-  const { mutate } = useAdmin();
+  const { catalog, mutate } = useAdmin();
+  const resources = catalog.resources
+    .filter((resource) => resource.lesson_id === lesson.id)
+    .sort((a, b) => a.position - b.position);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -340,6 +349,21 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
         <div className="flex items-end"><button className="button-secondary w-full sm:w-auto" type="submit"><FileUp className="size-icon-sm" aria-hidden="true" />Upload</button></div>
         <Field label="Or create a text resource" className="sm:col-span-3"><Textarea className="min-h-24" name="text_content" placeholder="Paste sandbox text content when no file is selected." /></Field>
       </form>
+      <div className="mt-4 border-t border-dacfp-line pt-4">
+        <h4 className="text-sm font-bold text-dacfp-navy">Attached resources</h4>
+        {resources.length === 0 ? (
+          <p className="mt-2 text-sm text-dacfp-gray-text">No resources attached.</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {resources.map((resource) => (
+              <li className="rounded-md bg-dacfp-wash px-3 py-2 text-sm" key={resource.id}>
+                <span className="font-semibold text-dacfp-navy">{resource.title}</span>{' '}
+                <span className="font-mono text-xs text-dacfp-gray-text">{resource.file_ref}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <div className="mt-3 space-y-2"><ErrorMessage message={error} /><SuccessMessage message={message} /></div>
     </article>
   );
@@ -350,6 +374,7 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
   const lessons = catalog.lessons.filter((lesson) => lesson.module_id === module.id).sort((a, b) => a.position - b.position);
   const [lessonTitle, setLessonTitle] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [draggingLessonId, setDraggingLessonId] = useState<string | null>(null);
 
   const reorderModules = (next: LmsModule[]) =>
     mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: next.map((item) => item.id) });
@@ -365,6 +390,17 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
     const [moved] = next.splice(source, 1);
     next.splice(target, 0, moved);
     await handleMutation(reorderModules(next));
+  };
+
+  const dropLessonBefore = async (draggedId: string, targetId: string) => {
+    if (!draggedId || draggedId === targetId) return;
+    const source = lessons.findIndex((item) => item.id === draggedId);
+    const target = lessons.findIndex((item) => item.id === targetId);
+    if (source < 0 || target < 0) return;
+    const next = [...lessons];
+    const [moved] = next.splice(source, 1);
+    next.splice(target, 0, moved);
+    await handleMutation(reorderLessons(next));
   };
 
   return (
@@ -416,8 +452,34 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
       </div>
       <div className="mt-5 space-y-3">
         {lessons.map((lesson) => (
-          <div key={lesson.id} className="space-y-2">
+          <div
+            key={lesson.id}
+            className={`space-y-2 rounded-lg ${draggingLessonId === lesson.id ? 'ring-2 ring-dacfp-blue' : ''}`}
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes('application/x-dacfp-lesson')) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void dropLessonBefore(event.dataTransfer.getData('application/x-dacfp-lesson'), lesson.id);
+            }}
+          >
             <div className="flex justify-end">
+              <button
+                type="button"
+                aria-label={`Drag to reorder ${lesson.title}`}
+                title="Drag to reorder lesson"
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('application/x-dacfp-lesson', lesson.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                  setDraggingLessonId(lesson.id);
+                }}
+                onDragEnd={() => setDraggingLessonId(null)}
+                className="mr-1 hidden size-9 shrink-0 cursor-grab place-items-center rounded-md text-dacfp-gray-text hover:bg-dacfp-wash-blue hover:text-dacfp-navy active:cursor-grabbing sm:grid"
+              >
+                <GripVertical className="size-icon-md" aria-hidden="true" />
+              </button>
               <ReorderControls
                 label={lesson.title}
                 atStart={lesson.position === 1}
@@ -441,6 +503,7 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
 export function AdminCoursePage() {
   const { id } = useParams();
   const { catalog, mutate } = useAdmin();
+  const navigate = useNavigate();
   const course = catalog.courses.find((item) => item.id === id);
   const modules = catalog.modules.filter((item) => item.course_id === id).sort((a, b) => a.position - b.position);
   const [moduleTitle, setModuleTitle] = useState('');
@@ -451,6 +514,24 @@ export function AdminCoursePage() {
       <Link className="button-quiet" to="/admin"><ArrowLeft className="size-icon-sm" aria-hidden="true" />Back to courses</Link>
       <PageHeader eyebrow={`Course editor · ${course.status}`} title={course.title} description="Manage structure, private resources, fixed-policy question banks, and publication status." />
       <CourseSettings course={course} />
+      <section className="card border-status-danger/30 p-5 sm:p-6" aria-labelledby="delete-course-heading">
+        <h2 id="delete-course-heading" className="text-xl font-bold text-dacfp-navy">Delete course</h2>
+        <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">Permanently removes this course and its modules, lessons, resources, question banks, and enrollment history.</p>
+        <ConfirmDialog
+          trigger={<button className="button-quiet mt-4 text-status-danger" type="button"><Trash2 className="size-icon-sm" aria-hidden="true" />Delete course</button>}
+          title="Delete this course?"
+          description={`"${course.title}" and all nested content and learner history will be permanently removed. This cannot be undone.`}
+          confirmLabel="Delete course"
+          onConfirm={async () => {
+            try {
+              await mutate('delete_course', { id: course.id });
+              navigate('/admin', { replace: true });
+            } catch {
+              // The shared mutation banner preserves the editor and reports failure.
+            }
+          }}
+        />
+      </section>
       <section className="space-y-4" aria-labelledby="modules-heading">
         <div><p className="eyebrow">Curriculum</p><h2 id="modules-heading" className="mt-1 text-2xl font-bold text-dacfp-navy">Modules and lessons</h2><p className="mt-2 text-sm text-dacfp-gray-text">Drag the grip handle to reorder on larger screens, or use the up/down controls on any device.</p></div>
         {modules.map((module) => <ModuleEditor key={module.id} module={module} modules={modules} />)}
@@ -536,6 +617,42 @@ function EnrollmentInspector({
         </div>
       ) : null}
 
+      <div className="mt-5 border-t border-dacfp-line pt-5">
+        <h4 className="text-sm font-bold text-dacfp-navy">Lesson progress</h4>
+        {progress.length === 0 ? (
+          <p className="mt-2 text-sm text-dacfp-gray-text">No lesson progress recorded.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {progress.map((item) => {
+              const lesson = catalog.lessons.find((candidate) => candidate.id === item.lesson_id);
+              return (
+                <li className="rounded-lg border border-dacfp-line px-3 py-2 text-sm" key={item.id}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-dacfp-navy">{lesson?.title ?? item.lesson_id}</span>
+                    <StatusPill tone={item.completed_at ? 'positive' : 'neutral'}>{item.completed_at ? 'Complete' : 'In progress'}</StatusPill>
+                  </div>
+                  <p className="mt-1 text-xs text-dacfp-gray-text">Resume {formatClock(item.last_position_seconds)} · Furthest watched {formatClock(item.max_watched_seconds)} · Updated {new Date(item.updated_at).toLocaleString()}</p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="mt-5 border-t border-dacfp-line pt-5">
+        <h4 className="text-sm font-bold text-dacfp-navy">Completion events</h4>
+        {completion ? (
+          <DetailList items={[
+            { label: 'Completed', value: formatDate(completion.completed_at) },
+            { label: 'Trigger', value: completion.trigger },
+            { label: 'Processed', value: completion.processed_at ? formatDate(completion.processed_at) : null },
+            { label: 'Designation issued', value: completion.designation_issued ? 'Yes' : 'No' },
+          ]} />
+        ) : (
+          <p className="mt-2 text-sm text-dacfp-gray-text">No completion event recorded.</p>
+        )}
+      </div>
+
       <div className="mt-5 flex flex-col gap-3 border-t border-dacfp-line pt-5 sm:flex-row sm:flex-wrap">
         <ConfirmDialog
           trigger={<button className="button-secondary" type="button"><CheckCircle2 className="size-icon-sm" aria-hidden="true" />Manual mark complete</button>}
@@ -547,8 +664,8 @@ function EnrollmentInspector({
         {quizzes.map((quiz) => (
           <ConfirmDialog
             key={quiz.id}
-            trigger={<button className="button-secondary" type="button">Reset quiz attempt history</button>}
-            title="Reset quiz attempt history?"
+            trigger={<button className="button-secondary" type="button">Reset Module {catalog.modules.find((item) => item.id === quiz.module_id)?.position ?? '?'} quiz attempts</button>}
+            title={`Reset Module ${catalog.modules.find((item) => item.id === quiz.module_id)?.position ?? '?'} quiz attempt history?`}
             description="Every recorded attempt for this quiz will be permanently removed for this learner. Their pass/fail state is recomputed from an empty history. This cannot be undone."
             confirmLabel="Reset attempts"
             onConfirm={() => onSupport('reset_attempt_history', { enrollment_id: enrollment.id, quiz_id: quiz.id })}
@@ -625,6 +742,13 @@ export function AdminAuditPage() {
   return (
     <div className="space-y-8">
       <PageHeader eyebrow="Accountability" title="Admin audit trail" description="Every admin mutation, including CRUD, import, upload, reorder, and support actions, is written by the service boundary." action={<div className="flex items-center gap-2 rounded-lg bg-status-positive/10 px-3 py-2 text-sm font-bold text-status-positive"><ShieldCheck className="size-icon-md" aria-hidden="true" />{audit.length} recent actions</div>} />
+
+      {audit.length === 0 ? (
+        <div className="card p-8 text-center">
+          <h2 className="text-lg font-bold text-dacfp-navy">No admin actions yet</h2>
+          <p className="mt-2 text-sm text-dacfp-gray-text">Audited mutations will appear here after the first authoring or support action.</p>
+        </div>
+      ) : null}
 
       {/* brief #21: a real table at md and up; card-per-row below it, because a
           4-column table does not survive 375px. Same data, two presentations. */}

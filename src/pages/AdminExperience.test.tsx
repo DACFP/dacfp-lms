@@ -66,9 +66,26 @@ const inspection: LearnerInspection = {
       lms_courses: { id: 'course-fpt', slug: 'fpt-sandbox', title: 'FPT Sandbox', ce_credits: 18 },
     },
   ],
-  progress: [],
+  progress: [{
+    id: 'progress-1',
+    enrollment_id: 'enr-1',
+    lesson_id: 'fpt-m1-video',
+    started_at: '2026-01-03T00:00:00.000Z',
+    completed_at: '2026-01-03T00:04:00.000Z',
+    last_position_seconds: 4,
+    max_watched_seconds: 4,
+    max_watched_updated_at: '2026-01-03T00:04:00.000Z',
+    updated_at: '2026-01-03T00:04:00.000Z',
+  }],
   attempts: [],
-  completions: [],
+  completions: [{
+    id: 'completion-1',
+    enrollment_id: 'enr-1',
+    completed_at: '2026-02-01T00:00:00.000Z',
+    trigger: 'all_requirements_met',
+    processed_at: null,
+    designation_issued: false,
+  }],
   summaries: [{ enrollment_id: 'enr-1', percent_complete: 40 }],
 };
 
@@ -110,10 +127,27 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
     expect(await screen.findByRole('heading', { name: 'FPT Sandbox' })).toBeInTheDocument();
     expect(screen.getByText('Access expiry')).toBeInTheDocument();
     expect(screen.getByText('Terms accepted')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Lesson progress' })).toBeInTheDocument();
+    expect(screen.getByText('Bitcoin Foundations: Video lesson')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Completion events' })).toBeInTheDocument();
+    expect(screen.getByText('all_requirements_met')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reset Module 1 quiz attempts' })).toBeInTheDocument();
   });
 });
 
 describe('Admin destructive confirm — brief #21 (alert-dialog, not window.confirm)', () => {
+  it('exposes and confirms course deletion through the audited admin boundary', async () => {
+    const deleteCourse = vi.fn(() => ({ id: 'course-fpt' }));
+    renderAdmin('/admin/course/course-fpt', baseAdmin({ delete_course: deleteCourse }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete course' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/all nested content and learner history/i)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete course' }));
+
+    await waitFor(() => expect(deleteCourse).toHaveBeenCalledWith({ id: 'course-fpt' }));
+  });
+
   it('confirms a module delete through the alert-dialog', async () => {
     const deleteModule = vi.fn(() => ({ id: 'fpt-m1' }));
     renderAdmin('/admin/course/course-fpt', baseAdmin({ delete_module: deleteModule, reorder: () => ({}) }));
@@ -178,5 +212,33 @@ describe('Admin session expiry — brief #21 L-11 (re-auth, UI only)', () => {
 
     expect(await screen.findByText('Admin data unavailable')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your operator session has expired' })).toBeNull();
+  });
+
+  it('surfaces the same re-auth prompt when a denied learner-inspection read expires', async () => {
+    const deniedReadAdmin: LmsAdminProvider = {
+      async adminRequest<T>(action: string) {
+        if (action === 'list_catalog') return (await mockProvider.getCatalog()) as T;
+        if (action === 'list_audit') return [] as T;
+        if (action === 'inspect_learner') throw new LmsDataError('denied', 'Session expired.');
+        return {} as T;
+      },
+    };
+    renderAdmin('/admin/learners', deniedReadAdmin);
+
+    fireEvent.change(await screen.findByLabelText('Learner email'), {
+      target: { value: 'jordan@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Your operator session has expired' }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('Admin nested route fallback', () => {
+  it('redirects an unknown admin path to the course catalog instead of rendering blank', async () => {
+    renderAdmin('/admin/not-a-route', baseAdmin());
+    expect(await screen.findByRole('heading', { name: 'Course catalog' })).toBeInTheDocument();
   });
 });

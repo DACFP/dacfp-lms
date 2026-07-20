@@ -30,6 +30,10 @@ export function RenewalEvent({
   window: renewalWindow,
   actionable,
   resumePath,
+  complete = false,
+  progress = 0,
+  accessState = 'active',
+  now = Date.now(),
 }: {
   course: LmsCourse;
   enrollment: LmsEnrollment;
@@ -38,10 +42,42 @@ export function RenewalEvent({
   window?: RenewalWindow;
   actionable: boolean;
   resumePath: string;
+  complete?: boolean;
+  progress?: number;
+  accessState?: 'active' | 'expired' | 'revoked';
+  /** Injectable clock keeps window-boundary tests deterministic. */
+  now?: number;
 }) {
   if (!visible) return null;
 
+  const opensAt = renewalWindow?.opens_at ?? null;
   const closesAt = renewalWindow?.closes_at ?? enrollment.expires_at;
+  const notOpen = opensAt ? new Date(opensAt).getTime() > now : false;
+  const windowClosed = closesAt ? new Date(closesAt).getTime() <= now : false;
+  const canOpen = actionable && accessState === 'active' && !notOpen && !windowClosed;
+
+  const description = complete
+    ? 'Renewal complete. Learning access and designation status remain governed separately.'
+    : accessState === 'expired' || windowClosed
+      ? `Course access expired${closesAt ? ` ${formatDate(closesAt)}` : ''}. This does not itself change designation standing.`
+      : accessState === 'revoked'
+        ? 'Course access is unavailable. Contact DACFP support if you expected this renewal to remain active.'
+        : notOpen
+          ? `Renewal access opens ${formatDate(opensAt)}.`
+          : closesAt
+            ? `Complete by ${formatDate(closesAt)} to keep your learning access current.`
+            : 'Complete your annual renewal to keep your learning access current.';
+
+  const actionLabel = complete ? 'Review renewal' : progress > 0 ? 'Continue renewal' : 'Start renewal';
+  const unavailableLabel = complete
+    ? 'Renewal complete'
+    : accessState === 'expired' || windowClosed
+      ? 'Access expired'
+      : accessState === 'revoked'
+        ? 'Access unavailable'
+        : notOpen
+          ? 'Renewal not open yet'
+          : 'Not available right now';
 
   return (
     <section
@@ -63,23 +99,21 @@ export function RenewalEvent({
               {course.title}
             </h2>
             <p className="mt-1.5 text-sm leading-6 text-white/70">
-              {closesAt
-                ? `Complete by ${formatDate(closesAt)} to keep your learning access current.`
-                : 'Complete your annual renewal to keep your learning access current.'}
+              {description}
             </p>
           </div>
         </div>
-        {actionable ? (
+        {canOpen ? (
           <Link
             className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-dacfp-navy transition-colors hover:bg-dacfp-gold-hi"
             to={resumePath}
           >
-            Start renewal
+            {actionLabel}
             <ArrowRight className="size-icon-sm" aria-hidden="true" />
           </Link>
         ) : (
           <span className="shrink-0 text-sm font-semibold text-white/60">
-            Not available right now
+            {unavailableLabel}
           </span>
         )}
       </div>

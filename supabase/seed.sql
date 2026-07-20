@@ -125,11 +125,11 @@ select
   end,
   case
     when m.position = 1 and lesson_position = 2 then null
-    else 'placeholder://fpt-m' || m.position || '-lesson-' || lesson_position
+    else 'placeholder/dacfp-lms-placeholder.mp4'
   end,
   case
     when m.position = 1 and lesson_position = 2 then null
-    else 600
+    else 4
   end,
   case
     when m.position = 1 and lesson_position = 2
@@ -200,8 +200,8 @@ select
   1,
   '2026 Annual Update: Required video',
   'video',
-  'placeholder://renewal-2026',
-  3600,
+  'placeholder/dacfp-lms-placeholder.mp4',
+  4,
   null,
   true
 from public.lms_modules m
@@ -240,7 +240,7 @@ values (
   md5('fpt-sandbox:lesson:1:2')::uuid,
   1,
   'Bitcoin foundations workbook (placeholder)',
-  '/mock-resources/bitcoin-foundations-workbook.txt'
+  'seed/bitcoin-foundations-workbook.txt'
 );
 
 insert into public.lms_module_quizzes (

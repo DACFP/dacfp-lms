@@ -456,6 +456,9 @@ export function DashboardPage() {
             visible
             actionable={view.contentAvailable && Boolean(view.resumeModule)}
             resumePath={view.resumePath}
+            complete={view.complete}
+            progress={view.progress}
+            accessState={view.accessState}
           />
         );
       })}

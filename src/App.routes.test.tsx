@@ -215,7 +215,7 @@ describe('D0 route shell', () => {
   it('renders lesson resources and all optional account credential fields', async () => {
     renderRoute('/lesson/fpt-m1-reading');
     expect(await screen.findByRole('heading', { name: 'Lesson resources' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Bitcoin foundations workbook/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Bitcoin foundations workbook/ })).toBeInTheDocument();
   });
 
   it('shows the locked bonus promise until the FPT completion event exists', async () => {

@@ -250,7 +250,7 @@ export function LessonPlayer({
     if (Math.abs(clamped - video.currentTime) > 0.05) {
       video.currentTime = clamped;
       setMessage(
-        `Forward seeking is available through ${Math.floor(furthestWatched.current)}s.`,
+        `Forward seeking is available through ${formatClock(furthestWatched.current)}.`,
       );
     }
   }, [course.progression]);
