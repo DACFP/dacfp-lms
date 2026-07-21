@@ -250,7 +250,7 @@ export function LessonPlayer({
     if (Math.abs(clamped - video.currentTime) > 0.05) {
       video.currentTime = clamped;
       setMessage(
-        `Forward seeking is available through ${Math.floor(furthestWatched.current)}s.`,
+        `Forward seeking is available through ${formatClock(furthestWatched.current)}.`,
       );
     }
   }, [course.progression]);
@@ -304,7 +304,7 @@ export function LessonPlayer({
           ref={videoRef}
           src={source || undefined}
         />
-        <div className="pointer-events-none absolute left-4 top-4 inline-flex min-h-8 items-center gap-2 rounded-md border border-white/20 bg-dacfp-navy/90 px-3 text-xs font-bold uppercase tracking-eyebrow text-white">
+        <div className="pointer-events-none absolute left-4 top-4 inline-flex min-h-8 items-center gap-2 rounded-[0.1875rem] border border-white/20 bg-dacfp-navy/90 px-3 text-xs font-bold uppercase tracking-eyebrow text-white">
           <Gauge className="size-icon-sm" aria-hidden="true" />
           {course.progression === 'sequential'
             ? 'Required · 1× speed'

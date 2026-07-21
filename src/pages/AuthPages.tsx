@@ -27,7 +27,7 @@ function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <main className="grid min-h-dvh bg-dacfp-wash lg:grid-cols-[minmax(20rem,0.9fr)_minmax(28rem,1.1fr)]">
+    <main className="learner-skin grid min-h-dvh bg-dacfp-wash lg:grid-cols-[minmax(20rem,0.9fr)_minmax(28rem,1.1fr)]">
       <section className="on-navy relative hidden overflow-hidden bg-dacfp-navy p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="brand-strip absolute inset-x-0 top-0 h-1.5" />
         <BrandLockup surface="navy" priority className="h-14 w-auto" />
@@ -39,12 +39,12 @@ function AuthShell({
             </p>
           </DarkBuildOnly>
           <p className="mt-4 text-4xl font-bold leading-tight">
-            Professional learning, with progress you can trust.
+            Your course of study, your record, one place.
           </p>
           <p className="mt-5 max-w-md leading-7 text-white/70">
             {darkBuildCopy(
-              'Sandbox authentication protects synthetic learner content, progress, and quiz attempts end to end.',
-              'Authentication protects your learner content, progress, and quiz attempts end to end.',
+              'Sandbox authentication protects synthetic learner content, progress, and checkpoint attempts end to end.',
+              'Authentication protects your learner content, progress, and checkpoint attempts end to end.',
             )}
           </p>
         </div>
@@ -131,9 +131,9 @@ export function LoginPage() {
         these are the brief's other sanctioned option, plain buttons, which can
         describe themselves honestly via aria-pressed.
       */}
-      <div className="mb-6 grid grid-cols-2 rounded-lg bg-dacfp-wash p-1" role="group" aria-label="Authentication mode">
+      <div className="mb-6 grid grid-cols-2 rounded-[0.1875rem] bg-dacfp-wash p-1" role="group" aria-label="Authentication mode">
         <button
-          className={`min-h-11 rounded-md px-3 text-sm font-bold ${mode === 'login' ? 'bg-white text-dacfp-navy shadow-sm' : 'text-dacfp-gray-text'}`}
+          className={`min-h-11 rounded-[0.1875rem] px-3 text-sm font-bold ${mode === 'login' ? 'bg-white text-dacfp-navy shadow-sm' : 'text-dacfp-gray-text'}`}
           type="button"
           aria-pressed={mode === 'login'}
           onClick={() => changeMode('login')}
@@ -141,7 +141,7 @@ export function LoginPage() {
           Sign in
         </button>
         <button
-          className={`min-h-11 rounded-md px-3 text-sm font-bold ${mode === 'signup' ? 'bg-white text-dacfp-navy shadow-sm' : 'text-dacfp-gray-text'}`}
+          className={`min-h-11 rounded-[0.1875rem] px-3 text-sm font-bold ${mode === 'signup' ? 'bg-white text-dacfp-navy shadow-sm' : 'text-dacfp-gray-text'}`}
           type="button"
           aria-pressed={mode === 'signup'}
           onClick={() => changeMode('signup')}

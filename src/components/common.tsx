@@ -33,7 +33,7 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
         <span className="tabular-nums text-dacfp-gray-text">{value}%</span>
       </div>
       <div
-        className="h-2.5 overflow-hidden rounded-full bg-dacfp-wash-blue"
+        className="h-2 overflow-hidden rounded-[1px] bg-dacfp-wash-blue"
         role="progressbar"
         aria-label={label}
         aria-valuemin={0}
@@ -41,7 +41,7 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
         aria-valuenow={value}
       >
         <div
-          className="h-full rounded-full bg-dacfp-blue transition-[width] duration-200 motion-reduce:transition-none"
+          className="h-full rounded-[1px] bg-dacfp-blue transition-[width] duration-200 motion-reduce:transition-none"
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>
@@ -49,11 +49,22 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
   );
 }
 
-export function StatusPill({ tone, children }: { tone: 'positive' | 'warning' | 'neutral'; children: ReactNode }) {
+export function StatusPill({
+  tone,
+  children,
+}: {
+  tone: 'positive' | 'warning' | 'neutral' | 'current' | 'muted';
+  children: ReactNode;
+}) {
   const className = {
     positive: 'border-status-positive/25 bg-status-positive/10 text-status-positive',
     warning: 'border-dacfp-gold/40 bg-dacfp-gold/10 text-dacfp-navy',
     neutral: 'border-dacfp-line bg-dacfp-wash-blue text-dacfp-blue',
+    /* T1 ledger tones (mockup of record). The mockup's cream "up next" chip is
+       gold-hi at quarter strength with a gold-hi rule and gold-text ink —
+       existing tokens only. gold-text on the gold-hi/25 wash is 5.6:1 (AA). */
+    current: 'border-dacfp-gold-hi bg-dacfp-gold-hi/25 text-dacfp-gold-text',
+    muted: 'border-dacfp-line bg-transparent text-dacfp-gray-text',
   }[tone];
 
   return (

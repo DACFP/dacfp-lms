@@ -86,7 +86,7 @@ export function QuizPage() {
       setPayload(await loadQuiz(quiz.id));
     } catch {
       setPayload(null);
-      setError('Unable to load this quiz. Please retry.');
+      setError('Unable to load this checkpoint. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -101,8 +101,8 @@ export function QuizPage() {
   if (!module || !course || !quiz) {
     return (
       <EmptyState
-        title="Quiz not found"
-        description="This quiz is unavailable or the link is no longer current."
+        title="Checkpoint not found"
+        description="This checkpoint is unavailable or the link is no longer current."
         action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
@@ -112,7 +112,7 @@ export function QuizPage() {
     return (
       <EmptyState
         title="No course access"
-        description="This account is not enrolled in the course that contains this quiz."
+        description="This account is not enrolled in the course that contains this checkpoint."
         action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
@@ -152,7 +152,7 @@ export function QuizPage() {
         `${graded.passed ? 'Passed' : 'Not passed yet'}. You scored ${graded.score} out of ${graded.possible_points}.`,
       );
     } catch {
-      setError('Quiz submission failed. Your selections remain on this page so you can try again.');
+      setError('Checkpoint submission failed. Your selections remain on this page so you can try again.');
     } finally {
       setSubmitting(false);
     }
@@ -180,8 +180,8 @@ export function QuizPage() {
 
       <PageHeader
         eyebrow={`${course.title} · Module ${module.position}`}
-        title={`${module.title} quiz`}
-        description={`${quiz.question_count} questions. Score ${quiz.pass_pct}% or higher to pass and move on. Attempts are unlimited.`}
+        title={`Module ${module.position} checkpoint`}
+        description={`A short check of understanding — not an exam. ${quiz.question_count} questions; score ${quiz.pass_pct}% or higher to pass and move on. Attempts are unlimited, and there is no cumulative final exam.`}
         action={
           latest?.passed ? (
             <StatusPill tone="positive">Passed</StatusPill>
@@ -190,7 +190,7 @@ export function QuizPage() {
           ) : accessible ? (
             <StatusPill tone="neutral">Ready</StatusPill>
           ) : (
-            <LockedBadge reason="This quiz opens once every required lesson and any prior module quiz is complete." />
+            <LockedBadge reason="This checkpoint opens once every required lesson and any prior module checkpoint is complete." />
           )
         }
       />
@@ -199,18 +199,18 @@ export function QuizPage() {
         <section className="min-w-0" aria-labelledby="attempt-heading">
           {!accessible ? (
             <div className="card p-6 sm:p-8">
-              {/* No LockedBadge here: the heading already says "Quiz
+              {/* No LockedBadge here: the heading already says "Checkpoint
                   unavailable", and a badge carrying that same string as its
                   sr-only reason would announce it twice. */}
               <p className="flex items-center gap-2 font-bold text-dacfp-navy">
-                <LockKeyhole className="size-icon-sm" aria-hidden="true" /> Quiz unavailable
+                <LockKeyhole className="size-icon-sm" aria-hidden="true" /> Checkpoint unavailable
               </p>
               <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">
                 {accessState === 'expired'
                   ? 'Course access has expired. Designation standing is governed separately.'
                   : accessState === 'revoked'
                     ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
-                    : 'Complete all required lessons and any prior module before starting this quiz.'}
+                    : 'Complete all required lessons and any prior module before starting this checkpoint.'}
               </p>
               <Link className="button-quiet mt-3" to={`/course/${course.slug}/module/${module.position}`}>
                 Back to module
@@ -220,7 +220,7 @@ export function QuizPage() {
             <QuizSkeleton />
           ) : result ? (
             <div className="card p-6 sm:p-8">
-              <p className="eyebrow">Attempt {result.attempt_number}</p>
+              <p className="eyebrow text-dacfp-gold-text">Attempt {result.attempt_number}</p>
               <h2
                 id="attempt-heading"
                 ref={verdict.targetRef}
@@ -230,7 +230,7 @@ export function QuizPage() {
                 Attempt result
               </h2>
               <div
-                className={`mt-5 rounded-xl border p-5 ${result.passed ? 'border-status-positive/30 bg-status-positive/5' : 'border-status-danger/30 bg-status-danger/5'}`}
+                className={`mt-5 rounded-[0.1875rem] border p-5 ${result.passed ? 'border-status-positive/30 bg-status-positive/5' : 'border-status-danger/30 bg-status-danger/5'}`}
               >
                 <div className="flex items-center gap-3">
                   {result.passed ? (
@@ -252,7 +252,7 @@ export function QuizPage() {
                 </div>
                 {!result.passed ? (
                   <p className="mt-4 text-sm leading-6 text-dacfp-gray-text">
-                    Attempts are unlimited and there is no cooldown. Retake the quiz whenever you are ready.
+                    Attempts are unlimited and there is no cooldown. Retake the checkpoint whenever you are ready — this is a check of understanding, not an exam.
                   </p>
                 ) : null}
                 {result.completion_fired ? (
@@ -273,7 +273,7 @@ export function QuizPage() {
               </div>
               <div className="mt-6 flex flex-wrap gap-3">
                 <button className="button-secondary" onClick={() => void startAttempt()} type="button">
-                  <RotateCcw className="size-icon-sm" aria-hidden="true" /> Retake quiz
+                  <RotateCcw className="size-icon-sm" aria-hidden="true" /> Retake checkpoint
                 </button>
                 {result.passed && nextModule ? (
                   <Link className="button-primary" to={`/course/${course.slug}/module/${nextModule.position}`}>
@@ -305,7 +305,7 @@ export function QuizPage() {
                 <Progress
                   className="mt-3 h-1.5"
                   value={((onReview ? questions.length : step) / questions.length) * 100}
-                  aria-label={`Quiz progress: ${answeredCount} of ${questions.length} answered`}
+                  aria-label={`Checkpoint progress: ${answeredCount} of ${questions.length} answered`}
                 />
               </div>
 
@@ -323,7 +323,7 @@ export function QuizPage() {
                       You can submit anyway — unanswered questions simply score zero.
                     </Alert>
                   ) : null}
-                  <ol className="mt-5 divide-y divide-dacfp-line rounded-lg border border-dacfp-line">
+                  <ol className="mt-5 divide-y divide-dacfp-line rounded-[0.1875rem] border border-dacfp-line">
                     {questions.map((question, index) => {
                       const selected = answers[question.id] ?? [];
                       const chosen = question.choices.filter((choice) =>
@@ -384,7 +384,7 @@ export function QuizPage() {
                              fieldset). Control is 20px, the brief's floor. */
                           <label
                             key={choice.id}
-                            className={`flex min-h-14 cursor-pointer items-start gap-3.5 rounded-lg border p-4 transition-colors ${
+                            className={`flex min-h-14 cursor-pointer items-start gap-3.5 rounded-[0.1875rem] border p-4 transition-colors ${
                               checked
                                 ? 'border-dacfp-blue bg-dacfp-wash-blue ring-1 ring-dacfp-blue'
                                 : 'border-dacfp-line hover:border-dacfp-blue/40 hover:bg-dacfp-wash'
@@ -456,7 +456,7 @@ export function QuizPage() {
           ) : (
             <div className="card p-6 sm:p-8">
               <button className="button-primary" onClick={() => void startAttempt()} type="button">
-                Start quiz attempt
+                Start checkpoint attempt
               </button>
             </div>
           )}
@@ -472,13 +472,20 @@ export function QuizPage() {
         </section>
 
         <aside className="card h-fit p-5" aria-labelledby="history-heading">
-          <h2 id="history-heading" className="font-bold text-dacfp-navy">Attempt history</h2>
+          <p className="text-[11px] font-bold uppercase tracking-eyebrow text-dacfp-gray-text">
+            Your record
+          </p>
+          <h2 id="history-heading" className="mt-1 font-bold text-dacfp-navy">
+            Module {module.position} attempts
+          </h2>
           {attempts.length === 0 ? (
-            <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">No attempts yet. There is no penalty or cooldown.</p>
+            <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">
+              No attempts yet. There is no penalty or cooldown — attempt {nextNumber} will be your first.
+            </p>
           ) : (
             <ol className="mt-4 space-y-3">
               {attempts.map((attempt) => (
-                <li key={attempt.id} className="rounded-lg border border-dacfp-line p-3">
+                <li key={attempt.id} className="rounded-[0.1875rem] border border-dacfp-line p-3">
                   <div className="flex items-center gap-2">
                     {attempt.passed ? <CheckCircle2 className="size-icon-md text-status-positive" aria-hidden="true" /> : <XCircle className="size-icon-md text-status-danger" aria-hidden="true" />}
                     <span className="font-bold text-dacfp-navy">Attempt {attempt.attempt_number}</span>
