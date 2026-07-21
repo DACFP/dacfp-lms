@@ -32,7 +32,11 @@ export function BrandLockup({
       // fetchpriority is a valid HTML attribute; React 19 passes it through.
       fetchPriority={priority ? 'high' : 'auto'}
       decoding="async"
-      className={cn('h-10 w-auto', className)}
+      // self-start: as a direct child of a column flex container (shell
+      // footer, auth panel) the default align-self:stretch forces the img to
+      // full width while the height class pins it — a stretched logo. Inert
+      // everywhere the lockup sits inside a wrapper (header/admin Links).
+      className={cn('h-10 w-auto self-start', className)}
     />
   );
 }
