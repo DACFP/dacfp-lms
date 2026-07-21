@@ -47,7 +47,7 @@ export function TermsModal({
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
         aria-describedby="terms-description"
-        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto rounded-card border border-dacfp-line bg-white p-0 shadow-card sm:max-w-2xl"
+        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto rounded-[0.1875rem] border border-dacfp-line bg-white p-0 shadow-card sm:max-w-2xl"
       >
         <div className="brand-strip h-1.5" />
         <div className="p-6 sm:p-8">
@@ -60,10 +60,10 @@ export function TermsModal({
             id="terms-description"
             className="mt-3 text-base leading-7 text-dacfp-gray-text"
           >
-            {course.title} uses sequential lessons, required quizzes, and compliance-style video progress. Your learning access and designation standing are managed separately.
+            {course.title} uses sequential lessons, short module checkpoints, and compliance-style video progress. Your learning access and designation standing are managed separately.
           </DialogDescription>
           <DarkBuildOnly>
-            <div className="mt-6 rounded-lg border border-dacfp-line bg-dacfp-wash p-4">
+            <div className="mt-6 rounded-[0.1875rem] border border-dacfp-line bg-dacfp-wash p-4">
               <div className="flex gap-3">
                 <ShieldCheck className="mt-0.5 size-icon-md shrink-0 text-status-positive" aria-hidden="true" />
                 <p className="text-sm leading-6 text-dacfp-navy">

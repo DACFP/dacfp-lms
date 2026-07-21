@@ -130,13 +130,16 @@ async function walkToReview() {
 }
 
 describe('D0 route shell', () => {
-  it.each([
+  it.each<[string, string | RegExp]>([
     ['/login', 'Sign in to continue'],
     ['/reset', 'Reset your password'],
-    ['/dashboard', 'Welcome, Fully complete'],
+    // T1: the dashboard greets by first name in the mockup's register, and the
+    // greeting tracks time of day — hence the regex.
+    ['/dashboard', /^Good (morning|afternoon|evening), Fully\.$/],
     ['/course/fpt-sandbox/module/1', 'Bitcoin Foundations'],
     ['/lesson/fpt-m1-video', 'Bitcoin Foundations: Video lesson'],
-    ['/quiz/fpt-m1', 'Bitcoin Foundations quiz'],
+    // T1 vocabulary: the quiz surface is the module checkpoint.
+    ['/quiz/fpt-m1', 'Module 1 checkpoint'],
     ['/account', 'Profile and credentials'],
   ])('renders %s on mock data', async (path, heading) => {
     renderRoute(path);
@@ -194,14 +197,17 @@ describe('D0 route shell', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'I accept and want to continue' }),
     );
-    expect(await screen.findByText('Available')).toBeInTheDocument();
+    // T1/R1: sequential modules render truthful passed/current/locked states,
+    // so the post-accept signal is Module 1 becoming "Up next", not the
+    // mockup's blanket "Available".
+    expect(await screen.findByText('Up next')).toBeInTheDocument();
     expect(getCatalog).toHaveBeenCalledTimes(2);
   });
 
   it.each<[string, LearnerStateKey, string]>([
     ['/course/fpt-sandbox/module/4', 'quiz-failed-on-3', 'Content is not available yet'],
     ['/lesson/fpt-m4-video', 'quiz-failed-on-3', 'This lesson is locked'],
-    ['/quiz/fpt-m4', 'quiz-failed-on-3', 'Quiz unavailable'],
+    ['/quiz/fpt-m4', 'quiz-failed-on-3', 'Checkpoint unavailable'],
   ])('renders a recoverable locked state on %s', async (path, learner, message) => {
     renderRoute(path, learner);
     expect(await screen.findByText(message)).toBeInTheDocument();
@@ -371,7 +377,7 @@ describe('D0 route shell', () => {
     await screen.findByText('Select one answer');
     fireEvent.click(await walkToReview());
     expect(await screen.findByText('7/10')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Retake quiz' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retake checkpoint' })).toBeInTheDocument();
     expect(screen.getByText('All course requirements are complete.')).toBeInTheDocument();
     expect(screen.getByText(/Bonus Sandbox unlocked on your dashboard/i)).toBeInTheDocument();
     expect(getCatalog).toHaveBeenCalledTimes(2);
@@ -575,7 +581,9 @@ describe('D0 route shell', () => {
 describe('D6 operator routes', () => {
   it('hard-redirects a learner away from /admin', async () => {
     renderRoute('/admin', 'fully-complete');
-    expect(await screen.findByRole('heading', { name: 'Welcome, Fully complete' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening), Fully\.$/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Operator console')).not.toBeInTheDocument();
   });
 

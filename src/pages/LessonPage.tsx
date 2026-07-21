@@ -141,7 +141,7 @@ export function LessonPage() {
           <Suspense fallback={<ReadingSkeleton />}>
             <Markdown className="mt-4">{lesson.body_md ?? ''}</Markdown>
           </Suspense>
-          <div className="mt-8 flex flex-col items-start gap-3 rounded-lg border border-dacfp-line bg-dacfp-wash p-4 text-sm leading-6 text-dacfp-gray-text">
+          <div className="mt-8 flex flex-col items-start gap-3 rounded-[0.1875rem] border border-dacfp-line bg-dacfp-wash p-4 text-sm leading-6 text-dacfp-gray-text">
             <p>Reading completion is recorded securely against your enrollment.</p>
             <button
               className="button-primary"
@@ -169,7 +169,7 @@ export function LessonPage() {
           <h2 id="resources-heading" className="text-lg font-bold text-dacfp-navy">Lesson resources</h2>
         </div>
         {resources.length > 0 ? (
-          <ul className="mt-4 divide-y divide-dacfp-line rounded-lg border border-dacfp-line">
+          <ul className="mt-4 divide-y divide-dacfp-line rounded-[0.1875rem] border border-dacfp-line">
             {resources.map((resource) => (
               <li key={resource.id}>
                 {accessible ? (

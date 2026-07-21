@@ -279,11 +279,11 @@ function AuthenticatedLmsProvider({
           : loadSnapshot(LEARNER_SCOPE),
         onMutationFailure: () => setMutationNotice({
           kind: 'error',
-          message: 'Quiz submission failed. Your selections remain on this page so you can try again.',
+          message: 'Checkpoint submission failed. Your selections remain on this page so you can try again.',
         }),
         onRefreshFailure: (_error, result) => setMutationNotice({
           kind: 'warning',
-          message: 'The quiz was graded, but updated progress could not be loaded. Your current view and result are still shown.',
+          message: 'The checkpoint was graded, but updated progress could not be loaded. Your current view and result are still shown.',
           retry: () => void (result.completion_fired
             ? refreshLearnerAccess(LEARNER_SCOPE)
             : loadSnapshot(LEARNER_SCOPE))

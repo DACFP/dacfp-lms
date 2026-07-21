@@ -11,6 +11,16 @@ export interface RenewalWindow {
 }
 
 /**
+ * Published renewal terms (support-corpus requirement — PAIN-POINTS.md #4:
+ * 745 conversations asked what renewal costs, when it bills, and how to
+ * cancel; the answers belong on the surface itself, not in email). These are
+ * DACFP's published terms, presentation copy only. If the published price
+ * changes, it changes here.
+ */
+const RENEWAL_PRICE_COPY = '$99 per year, billed on your enrollment anniversary';
+const RENEWAL_CANCEL_COPY = 'Cancel any time by emailing info@dacfp.com — no phone call required';
+
+/**
  * The renewal surface (SPEC-OVERHAUL §2b).
  *
  * Deliberately NOT a peer course card. A renewal is an event: it is time-bound,
@@ -42,46 +52,67 @@ export function RenewalEvent({
   if (!visible) return null;
 
   const closesAt = renewalWindow?.closes_at ?? enrollment.expires_at;
+  const facts = [
+    RENEWAL_PRICE_COPY,
+    course.ce_credits !== null
+      ? `About an hour of new content — 1 module, 1 checkpoint, ${course.ce_credits} CE credit${course.ce_credits === 1 ? '' : 's'}`
+      : 'About an hour of new content — 1 module, 1 checkpoint',
+    RENEWAL_CANCEL_COPY,
+  ];
 
   return (
     <section
       aria-labelledby="renewal-heading"
-      className="on-navy overflow-hidden rounded-card bg-dacfp-navy text-white shadow-card"
+      className="on-navy overflow-hidden rounded-[0.1875rem] bg-dacfp-navy text-white"
     >
       <div className="brand-strip h-1" />
-      <div className="flex flex-col gap-5 p-6 sm:p-7 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-start gap-4">
-          <div className="grid size-11 shrink-0 place-items-center rounded-xl border border-white/20 bg-white/10">
-            <CalendarClock className="size-icon-md" aria-hidden="true" />
+      <div className="p-6 sm:p-7">
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="grid size-11 shrink-0 place-items-center rounded-[0.1875rem] border border-white/20 bg-white/10">
+              <CalendarClock className="size-icon-md" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              {/* gold-hi: an eyebrow on a navy ground. Raw gold would be 3.80:1. */}
+              <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">
+                Annual renewal
+              </p>
+              <h2 id="renewal-heading" className="mt-1 text-xl font-bold">
+                {course.title}
+              </h2>
+              <p className="mt-1.5 text-sm leading-6 text-white/70">
+                {closesAt
+                  ? `Complete by ${formatDate(closesAt)} to keep your learning access current.`
+                  : 'Complete your annual renewal to keep your learning access current.'}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            {/* gold-hi: an eyebrow on a navy ground. Raw gold would be 3.80:1. */}
-            <p className="text-xs font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">
-              Annual renewal
-            </p>
-            <h2 id="renewal-heading" className="mt-1 text-xl font-bold">
-              {course.title}
-            </h2>
-            <p className="mt-1.5 text-sm leading-6 text-white/70">
-              {closesAt
-                ? `Complete by ${formatDate(closesAt)} to keep your learning access current.`
-                : 'Complete your annual renewal to keep your learning access current.'}
-            </p>
-          </div>
+          {actionable ? (
+            <Link
+              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[0.1875rem] bg-white px-4 py-2.5 text-sm font-bold text-dacfp-navy transition-colors hover:bg-dacfp-gold-hi"
+              to={resumePath}
+            >
+              Start renewal
+              <ArrowRight className="size-icon-sm" aria-hidden="true" />
+            </Link>
+          ) : (
+            <span className="shrink-0 text-sm font-semibold text-white/60">
+              Not available right now
+            </span>
+          )}
         </div>
-        {actionable ? (
-          <Link
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-dacfp-navy transition-colors hover:bg-dacfp-gold-hi"
-            to={resumePath}
-          >
-            Start renewal
-            <ArrowRight className="size-icon-sm" aria-hidden="true" />
-          </Link>
-        ) : (
-          <span className="shrink-0 text-sm font-semibold text-white/60">
-            Not available right now
-          </span>
-        )}
+        {/* What renewal costs, when it bills, and how to cancel — stated in
+            the body, on screen, before anyone has to write to support. */}
+        <ul className="mt-5 space-y-1.5 border-t border-white/20 pt-4 text-sm leading-6 text-white/85">
+          {facts.map((fact) => (
+            <li key={fact} className="flex gap-2.5">
+              <span aria-hidden="true" className="text-dacfp-gold-hi">
+                —
+              </span>
+              <span>{fact}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

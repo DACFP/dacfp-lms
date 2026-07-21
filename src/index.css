@@ -292,6 +292,29 @@
   .skip-link {
     @apply fixed left-4 top-4 z-50 -translate-y-24 rounded-lg bg-white px-4 py-3 font-bold text-dacfp-navy shadow-card focus:translate-y-0;
   }
+
+  /* =========================================================================
+     T1 LEARNER SKIN — DESIGN-DIRECTION.md (mockup of record:
+     Brand/inspiration/cbda-learner-experience.html).
+
+     The adopted learner surface is flat and institutional: hairline borders,
+     near-square corners, no floating card shadows. Scoped under .learner-skin
+     so the operator console keeps its O3 treatment untouched
+     (DESIGN-DIRECTION §4 — admin is out of this pass's scope).
+
+     Colors are exclusively existing Brand/TOKENS.md tokens; the mockup's
+     tints resolve to token washes (gold-hi/25, wash-blue) — no new colors.
+     ========================================================================= */
+  .learner-skin .card,
+  .learner-skin .button-primary,
+  .learner-skin .button-secondary,
+  .learner-skin .button-quiet {
+    border-radius: 0.1875rem;
+  }
+
+  .learner-skin .card {
+    box-shadow: none;
+  }
 }
 
 #root {
