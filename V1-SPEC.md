@@ -35,6 +35,10 @@ ONLY after X1 merges (touches the same module/lesson surfaces).
   included by nature) + all quizzes. New tests: survey does not gate
   quiz; missing required survey blocks completion; optional survey
   blocks nothing; response idempotency.
+- moduleUnlocked change authorized: first-module unlock is defined by
+  lowest position, not literal position 1. Unit tests must cover a course
+  whose lowest position is 0 AND a course whose lowest position is 1
+  (both first modules unlocked with no prior passes).
 
 ## 3. LEARNER UI
 - Survey lesson page: renders questions by kind (1–5 scale as radio

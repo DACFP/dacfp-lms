@@ -191,9 +191,10 @@ identically against the mock provider (D0) and live rows (D4+):
   this person. Gates entry, not enrollment existence (the bonus enrollment
   may be granted at FPT purchase; it stays locked until FPT completes).
 - `moduleUnlocked(course, n, attempts)`: for `open` courses, always true.
-  For `sequential`: true iff n === 1 or module n-1's quiz has a passed
-  attempt (a module with no quiz counts as passed when all its required
-  lessons are complete).
+  For `sequential`: true iff the module is the LOWEST-POSITION module of
+  the course, or the previous module's quiz has a passed attempt (a module
+  with no quiz counts as passed when all its required lessons are
+  complete).
 - `quizAttemptable(module, progress, attempts)`: module unlocked AND every
   required lesson in that module completed. Attempts unlimited; no
   cooldown (Hard Rule 12).
