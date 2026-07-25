@@ -22,7 +22,10 @@ interface AuthContextValue {
   signUp: (input: {
     email: string;
     password: string;
-    displayName: string;
+    firstName: string;
+    lastName: string;
+    firm: string;
+    jobTitle: string;
   }) => Promise<LmsAuthResult>;
   login: (email: string, password: string) => Promise<LmsAuthResult>;
   logout: () => Promise<void>;
@@ -79,7 +82,14 @@ export function AuthSessionProvider({
   }, [provider]);
 
   const signUp = useCallback(
-    async (input: { email: string; password: string; displayName: string }) => {
+    async (input: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      firm: string;
+      jobTitle: string;
+    }) => {
       const response = await runMutationLifecycle({
         mutate: () => provider.signUp(input),
       });

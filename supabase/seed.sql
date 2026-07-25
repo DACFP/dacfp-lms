@@ -316,6 +316,7 @@ declare
 begin
   foreach learner_email in array array[
     'fresh@example.test',
+    'near-expiry@example.test',
     'midmodule@example.test',
     'failedquiz@example.test',
     'almostdone@example.test',
@@ -331,6 +332,14 @@ begin
       null
     );
   end loop;
+
+  perform public.lms_grant_enrollment(
+    'near-expiry@example.test',
+    'renewal-2026-sandbox',
+    'synthetic',
+    '2027-07-16T23:59:59Z'::timestamptz,
+    null
+  );
 
   perform public.lms_grant_enrollment(
     'fptcomplete@example.test',
@@ -362,6 +371,7 @@ set source = 'synthetic',
     end
 where person_email in (
   'fresh@example.test',
+  'near-expiry@example.test',
   'midmodule@example.test',
   'failedquiz@example.test',
   'almostdone@example.test',
@@ -369,23 +379,38 @@ where person_email in (
   'complete@example.test'
 );
 
+-- X1 staged proof learner: inside the 30-day flagship renewal window.
+update public.lms_enrollments
+set expires_at = now() + interval '15 days'
+where person_email = 'near-expiry@example.test'
+  and course_id = '10000000-0000-4000-8000-000000000001';
+
 update public.lms_learner_profiles profile
 set display_name = learner.display_name,
+    first_name = learner.first_name,
+    last_name = learner.last_name,
+    firm = learner.firm,
+    job_title = learner.job_title,
     credential_ids = learner.credential_ids,
     updated_at = '2026-07-16T16:05:00Z'
 from (
   values
-    ('fresh@example.test', 'Fresh learner', '{}'::jsonb),
-    ('midmodule@example.test', 'Mid-module 2', '{}'::jsonb),
-    ('failedquiz@example.test', 'Quiz failed on 3', '{}'::jsonb),
-    ('almostdone@example.test', 'One quiz from done', '{}'::jsonb),
-    ('fptcomplete@example.test', 'FPT completed', '{}'::jsonb),
+    ('fresh@example.test', 'Fresh learner', 'Fresh', 'Learner', 'Synthetic Advisory LLC', 'Financial Advisor', '{}'::jsonb),
+    ('near-expiry@example.test', 'Near Expiry', 'Near', 'Expiry', 'Synthetic Advisory LLC', 'Wealth Manager', '{}'::jsonb),
+    ('midmodule@example.test', 'Mid-module 2', 'Mid-module', 'Learner', 'Synthetic Advisory LLC', 'Portfolio Manager', '{}'::jsonb),
+    ('failedquiz@example.test', 'Quiz failed on 3', 'Quiz', 'Learner', 'Synthetic Advisory LLC', 'Financial Planner', '{}'::jsonb),
+    ('almostdone@example.test', 'One quiz from done', 'Almost', 'Done', 'Synthetic Advisory LLC', 'RIA Principal/Owner', '{}'::jsonb),
+    ('fptcomplete@example.test', 'FPT completed', 'FPT', 'Completed', 'Synthetic Advisory LLC', 'Analyst', '{}'::jsonb),
     (
       'complete@example.test',
       'Fully complete',
+      'Fully',
+      'Complete',
+      'Synthetic Advisory LLC',
+      'Executive',
       '{"cfp":"SYNTH-CFP-1042","iwi":"SYNTH-IWI-2084","cfa":"SYNTH-CFA-4096"}'::jsonb
     )
-) learner(email, display_name, credential_ids)
+) learner(email, display_name, first_name, last_name, firm, job_title, credential_ids)
 join public.lms_enrollments enrollment
   on enrollment.person_email = learner.email
  and enrollment.course_id = '10000000-0000-4000-8000-000000000001'
@@ -397,6 +422,7 @@ where enrollment_id in (
   from public.lms_enrollments
   where person_email in (
     'fresh@example.test',
+    'near-expiry@example.test',
     'midmodule@example.test',
     'failedquiz@example.test',
     'almostdone@example.test',
@@ -411,6 +437,7 @@ where enrollment_id in (
   from public.lms_enrollments
   where person_email in (
     'fresh@example.test',
+    'near-expiry@example.test',
     'midmodule@example.test',
     'failedquiz@example.test',
     'almostdone@example.test',
@@ -425,6 +452,7 @@ where enrollment_id in (
   from public.lms_enrollments
   where person_email in (
     'fresh@example.test',
+    'near-expiry@example.test',
     'midmodule@example.test',
     'failedquiz@example.test',
     'almostdone@example.test',
@@ -454,6 +482,7 @@ select
   '2026-07-16T16:30:00Z'
 from (
   values
+    ('near-expiry@example.test', 'fpt-sandbox', 1),
     ('midmodule@example.test', 'fpt-sandbox', 1),
     ('failedquiz@example.test', 'fpt-sandbox', 3),
     ('almostdone@example.test', 'fpt-sandbox', 4),
@@ -527,6 +556,7 @@ select
   plan.passed
 from (
   values
+    ('near-expiry@example.test', 'fpt-sandbox', 1, 8, true),
     ('midmodule@example.test', 'fpt-sandbox', 1, 8, true),
     ('failedquiz@example.test', 'fpt-sandbox', 1, 8, true),
     ('failedquiz@example.test', 'fpt-sandbox', 2, 7, true),

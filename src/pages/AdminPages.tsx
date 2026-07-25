@@ -592,6 +592,25 @@ export function AdminLearnersPage() {
     ? [
         { label: 'Email', value: inspection.user.email, mono: true },
         { label: 'Display name', value: inspection.profile?.display_name ?? null },
+        { label: 'First name', value: inspection.profile?.first_name ?? null },
+        { label: 'Last name', value: inspection.profile?.last_name ?? null },
+        { label: 'Firm', value: inspection.profile?.firm ?? null },
+        { label: 'Job title', value: inspection.profile?.job_title ?? null },
+        { label: 'Phone', value: inspection.profile?.phone ?? null },
+        { label: 'Firm website', value: inspection.profile?.firm_url ?? null },
+        {
+          label: 'Address',
+          value: inspection.profile?.address
+            ? [
+                inspection.profile.address.line1,
+                inspection.profile.address.line2,
+                inspection.profile.address.city,
+                inspection.profile.address.state,
+                inspection.profile.address.postal,
+                inspection.profile.address.country,
+              ].filter(Boolean).join(', ') || null
+            : null,
+        },
         { label: 'CFP ID', value: inspection.profile?.credential_ids?.cfp ?? null, mono: true },
         { label: 'IWI ID', value: inspection.profile?.credential_ids?.iwi ?? null, mono: true },
         { label: 'CFA ID', value: inspection.profile?.credential_ids?.cfa ?? null, mono: true },

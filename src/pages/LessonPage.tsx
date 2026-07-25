@@ -20,6 +20,7 @@ import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import {
   enrollmentAccessState,
   enrollmentForCourse,
+  isCourseComplete,
   moduleIsUnlocked,
 } from '../lib/progress';
 
@@ -89,6 +90,7 @@ export function LessonPage() {
     lesson,
     snapshot.progress.filter((item) => item.enrollment_id === enrollment.id),
   );
+  const courseComplete = isCourseComplete(catalog, snapshot, course);
   const moduleLessons = catalog.lessons
     .filter((item) => item.module_id === module.id)
     .sort((a, b) => a.position - b.position);
@@ -127,14 +129,20 @@ export function LessonPage() {
           </div>
         </section>
       ) : lesson.kind === 'video' ? (
-        <LessonPlayer key={lesson.id} course={course} lesson={lesson} progress={progress} />
+        <LessonPlayer
+          key={lesson.id}
+          course={course}
+          lesson={lesson}
+          progress={progress}
+          reviewMode={complete || courseComplete}
+        />
       ) : (
         <article className="card p-6 sm:p-8">
           <div className="flex items-center gap-3 text-dacfp-blue">
             <FileText className="size-icon-lg" aria-hidden="true" />
             <p className="eyebrow">Required reading</p>
           </div>
-          <h2 className="mt-5 text-2xl font-bold text-dacfp-navy">Key concepts</h2>
+          <h2 className="mt-5 text-2xl font-bold text-dacfp-navy">Lesson reading</h2>
           {/* brief #16: authored markdown, rendered and sanitised. This was
               {lesson.body_md} inside a <p>, so "## " and "**" reached the
               learner as literal characters. */}

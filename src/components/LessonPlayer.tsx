@@ -1,4 +1,4 @@
-import { Gauge, RefreshCw } from 'lucide-react';
+import { Gauge, RefreshCw, RotateCcw, RotateCw } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -28,10 +28,12 @@ export function LessonPlayer({
   course,
   lesson,
   progress,
+  reviewMode,
 }: {
   course: LmsCourse;
   lesson: LmsLesson;
   progress: LmsLessonProgress | undefined;
+  reviewMode: boolean;
 }) {
   const { requestPlayback, recordHeartbeat } = useLms();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -53,6 +55,8 @@ export function LessonPlayer({
   );
   const [message, setMessage] = useState('Requesting secure playback…');
   const [error, setError] = useState('');
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const flexiblePlayback = course.progression === 'open' || reviewMode;
 
   const clearHeartbeatTimer = useCallback(() => {
     if (heartbeatTimer.current !== null) {
@@ -194,7 +198,9 @@ export function LessonPlayer({
     video.playbackRate = allowedPlaybackRate(
       video.playbackRate,
       course.progression,
+      reviewMode,
     );
+    setPlaybackRate(video.playbackRate);
     setMessage(
       resumeAt > 0 ? `Resumed at ${formatClock(resumeAt)}.` : 'Ready to play.',
     );
@@ -202,7 +208,7 @@ export function LessonPlayer({
     if (resumePlaying.current) {
       void video.play().catch(() => undefined);
     }
-  }, [course.progression, persistHeartbeat]);
+  }, [course.progression, persistHeartbeat, reviewMode]);
 
   const handleMediaError = useCallback(() => {
     if (sourceRef.current && !errorRefreshAttempted.current) {
@@ -219,13 +225,15 @@ export function LessonPlayer({
     video.playbackRate = allowedPlaybackRate(
       video.playbackRate,
       course.progression,
+      reviewMode,
     );
+    setPlaybackRate(video.playbackRate);
     clearHeartbeatTimer();
     heartbeatTimer.current = window.setInterval(() => {
       void persistHeartbeat();
     }, HEARTBEAT_INTERVAL_MS);
     setMessage('Playing securely. Progress saves every 15 seconds.');
-  }, [clearHeartbeatTimer, course.progression, persistHeartbeat]);
+  }, [clearHeartbeatTimer, course.progression, persistHeartbeat, reviewMode]);
 
   const handlePause = useCallback(() => {
     clearHeartbeatTimer();
@@ -246,6 +254,7 @@ export function LessonPlayer({
       video.currentTime,
       furthestWatched.current,
       course.progression,
+      reviewMode,
     );
     if (Math.abs(clamped - video.currentTime) > 0.05) {
       video.currentTime = clamped;
@@ -253,13 +262,14 @@ export function LessonPlayer({
         `Forward seeking is available through ${formatClock(furthestWatched.current)}.`,
       );
     }
-  }, [course.progression]);
+  }, [course.progression, reviewMode]);
 
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
     if (
       course.progression === 'open' ||
+      reviewMode ||
       video.currentTime <= furthestWatched.current + 2
     ) {
       furthestWatched.current = Math.max(
@@ -267,17 +277,47 @@ export function LessonPlayer({
         video.currentTime,
       );
     }
-  }, [course.progression]);
+  }, [course.progression, reviewMode]);
 
   const handleRateChange = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-    const allowed = allowedPlaybackRate(video.playbackRate, course.progression);
+    const allowed = allowedPlaybackRate(video.playbackRate, course.progression, reviewMode);
     if (allowed !== video.playbackRate) {
       video.playbackRate = allowed;
-      setMessage('Playback speed is fixed at 1× for this course.');
+      setMessage(reviewMode ? 'Playback speed is available up to 2×.' : 'Playback speed is fixed at 1× on your first pass.');
     }
-  }, [course.progression]);
+    setPlaybackRate(allowed);
+  }, [course.progression, reviewMode]);
+
+  const skipBy = useCallback((seconds: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const requested = video.currentTime + seconds;
+    const allowed = clampSeekTarget(
+      requested,
+      furthestWatched.current,
+      course.progression,
+      reviewMode,
+    );
+    const target = Number.isFinite(video.duration)
+      ? Math.min(video.duration, allowed)
+      : allowed;
+    video.currentTime = Math.max(0, target);
+    if (seconds > 0 && target + 0.05 < requested) {
+      setMessage(`Forward seeking is available through ${formatClock(furthestWatched.current)}.`);
+    } else {
+      setMessage(`${seconds < 0 ? 'Back' : 'Forward'} 15 seconds.`);
+    }
+  }, [course.progression, reviewMode]);
+
+  const choosePlaybackRate = useCallback((requested: number) => {
+    const video = videoRef.current;
+    const allowed = allowedPlaybackRate(requested, course.progression, reviewMode);
+    if (video) video.playbackRate = allowed;
+    setPlaybackRate(allowed);
+    setMessage(`Playback speed set to ${allowed}×.`);
+  }, [course.progression, reviewMode]);
 
   const watchPercent = lesson.duration_seconds
     ? Math.min(100, Math.round((savedMax / lesson.duration_seconds) * 100))
@@ -290,7 +330,7 @@ export function LessonPlayer({
           aria-label={`${lesson.title} video`}
           className="aspect-video max-h-[34rem] w-full bg-dacfp-navy"
           controls
-          controlsList={course.progression === 'sequential' ? 'nodownload noplaybackrate' : 'nodownload'}
+          controlsList={!flexiblePlayback ? 'nodownload noplaybackrate' : 'nodownload'}
           disablePictureInPicture
           onEnded={handleEnded}
           onError={handleMediaError}
@@ -306,9 +346,7 @@ export function LessonPlayer({
         />
         <div className="pointer-events-none absolute left-4 top-4 inline-flex min-h-8 items-center gap-2 rounded-[0.1875rem] border border-white/20 bg-dacfp-navy/90 px-3 text-xs font-bold uppercase tracking-eyebrow text-white">
           <Gauge className="size-icon-sm" aria-hidden="true" />
-          {course.progression === 'sequential'
-            ? 'Required · 1× speed'
-            : 'Open · flexible speed'}
+          {!flexiblePlayback ? 'First pass · 1×' : 'Review mode · up to 2×'}
         </div>
       </div>
       <div className="p-5 sm:p-6">
@@ -335,6 +373,29 @@ export function LessonPlayer({
           ) : null}
         </div>
         {error ? <Alert tone="danger" className="mt-3">{error}</Alert> : null}
+        <div className="mt-5 flex flex-wrap items-center gap-3 border-y border-dacfp-line py-4">
+          <button className="button-secondary" type="button" onClick={() => skipBy(-15)}>
+            <RotateCcw className="size-icon-sm" aria-hidden="true" /> 15s back
+          </button>
+          <button className="button-secondary" type="button" onClick={() => skipBy(15)}>
+            15s forward <RotateCw className="size-icon-sm" aria-hidden="true" />
+          </button>
+          {flexiblePlayback ? (
+            <label className="ml-auto flex min-h-11 items-center gap-2 text-sm font-semibold text-dacfp-navy">
+              Speed
+              <select
+                aria-label="Playback speed"
+                className="min-h-11 rounded-[0.1875rem] border border-dacfp-line bg-white px-3 text-sm"
+                value={playbackRate}
+                onChange={(event) => choosePlaybackRate(Number(event.target.value))}
+              >
+                {[1, 1.25, 1.5, 1.75, 2].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+              </select>
+            </label>
+          ) : (
+            <span className="ml-auto text-xs font-semibold text-dacfp-gray-text">1× locked until this lesson is complete</span>
+          )}
+        </div>
         <div className="mt-5">
           <ProgressBar value={watchPercent} label="Furthest point watched" />
         </div>

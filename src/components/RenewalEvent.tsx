@@ -55,8 +55,8 @@ export function RenewalEvent({
   const facts = [
     RENEWAL_PRICE_COPY,
     course.ce_credits !== null
-      ? `About an hour of new content — 1 module, 1 checkpoint, ${course.ce_credits} CE credit${course.ce_credits === 1 ? '' : 's'}`
-      : 'About an hour of new content — 1 module, 1 checkpoint',
+      ? `About an hour of new content — 1 module, 1 quiz, ${course.ce_credits} CE credit${course.ce_credits === 1 ? '' : 's'}`
+      : 'About an hour of new content — 1 module, 1 quiz',
     RENEWAL_CANCEL_COPY,
   ];
 

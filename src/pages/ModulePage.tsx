@@ -18,10 +18,12 @@ import { formatClock } from '../lib/time';
 import {
   enrollmentAccessState,
   enrollmentForCourse,
+  isCourseComplete,
   moduleIsPassed,
   moduleIsUnlocked,
   quizIsAttemptable,
 } from '../lib/progress';
+import { QUIZ_POLICY_COPY } from '../lib/quizPolicy';
 
 export function ModulePage() {
   const { slug, n } = useParams();
@@ -60,7 +62,10 @@ export function ModulePage() {
   const contentAccessible = accessActive && courseIsUnlocked && termsAccepted && currentModuleUnlocked;
   const moduleLessons = catalog.lessons
     .filter((item) => item.module_id === module.id)
-    .sort((a, b) => a.position - b.position);
+    .sort((a, b) => {
+      if (a.kind === b.kind) return a.position - b.position;
+      return a.kind === 'video' ? -1 : 1;
+    });
   const quiz = catalog.quizzes.find((item) => item.module_id === module.id);
   const canAttemptQuiz = quiz ? quizIsAttemptable(catalog, snapshot, course, module) : false;
   const enrollmentProgress = snapshot.progress.filter((item) => item.enrollment_id === enrollment.id);
@@ -68,6 +73,7 @@ export function ModulePage() {
     .filter((item) => item.course_id === course.id)
     .sort((a, b) => a.position - b.position);
   const passed = moduleIsPassed(catalog, snapshot, course, module);
+  const courseComplete = isCourseComplete(catalog, snapshot, course);
   const nextModule = courseModules.find((item) => item.position === module.position + 1);
   const faculty = facultyForModule(course, module);
   const quizAttempts = quiz
@@ -82,9 +88,6 @@ export function ModulePage() {
   const eyebrowMeta = [
     `Module ${String(module.position).padStart(2, '0')} of ${courseModules.length}`,
     totalMinutes > 0 ? `${totalMinutes} min` : null,
-    module.ce_credits !== null && module.ce_credits !== undefined
-      ? `${module.ce_credits} CE on certification`
-      : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -102,9 +105,11 @@ export function ModulePage() {
         eyebrow={eyebrowMeta}
         title={module.title}
         description={
-          course.progression === 'open'
+          courseComplete
+            ? 'Course complete: every module and lesson is open for review in any order.'
+            : course.progression === 'open'
             ? 'Open progression: complete these lessons in any order.'
-            : `Complete each required lesson, then pass the module checkpoint with ${quiz?.pass_pct ?? 70}% or higher. Modules unlock in order.`
+            : `Complete each required lesson, then pass the module quiz with ${quiz?.pass_pct ?? 70}% or higher. Modules unlock in order.`
         }
         action={
           passed ? (
@@ -114,7 +119,7 @@ export function ModulePage() {
           ) : contentAccessible ? (
             <StatusPill tone="neutral">Available</StatusPill>
           ) : (
-            <LockedBadge reason={`Module ${module.position} is not open yet. Pass the previous module checkpoint, or accept the course terms, to unlock it.`} />
+            <LockedBadge reason={`Module ${module.position} is not open yet. Pass the previous module quiz, or accept the course terms, to unlock it.`} />
           )
         }
       />
@@ -137,7 +142,7 @@ export function ModulePage() {
                         ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
                     : !termsAccepted
                       ? 'Accept the course terms before opening content.'
-                      : 'Pass the previous module checkpoint to continue.'}
+                      : 'Pass the previous module quiz to continue.'}
                 </p>
               </div>
             </div>
@@ -198,14 +203,14 @@ export function ModulePage() {
                       key={lesson.id}
                       className={index === 0 ? undefined : 'border-t border-dacfp-line/60'}
                     >
-                      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+                      <div className={`flex flex-col gap-3 px-5 sm:flex-row sm:items-center sm:px-6 ${lesson.kind === 'video' ? 'py-5' : 'bg-dacfp-wash/60 py-3'}`}>
                         <Icon
                           className={`size-icon-md shrink-0 ${complete ? 'text-status-positive' : 'text-dacfp-blue'}`}
                           aria-hidden="true"
                         />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-sm font-bold text-dacfp-navy">
+                            <h3 className={`text-sm text-dacfp-navy ${lesson.kind === 'video' ? 'font-bold' : 'font-semibold'}`}>
                               {lesson.position}. {lesson.title}
                             </h3>
                             {!lesson.is_required ? <StatusPill tone="muted">Optional</StatusPill> : null}
@@ -262,18 +267,14 @@ export function ModulePage() {
         </section>
 
         <aside className="space-y-6 lg:sticky lg:top-24">
-          {/* The checkpoint card (mockup of record). R2: the availability line
-              states the true condition; R3: the published policy survives
-              verbatim in the intro area — 10 questions, 70% or higher,
-              unlimited attempts, no final exam. */}
           {quiz ? (
             <section
-              aria-labelledby="checkpoint-heading"
+              aria-labelledby="quiz-heading"
               className="card border-t-[3px] border-t-dacfp-gold-text p-5 sm:p-6"
             >
-              <p className="eyebrow text-dacfp-gold-text">Checkpoint</p>
-              <h2 id="checkpoint-heading" className="mt-1.5 text-lg font-bold text-dacfp-navy">
-                Module {module.position} checkpoint
+              <p className="eyebrow text-dacfp-gold-text">Quiz</p>
+              <h2 id="quiz-heading" className="mt-1.5 text-lg font-bold text-dacfp-navy">
+                Module {module.position} quiz
               </h2>
               <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
                 A short check of understanding — not an exam.{' '}
@@ -305,12 +306,12 @@ export function ModulePage() {
                 </div>
               </dl>
               <p className="mt-3 text-xs leading-5 text-dacfp-gray-text">
-                There is no cumulative final exam — each module ends in its own short checkpoint.
+                {QUIZ_POLICY_COPY}
               </p>
               {canAttemptQuiz && contentAccessible ? (
                 <>
                   <Link className="button-primary mt-4 w-full" to={`/quiz/${module.id}`}>
-                    {passed ? 'Review or retake the checkpoint' : 'Start the checkpoint'}
+                    {passed ? 'Review or retake the quiz' : 'Start the quiz'}
                   </Link>
                   <p className="mt-2 text-center text-xs text-dacfp-gray-text">
                     Open now — this module’s required lessons are complete
@@ -323,11 +324,11 @@ export function ModulePage() {
                     aria-disabled="true"
                   >
                     <LockKeyhole className="size-icon-sm" aria-hidden="true" />
-                    Checkpoint not open yet
+                    Quiz not open yet
                   </span>
                   <p className="mt-2 text-center text-xs text-dacfp-gray-text">
                     {contentAccessible
-                      ? 'Opens when this module’s lessons are complete'
+                      ? "Opens when this module's lessons are complete."
                       : 'Opens when this module is available to you'}
                   </p>
                 </>
@@ -335,8 +336,8 @@ export function ModulePage() {
             </section>
           ) : (
             <section className="card p-5 sm:p-6">
-              <p className="eyebrow text-dacfp-gold-text">Checkpoint</p>
-              <h2 className="mt-1.5 text-lg font-bold text-dacfp-navy">No checkpoint for this module</h2>
+              <p className="eyebrow text-dacfp-gold-text">Quiz</p>
+              <h2 className="mt-1.5 text-lg font-bold text-dacfp-navy">No quiz for this module</h2>
               <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
                 This open-course module passes when all required lessons are complete.
               </p>

@@ -18,4 +18,10 @@ describe('compliance player policy', () => {
   it('forces sequential-course playback to 1x', () => {
     expect(allowedPlaybackRate(2, 'sequential')).toBe(1);
   });
+
+  it('opens free seeking and speed up to 2x in sequential review mode', () => {
+    expect(clampSeekTarget(90, 30, 'sequential', true)).toBe(90);
+    expect(allowedPlaybackRate(1.75, 'sequential', true)).toBe(1.75);
+    expect(allowedPlaybackRate(3, 'sequential', true)).toBe(2);
+  });
 });
