@@ -123,14 +123,15 @@ async function adminCrud(
 }
 
 async function catalog(admin: SupabaseClient) {
-  const [courses, modules, lessons, resources, quizzes] = await Promise.all([
+  const [courses, modules, lessons, resources, quizzes, surveyQuestions] = await Promise.all([
     admin.from('lms_courses').select('*').order('created_at'),
     admin.from('lms_modules').select('*').order('course_id').order('position'),
     admin.from('lms_lessons').select('*').order('module_id').order('position'),
     admin.from('lms_lesson_resources').select('*').order('lesson_id').order('position'),
     admin.from('lms_module_quizzes').select('*').order('module_id'),
+    admin.from('lms_survey_questions').select('*').order('lesson_id').order('position'),
   ]);
-  for (const result of [courses, modules, lessons, resources, quizzes]) {
+  for (const result of [courses, modules, lessons, resources, quizzes, surveyQuestions]) {
     assertQuery(result.error);
   }
   return {
@@ -139,6 +140,7 @@ async function catalog(admin: SupabaseClient) {
     lessons: lessons.data ?? [],
     resources: resources.data ?? [],
     quizzes: quizzes.data ?? [],
+    surveyQuestions: surveyQuestions.data ?? [],
   };
 }
 
@@ -214,7 +216,9 @@ async function updateModule(admin: SupabaseClient, actorId: string, input: Recor
 
 async function createLesson(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {
   const moduleId = requiredUuid(input.module_id, 'module_id');
-  const kind = input.kind === 'reading' ? 'reading' : 'video';
+  const kind = input.kind === 'reading' || input.kind === 'survey'
+    ? input.kind
+    : 'video';
   const row = {
     module_id: moduleId,
     ...(input.position === undefined ? {} : { position: asNumber(input.position, 'position') }),
@@ -233,12 +237,13 @@ async function updateLesson(admin: SupabaseClient, actorId: string, input: Recor
   const patch: Record<string, unknown> = {};
   if (input.title !== undefined) patch.title = requiredString(input.title, 'title');
   if (input.kind !== undefined) {
-    if (!['video', 'reading'].includes(String(input.kind))) throw new InvalidRequest('kind is invalid.');
+    if (!['video', 'reading', 'survey'].includes(String(input.kind))) throw new InvalidRequest('kind is invalid.');
     patch.kind = input.kind;
-    if (input.kind === 'reading') {
+    if (input.kind !== 'video') {
       patch.video_ref = null;
       patch.duration_seconds = null;
-    } else {
+    }
+    if (input.kind !== 'reading') {
       patch.body_md = null;
     }
   }
@@ -324,6 +329,213 @@ async function exportQuestionBank(admin: SupabaseClient, moduleId: string) {
   };
 }
 
+type SurveyQuestion = {
+  id: string;
+  lesson_id: string;
+  position: number;
+  prompt: string;
+  kind: 'scale_1_5' | 'text' | 'single_choice' | 'multi_choice';
+  choices: Array<{ id: string; text: string }> | null;
+  required: boolean;
+};
+
+function surveyBreakdown(
+  question: SurveyQuestion,
+  responses: Array<{ answers: Record<string, unknown> }>,
+) {
+  const values = responses
+    .map((response) => response.answers?.[question.id])
+    .filter((value) => value !== undefined && value !== null && value !== '');
+
+  if (question.kind === 'scale_1_5') {
+    const counts: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    const numeric = values.filter((value) => Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 5);
+    for (const value of numeric) counts[String(value)] += 1;
+    return {
+      kind: question.kind,
+      counts,
+      average: numeric.length
+        ? Number((numeric.reduce((total, value) => total + Number(value), 0) / numeric.length).toFixed(2))
+        : null,
+    };
+  }
+
+  if (question.kind === 'text') {
+    return {
+      kind: question.kind,
+      responses: values.filter((value): value is string => typeof value === 'string'),
+    };
+  }
+
+  const counts = (question.choices ?? []).map((choice) => ({ ...choice, count: 0 }));
+  for (const value of values) {
+    const selected = Array.isArray(value) ? value : [value];
+    for (const choice of counts) {
+      if (selected.includes(choice.id)) choice.count += 1;
+    }
+  }
+  return { kind: question.kind, counts };
+}
+
+async function surveyResults(
+  admin: SupabaseClient,
+  actorId: string,
+  lessonId: string,
+) {
+  const { data: lesson, error: lessonError } = await admin
+    .from('lms_lessons')
+    .select('id,module_id,title,kind')
+    .eq('id', lessonId)
+    .maybeSingle();
+  assertQuery(lessonError);
+  if (!lesson || lesson.kind !== 'survey') throw new InvalidRequest('Survey is unavailable.');
+  const { data: module, error: moduleError } = await admin
+    .from('lms_modules')
+    .select('course_id')
+    .eq('id', lesson.module_id)
+    .single();
+  assertQuery(moduleError);
+  const { data: course, error: courseError } = await admin
+    .from('lms_courses')
+    .select('id,title')
+    .eq('id', module.course_id)
+    .single();
+  assertQuery(courseError);
+  const [questions, responses, enrolled] = await Promise.all([
+    admin.from('lms_survey_questions').select('*').eq('lesson_id', lessonId).order('position'),
+    admin.from('lms_survey_responses').select('answers').eq('lesson_id', lessonId),
+    admin.from('lms_enrollments').select('id', { count: 'exact', head: true }).eq('course_id', course.id),
+  ]);
+  assertQuery(questions.error);
+  assertQuery(responses.error);
+  assertQuery(enrolled.error);
+  const responseRows = (responses.data ?? []) as Array<{ answers: Record<string, unknown> }>;
+  const enrollmentCount = enrolled.count ?? 0;
+  await audit(admin, actorId, 'view_survey_results', {
+    lesson_id: lessonId,
+    response_count: responseRows.length,
+  });
+  return {
+    lesson: { id: lesson.id, title: lesson.title },
+    course,
+    response_count: responseRows.length,
+    enrolled_count: enrollmentCount,
+    completion_rate: enrollmentCount
+      ? Number(((responseRows.length / enrollmentCount) * 100).toFixed(2))
+      : 0,
+    questions: ((questions.data ?? []) as SurveyQuestion[]).map((question) => ({
+      question,
+      breakdown: surveyBreakdown(question, responseRows),
+    })),
+  };
+}
+
+function csvCell(value: unknown) {
+  let text = Array.isArray(value) ? value.join(' | ') : value == null ? '' : String(value);
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+async function exportSurveyResponses(
+  admin: SupabaseClient,
+  actorId: string,
+  input: Record<string, unknown>,
+) {
+  const lessonId = optionalUuid(input.lesson_id, 'lesson_id');
+  const courseId = optionalUuid(input.course_id, 'course_id');
+  if ((lessonId ? 1 : 0) + (courseId ? 1 : 0) !== 1) {
+    throw new InvalidRequest('Choose one survey or one course export.');
+  }
+
+  let lessons: Array<{ id: string; title: string }> = [];
+  let exportCourseId = courseId;
+  if (lessonId) {
+    const { data: lesson, error } = await admin
+      .from('lms_lessons')
+      .select('id,module_id,title,kind')
+      .eq('id', lessonId)
+      .maybeSingle();
+    assertQuery(error);
+    if (!lesson || lesson.kind !== 'survey') throw new InvalidRequest('Survey is unavailable.');
+    const { data: module, error: moduleError } = await admin
+      .from('lms_modules')
+      .select('course_id')
+      .eq('id', lesson.module_id)
+      .single();
+    assertQuery(moduleError);
+    exportCourseId = module.course_id;
+    lessons = [{ id: lesson.id, title: lesson.title }];
+  } else {
+    const { data: modules, error: moduleError } = await admin
+      .from('lms_modules')
+      .select('id')
+      .eq('course_id', courseId!);
+    assertQuery(moduleError);
+    const moduleIds = (modules ?? []).map((module) => module.id);
+    const { data, error } = moduleIds.length
+      ? await admin
+          .from('lms_lessons')
+          .select('id,title')
+          .in('module_id', moduleIds)
+          .eq('kind', 'survey')
+          .order('position')
+      : { data: [], error: null };
+    assertQuery(error);
+    lessons = data ?? [];
+  }
+
+  const lessonIds = lessons.map((lesson) => lesson.id);
+  const [questions, responses, course] = await Promise.all([
+    lessonIds.length
+      ? admin.from('lms_survey_questions').select('*').in('lesson_id', lessonIds).order('lesson_id').order('position')
+      : Promise.resolve({ data: [], error: null }),
+    lessonIds.length
+      ? admin.from('lms_survey_responses').select('lesson_id,submitted_at,answers,lms_enrollments(person_email)').in('lesson_id', lessonIds).order('submitted_at')
+      : Promise.resolve({ data: [], error: null }),
+    admin.from('lms_courses').select('slug').eq('id', exportCourseId!).single(),
+  ]);
+  assertQuery(questions.error);
+  assertQuery(responses.error);
+  assertQuery(course.error);
+  const lessonById = new Map(lessons.map((lesson) => [lesson.id, lesson]));
+  const questionRows = (questions.data ?? []) as SurveyQuestion[];
+  const headers = [
+    'email',
+    'submitted_at',
+    'survey',
+    ...questionRows.map((question) =>
+      `${lessonById.get(question.lesson_id)?.title ?? 'Survey'} — ${question.prompt}`
+    ),
+  ];
+  const rows = (responses.data ?? []).map((response) => {
+    const enrollment = Array.isArray(response.lms_enrollments)
+      ? response.lms_enrollments[0]
+      : response.lms_enrollments;
+    const answers = response.answers as Record<string, unknown>;
+    return [
+      enrollment?.person_email ?? '',
+      response.submitted_at,
+      lessonById.get(response.lesson_id)?.title ?? '',
+      ...questionRows.map((question) =>
+        question.lesson_id === response.lesson_id ? answers?.[question.id] ?? '' : ''
+      ),
+    ];
+  });
+  const csv = [headers, ...rows]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\r\n');
+  await audit(admin, actorId, 'export_survey_responses', {
+    lesson_id: lessonId,
+    course_id: courseId,
+    row_count: rows.length,
+  });
+  return {
+    file_name: `${course.data.slug}-${lessonId ? 'survey' : 'all-surveys'}-responses.csv`,
+    csv,
+    row_count: rows.length,
+  };
+}
+
 async function inspectLearner(admin: SupabaseClient, email: string) {
   const normalized = email.trim().toLowerCase();
   const { data: user, error: userError } = await admin.rpc(
@@ -339,15 +551,22 @@ async function inspectLearner(admin: SupabaseClient, email: string) {
   assertQuery(profile.error);
   assertQuery(enrollments.error);
   const enrollmentIds = (enrollments.data ?? []).map((row) => row.id);
-  const [progress, attempts, completions] = enrollmentIds.length
+  const [progress, attempts, surveyResponses, completions] = enrollmentIds.length
     ? await Promise.all([
         admin.from('lms_lesson_progress').select('*').in('enrollment_id', enrollmentIds).order('updated_at'),
         admin.from('lms_quiz_attempts').select('*').in('enrollment_id', enrollmentIds).order('started_at'),
+        admin.from('lms_survey_responses').select('*').in('enrollment_id', enrollmentIds).order('submitted_at'),
         admin.from('lms_completion_events').select('*').in('enrollment_id', enrollmentIds).order('completed_at'),
       ])
-    : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
   assertQuery(progress.error);
   assertQuery(attempts.error);
+  assertQuery(surveyResponses.error);
   assertQuery(completions.error);
 
   const summaries = await Promise.all((enrollments.data ?? []).map(async (enrollment) => {
@@ -356,14 +575,19 @@ async function inspectLearner(admin: SupabaseClient, email: string) {
     const moduleIds = (modules ?? []).map((row) => row.id);
     const [{ data: lessons }, { data: quizzes }] = moduleIds.length
       ? await Promise.all([
-          admin.from('lms_lessons').select('id').in('module_id', moduleIds).eq('is_required', true),
+          admin.from('lms_lessons').select('id,kind').in('module_id', moduleIds).eq('is_required', true),
           admin.from('lms_module_quizzes').select('id').in('module_id', moduleIds),
         ])
       : [{ data: [] }, { data: [] }];
     const completedLessonIds = new Set((progress.data ?? []).filter((row) => row.enrollment_id === enrollment.id && row.completed_at).map((row) => row.lesson_id));
+    const submittedSurveyIds = new Set((surveyResponses.data ?? []).filter((row) => row.enrollment_id === enrollment.id).map((row) => row.lesson_id));
     const passedQuizIds = new Set((attempts.data ?? []).filter((row) => row.enrollment_id === enrollment.id && row.passed).map((row) => row.quiz_id));
     const required = (lessons?.length ?? 0) + (quizzes?.length ?? 0);
-    const completed = (lessons ?? []).filter((row) => completedLessonIds.has(row.id)).length + (quizzes ?? []).filter((row) => passedQuizIds.has(row.id)).length;
+    const completed = (lessons ?? []).filter((row) =>
+      row.kind === 'survey'
+        ? submittedSurveyIds.has(row.id)
+        : completedLessonIds.has(row.id)
+    ).length + (quizzes ?? []).filter((row) => passedQuizIds.has(row.id)).length;
     return { enrollment_id: enrollment.id, percent_complete: required ? Math.round((completed / required) * 100) : 0 };
   }));
 
@@ -373,6 +597,7 @@ async function inspectLearner(admin: SupabaseClient, email: string) {
     enrollments: enrollments.data ?? [],
     progress: progress.data ?? [],
     attempts: attempts.data ?? [],
+    surveyResponses: surveyResponses.data ?? [],
     completions: completions.data ?? [],
     summaries,
   };
@@ -402,6 +627,8 @@ Deno.serve(async (req: Request) => {
       }
       case 'inspect_learner': data = await inspectLearner(admin, requiredString(payload.email, 'email')); break;
       case 'export_question_bank': data = await exportQuestionBank(admin, requiredUuid(payload.module_id, 'module_id')); break;
+      case 'survey_results': data = await surveyResults(admin, actor.id, requiredUuid(payload.lesson_id, 'lesson_id')); break;
+      case 'export_survey_responses': data = await exportSurveyResponses(admin, actor.id, payload); break;
       case 'create_course': data = await createCourse(admin, actor.id, payload); break;
       case 'update_course': data = await updateCourse(admin, actor.id, payload); break;
       case 'delete_course': data = await deleteRow(admin, actor.id, 'delete_course', payload); break;
@@ -411,6 +638,19 @@ Deno.serve(async (req: Request) => {
       case 'create_lesson': data = await createLesson(admin, actor.id, payload); break;
       case 'update_lesson': data = await updateLesson(admin, actor.id, payload); break;
       case 'delete_lesson': data = await deleteRow(admin, actor.id, 'delete_lesson', payload); break;
+      case 'replace_survey_questions': {
+        const { data: result, error } = await admin.rpc(
+          'lms_admin_replace_survey_questions',
+          {
+            p_actor_auth_user_id: actor.id,
+            p_lesson_id: requiredUuid(payload.lesson_id, 'lesson_id'),
+            p_questions: Array.isArray(payload.questions) ? payload.questions : [],
+          },
+        );
+        assertQuery(error);
+        data = result;
+        break;
+      }
       case 'reorder': {
         const { data: result, error } = await admin.rpc('lms_admin_reorder', {
           p_actor_auth_user_id: actor.id,

@@ -61,6 +61,9 @@ function courseView(
   const enrollmentProgress = snapshot.progress.filter(
     (item) => item.enrollment_id === enrollment.id,
   );
+  const enrollmentSurveyResponses = snapshot.surveyResponses.filter(
+    (item) => item.enrollment_id === enrollment.id,
+  );
   const resumeLesson = resumeModule
     ? catalog.lessons
         .filter((lesson) => lesson.module_id === resumeModule.id)
@@ -74,7 +77,11 @@ function courseView(
             new Date(b.progress!.updated_at).getTime() -
             new Date(a.progress!.updated_at).getTime(),
         )
-        .find(({ lesson }) => !lessonComplete(lesson, enrollmentProgress))?.lesson
+        .find(({ lesson }) => !lessonComplete(
+          lesson,
+          enrollmentProgress,
+          enrollmentSurveyResponses,
+        ))?.lesson
     : null;
   const contentAvailable = accessState === 'active' && unlocked && termsAccepted;
   const resumePath = resumeLesson

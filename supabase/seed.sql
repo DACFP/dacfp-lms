@@ -85,6 +85,7 @@ set slug = excluded.slug,
 
 insert into public.lms_modules (id, course_id, position, title, ce_credits)
 values
+  (md5('fpt-sandbox:module:0')::uuid, '10000000-0000-4000-8000-000000000001', 0, 'Introduction', null),
   (md5('fpt-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000001', 1, 'Bitcoin Foundations', 4.5),
   (md5('fpt-sandbox:module:2')::uuid, '10000000-0000-4000-8000-000000000001', 2, 'Blockchain and DLT', 4.5),
   (md5('fpt-sandbox:module:3')::uuid, '10000000-0000-4000-8000-000000000001', 3, 'Digital Assets and Currencies', 4.5),
@@ -140,6 +141,7 @@ select
 from public.lms_modules m
 cross join generate_series(1, 3) lesson_position
 where m.course_id = '10000000-0000-4000-8000-000000000001'
+  and m.position > 0
 on conflict (id) do update
 set module_id = excluded.module_id,
     position = excluded.position,
@@ -149,6 +151,162 @@ set module_id = excluded.module_id,
     duration_seconds = excluded.duration_seconds,
     body_md = excluded.body_md,
     is_required = excluded.is_required;
+
+insert into public.lms_lessons (
+  id,
+  module_id,
+  position,
+  title,
+  kind,
+  video_ref,
+  duration_seconds,
+  body_md,
+  is_required
+)
+values
+  (
+    md5('fpt-sandbox:introduction:video')::uuid,
+    md5('fpt-sandbox:module:0')::uuid,
+    1,
+    'Welcome to the Financial Professional Track',
+    'video',
+    'placeholder://fpt-introduction',
+    120,
+    null,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    md5('fpt-sandbox:module:0')::uuid,
+    2,
+    'Pre-course survey',
+    'survey',
+    null,
+    null,
+    null,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:module-1')::uuid,
+    md5('fpt-sandbox:module:1')::uuid,
+    4,
+    'Module 1 survey',
+    'survey',
+    null,
+    null,
+    null,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:post-course')::uuid,
+    md5('fpt-sandbox:module:4')::uuid,
+    4,
+    'Post-course survey',
+    'survey',
+    null,
+    null,
+    null,
+    true
+  )
+on conflict (id) do update
+set module_id = excluded.module_id,
+    position = excluded.position,
+    title = excluded.title,
+    kind = excluded.kind,
+    video_ref = excluded.video_ref,
+    duration_seconds = excluded.duration_seconds,
+    body_md = excluded.body_md,
+    is_required = excluded.is_required;
+
+insert into public.lms_survey_questions (
+  id,
+  lesson_id,
+  position,
+  prompt,
+  kind,
+  choices,
+  required
+)
+values
+  (
+    md5('fpt-sandbox:survey:pre-course:q1')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    1,
+    'How familiar are you with digital assets today?',
+    'scale_1_5',
+    null,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:q2')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    2,
+    'What do you most want to learn?',
+    'text',
+    null,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:q3')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    3,
+    'Which role best matches your work?',
+    'single_choice',
+    '[{"id":"advisor","text":"Advisor"},{"id":"planner","text":"Planner"},{"id":"other","text":"Other"}]'::jsonb,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:module-1:q1')::uuid,
+    md5('fpt-sandbox:survey:module-1')::uuid,
+    1,
+    'How useful was this module?',
+    'scale_1_5',
+    null,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:module-1:q2')::uuid,
+    md5('fpt-sandbox:survey:module-1')::uuid,
+    2,
+    'Which topics should receive more attention?',
+    'multi_choice',
+    '[{"id":"bitcoin","text":"Bitcoin"},{"id":"custody","text":"Custody"},{"id":"portfolio","text":"Portfolio use"}]'::jsonb,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:post-course:q1')::uuid,
+    md5('fpt-sandbox:survey:post-course')::uuid,
+    1,
+    'How confident are you after the course?',
+    'scale_1_5',
+    null,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:post-course:q2')::uuid,
+    md5('fpt-sandbox:survey:post-course')::uuid,
+    2,
+    'What was the most valuable topic?',
+    'single_choice',
+    '[{"id":"foundations","text":"Foundations"},{"id":"portfolio","text":"Portfolio construction"},{"id":"practice","text":"Practice application"}]'::jsonb,
+    true
+  ),
+  (
+    md5('fpt-sandbox:survey:post-course:q3')::uuid,
+    md5('fpt-sandbox:survey:post-course')::uuid,
+    3,
+    'What should we improve?',
+    'text',
+    null,
+    true
+  )
+on conflict (id) do update
+set lesson_id = excluded.lesson_id,
+    position = excluded.position,
+    prompt = excluded.prompt,
+    kind = excluded.kind,
+    choices = excluded.choices,
+    required = excluded.required;
 
 insert into public.lms_lessons (
   id,
@@ -256,6 +414,7 @@ select
   70
 from public.lms_modules m
 where m.course_id = '10000000-0000-4000-8000-000000000001'
+  and m.position > 0
 union all
 select
   md5('renewal-2026-sandbox:quiz:1')::uuid,
@@ -461,6 +620,21 @@ where enrollment_id in (
   )
 );
 
+delete from public.lms_survey_responses
+where enrollment_id in (
+  select id
+  from public.lms_enrollments
+  where person_email in (
+    'fresh@example.test',
+    'near-expiry@example.test',
+    'midmodule@example.test',
+    'failedquiz@example.test',
+    'almostdone@example.test',
+    'fptcomplete@example.test',
+    'complete@example.test'
+  )
+);
+
 insert into public.lms_lesson_progress (
   id,
   enrollment_id,
@@ -500,7 +674,8 @@ join public.lms_modules module
  and module.position <= plan.through_module
 join public.lms_lessons lesson
   on lesson.module_id = module.id
- and lesson.is_required;
+ and lesson.is_required
+ and lesson.kind <> 'survey';
 
 insert into public.lms_lesson_progress (
   id,
@@ -582,6 +757,56 @@ join public.lms_modules module
   on module.course_id = course.id
  and module.position = plan.module_position
 join public.lms_module_quizzes quiz on quiz.module_id = module.id;
+
+insert into public.lms_survey_responses (
+  id,
+  enrollment_id,
+  lesson_id,
+  submitted_at,
+  answers
+)
+select
+  md5(plan.email || ':survey-response:' || lesson.id::text)::uuid,
+  enrollment.id,
+  lesson.id,
+  '2026-07-16T16:32:00Z',
+  jsonb_object_agg(
+    question.id::text,
+    case
+      when question.kind = 'scale_1_5' then
+        to_jsonb(case when plan.email = 'complete@example.test' then 5 else 4 end)
+      when question.kind = 'text' then
+        to_jsonb(('Synthetic placeholder response from ' || plan.email)::text)
+      when question.kind = 'single_choice' then
+        to_jsonb(question.choices -> 0 ->> 'id')
+      else
+        jsonb_build_array(
+          question.choices -> 0 ->> 'id',
+          question.choices -> 1 ->> 'id'
+        )
+    end
+  )
+from (
+  values
+    ('near-expiry@example.test', 1),
+    ('midmodule@example.test', 1),
+    ('failedquiz@example.test', 3),
+    ('almostdone@example.test', 4),
+    ('fptcomplete@example.test', 4),
+    ('complete@example.test', 4)
+) plan(email, through_module)
+join public.lms_enrollments enrollment
+  on enrollment.person_email = plan.email
+ and enrollment.course_id = '10000000-0000-4000-8000-000000000001'
+join public.lms_modules module
+  on module.course_id = enrollment.course_id
+ and module.position <= plan.through_module
+join public.lms_lessons lesson
+  on lesson.module_id = module.id
+ and lesson.kind = 'survey'
+join public.lms_survey_questions question
+  on question.lesson_id = lesson.id
+group by plan.email, enrollment.id, lesson.id;
 
 insert into public.lms_completion_events (
   id,

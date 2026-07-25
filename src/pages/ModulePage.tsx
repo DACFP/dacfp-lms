@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   Circle,
+  ClipboardList,
   FileText,
   LockKeyhole,
   PlayCircle,
@@ -69,6 +70,9 @@ export function ModulePage() {
   const quiz = catalog.quizzes.find((item) => item.module_id === module.id);
   const canAttemptQuiz = quiz ? quizIsAttemptable(catalog, snapshot, course, module) : false;
   const enrollmentProgress = snapshot.progress.filter((item) => item.enrollment_id === enrollment.id);
+  const enrollmentSurveyResponses = snapshot.surveyResponses.filter(
+    (item) => item.enrollment_id === enrollment.id,
+  );
   const courseModules = catalog.modules
     .filter((item) => item.course_id === course.id)
     .sort((a, b) => a.position - b.position);
@@ -193,11 +197,21 @@ export function ModulePage() {
             ) : (
               <ol className="card mt-3">
                 {moduleLessons.map((lesson, index) => {
-                  const complete = lessonComplete(lesson, enrollmentProgress);
+                  const complete = lessonComplete(
+                    lesson,
+                    enrollmentProgress,
+                    enrollmentSurveyResponses,
+                  );
                   const lessonResources = catalog.resources.filter(
                     (resource) => resource.lesson_id === lesson.id,
                   );
-                  const Icon = complete ? CheckCircle2 : lesson.kind === 'video' ? PlayCircle : FileText;
+                  const Icon = complete
+                    ? CheckCircle2
+                    : lesson.kind === 'video'
+                      ? PlayCircle
+                      : lesson.kind === 'survey'
+                        ? ClipboardList
+                        : FileText;
                   return (
                     <li
                       key={lesson.id}
@@ -214,11 +228,16 @@ export function ModulePage() {
                               {lesson.position}. {lesson.title}
                             </h3>
                             {!lesson.is_required ? <StatusPill tone="muted">Optional</StatusPill> : null}
+                            {lesson.kind === 'survey' ? <StatusPill tone="neutral">Survey</StatusPill> : null}
                           </div>
                           <p className="mt-0.5 text-xs tabular-nums text-dacfp-gray-text">
                             {lesson.kind === 'video'
                               ? `${formatClock(lesson.duration_seconds)} compliance video · 1×`
-                              : 'Reading'}
+                              : lesson.kind === 'survey'
+                                ? lesson.is_required
+                                  ? 'Does not gate the quiz · Required for course completion'
+                                  : 'Optional feedback · Does not gate the quiz'
+                                : 'Reading'}
                             {complete ? ' · Complete' : ''}
                           </p>
                         </div>

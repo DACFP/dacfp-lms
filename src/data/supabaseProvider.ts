@@ -13,6 +13,7 @@ import type {
   LmsQuizGradeResult,
   LmsQuizPayload,
   LmsResourceToken,
+  LmsSurveySubmitResult,
 } from './provider';
 import type {
   Catalog,
@@ -30,6 +31,8 @@ import type {
   LmsModule,
   LmsModuleQuiz,
   LmsQuizAttempt,
+  LmsSurveyQuestion,
+  LmsSurveyResponse,
 } from './types';
 import { profileDisplayName } from '../lib/profile';
 
@@ -179,6 +182,7 @@ interface SnapshotRows {
   enrollments: LmsEnrollment[];
   progress: LmsLessonProgress[];
   attempts: LmsQuizAttempt[];
+  surveyResponses: LmsSurveyResponse[];
   completions: LmsCompletionEvent[];
 }
 
@@ -198,6 +202,7 @@ export function buildLearnerSnapshot(rows: SnapshotRows): LearnerSnapshot {
     enrollments: rows.enrollments,
     progress: rows.progress,
     attempts: rows.attempts,
+    surveyResponses: rows.surveyResponses,
     completions,
   };
 }
@@ -249,7 +254,7 @@ function progressFromPayload(value: unknown): LmsLessonProgress {
 
 const contentProvider: LmsProvider = {
   async getCatalog() {
-    const [courses, modules, lessons, resources, quizzes] = await Promise.all([
+    const [courses, modules, lessons, resources, quizzes, surveyQuestions] = await Promise.all([
       tableRows<LmsCourse>('lms_courses', ['created_at']),
       tableRows<LmsModule>('lms_modules', ['course_id', 'position']),
       tableRows<LmsLesson>('lms_lessons', ['module_id', 'position']),
@@ -258,13 +263,17 @@ const contentProvider: LmsProvider = {
         'position',
       ]),
       tableRows<LmsModuleQuiz>('lms_module_quizzes', ['module_id']),
+      tableRows<LmsSurveyQuestion>('lms_survey_questions', [
+        'lesson_id',
+        'position',
+      ]),
     ]);
-    return { courses, modules, lessons, resources, quizzes };
+    return { courses, modules, lessons, resources, quizzes, surveyQuestions };
   },
 
   async getLearnerSnapshot(_learnerId: LearnerStateKey) {
     const user = await currentUser();
-    const [profiles, enrollments, progress, attempts, completions] =
+    const [profiles, enrollments, progress, attempts, surveyResponses, completions] =
       await Promise.all([
         tableRows<Omit<LmsLearnerProfile, 'email'>>('lms_learner_profiles'),
         tableRows<LmsEnrollment>('lms_enrollments', ['enrolled_at']),
@@ -273,6 +282,7 @@ const contentProvider: LmsProvider = {
           'quiz_id',
           'attempt_number',
         ]),
+        tableRows<LmsSurveyResponse>('lms_survey_responses', ['submitted_at']),
         tableRows<LmsCompletionEvent>('lms_completion_events', ['completed_at']),
       ]);
     const profile = profiles.find((item) => item.auth_user_id === user.id);
@@ -285,6 +295,7 @@ const contentProvider: LmsProvider = {
       enrollments,
       progress,
       attempts,
+      surveyResponses,
       completions,
     });
   },
@@ -427,6 +438,24 @@ const contentProvider: LmsProvider = {
       throw dataError(error, 'Unable to complete this reading.');
     }
     return progressFromPayload(data.progress);
+  },
+
+  async submitSurvey(lessonId, answers) {
+    const { data, error } = await getClient().functions.invoke(
+      'lms-submit-survey',
+      { body: { lesson_id: lessonId, answers } },
+    );
+    if (
+      error ||
+      !data ||
+      !data.response ||
+      typeof data.response.id !== 'string' ||
+      typeof data.completion_fired !== 'boolean' ||
+      typeof data.already_submitted !== 'boolean'
+    ) {
+      throw dataError(error, 'Unable to submit this survey.');
+    }
+    return data as LmsSurveySubmitResult;
   },
 
   async getQuiz(quizId) {

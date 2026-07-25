@@ -52,6 +52,7 @@ describe('supabaseProvider row mapping', () => {
       ],
       progress: [],
       attempts: [],
+      surveyResponses: [],
       completions: [
         {
           id: 'completion-fpt',

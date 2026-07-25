@@ -16,9 +16,14 @@ export interface LmsModule {
 export interface LmsLesson {
   id: string;
   module_id: string;
-  kind: 'video' | 'reading';
+  kind: 'video' | 'reading' | 'survey';
   duration_seconds: number | null;
   is_required: boolean;
+}
+
+export interface LmsSurveyResponse {
+  enrollment_id: string;
+  lesson_id: string;
 }
 
 export interface LmsModuleQuiz {

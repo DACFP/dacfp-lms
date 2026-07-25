@@ -75,6 +75,7 @@ const inspection: LearnerInspection = {
   ],
   progress: [],
   attempts: [],
+  surveyResponses: [],
   completions: [],
   summaries: [{ enrollment_id: 'enr-1', percent_complete: 40 }],
 };
@@ -189,5 +190,59 @@ describe('Admin session expiry — brief #21 L-11 (re-auth, UI only)', () => {
 
     expect(await screen.findByText('Admin data unavailable')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your operator session has expired' })).toBeNull();
+  });
+});
+
+describe('Admin surveys — V1 editor and results', () => {
+  it('round-trips seeded survey questions and renders result breakdowns', async () => {
+    const replaceQuestions = vi.fn((payload: Record<string, unknown>) => payload.questions);
+    const readResults = vi.fn(() => ({
+      lesson: { id: 'fpt-pre-course-survey', title: 'Pre-course survey' },
+      course: { id: 'course-fpt', title: 'FPT Sandbox' },
+      response_count: 2,
+      enrolled_count: 4,
+      completion_rate: 50,
+      questions: [
+        {
+          question: {
+            id: 'survey-pre-q1',
+            lesson_id: 'fpt-pre-course-survey',
+            position: 1,
+            prompt: 'How familiar are you with digital assets today?',
+            kind: 'scale_1_5',
+            choices: null,
+            required: true,
+          },
+          breakdown: {
+            kind: 'scale_1_5',
+            counts: { '1': 0, '2': 0, '3': 0, '4': 1, '5': 1 },
+            average: 4.5,
+          },
+        },
+      ],
+    }));
+    renderAdmin('/admin/course/course-fpt', baseAdmin({
+      replace_survey_questions: replaceQuestions,
+      survey_results: readResults,
+      reorder: () => ({}),
+    }));
+
+    const saveButtons = await screen.findAllByRole('button', {
+      name: 'Save survey questions',
+    });
+    fireEvent.click(saveButtons[0]);
+    await waitFor(() => expect(replaceQuestions).toHaveBeenCalled());
+    expect(replaceQuestions.mock.calls[0][0]).toEqual(expect.objectContaining({
+      lesson_id: 'fpt-pre-course-survey',
+      questions: expect.arrayContaining([
+        expect.objectContaining({ kind: 'scale_1_5', required: true }),
+      ]),
+    }));
+
+    const resultButtons = await screen.findAllByRole('button', { name: 'View results' });
+    fireEvent.click(resultButtons[0]);
+    expect(await screen.findByText('Average:')).toBeInTheDocument();
+    expect(screen.getByText('4.5')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
   });
 });

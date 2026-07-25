@@ -15,6 +15,7 @@ import { LessonPlayer } from '../components/LessonPlayer';
 import { SecureResourceLink } from '../components/SecureResourceLink';
 import { darkBuildCopy } from '../components/DarkBuild';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SurveyLesson } from '../components/SurveyLesson';
 import { useLms } from '../context/LmsContext';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import {
@@ -49,7 +50,7 @@ function ReadingSkeleton() {
 
 export function LessonPage() {
   const { id } = useParams();
-  const { catalog, snapshot, completeReading } = useLms();
+  const { catalog, snapshot, completeReading, submitSurvey } = useLms();
   const [savingReading, setSavingReading] = useState(false);
   const [readingError, setReadingError] = useState('');
   const lesson = catalog.lessons.find((item) => item.id === id);
@@ -89,6 +90,7 @@ export function LessonPage() {
   const complete = lessonComplete(
     lesson,
     snapshot.progress.filter((item) => item.enrollment_id === enrollment.id),
+    snapshot.surveyResponses.filter((item) => item.enrollment_id === enrollment.id),
   );
   const courseComplete = isCourseComplete(catalog, snapshot, course);
   const moduleLessons = catalog.lessons
@@ -103,7 +105,13 @@ export function LessonPage() {
       <PageHeader
         eyebrow={`${course.title} · Module ${module.position} · Lesson ${lesson.position}`}
         title={lesson.title}
-        description={lesson.kind === 'video' ? 'Required video progress completes when your furthest watched point reaches 95%.' : 'Read the material, then mark the lesson complete.'}
+        description={
+          lesson.kind === 'video'
+            ? 'Required video progress completes when your furthest watched point reaches 95%.'
+            : lesson.kind === 'survey'
+              ? 'Submit once. Surveys never gate the module quiz, but required surveys count toward course completion.'
+              : 'Read the material, then mark the lesson complete.'
+        }
         action={
           <StatusPill tone={complete ? 'positive' : accessible ? 'neutral' : 'warning'}>
             {complete ? 'Complete' : accessState === 'expired' ? 'Access expired' : accessible ? 'In progress' : 'Locked'}
@@ -135,6 +143,17 @@ export function LessonPage() {
           lesson={lesson}
           progress={progress}
           reviewMode={complete || courseComplete}
+        />
+      ) : lesson.kind === 'survey' ? (
+        <SurveyLesson
+          questions={catalog.surveyQuestions
+            .filter((question) => question.lesson_id === lesson.id)
+            .sort((a, b) => a.position - b.position)}
+          response={snapshot.surveyResponses.find(
+            (item) =>
+              item.enrollment_id === enrollment.id && item.lesson_id === lesson.id,
+          ) ?? null}
+          onSubmit={(answers) => submitSurvey(lesson.id, answers)}
         />
       ) : (
         <article className="card p-6 sm:p-8">

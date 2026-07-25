@@ -7,7 +7,9 @@ import type {
   LmsLessonProgress,
   LmsLearnerProfile,
   LmsQuizQuestionPublic,
+  LmsSurveyResponse,
   ModuleView,
+  SurveyAnswers,
 } from './types';
 
 export interface LmsPlaybackToken {
@@ -39,6 +41,12 @@ export interface LmsQuizGradeResult {
   possible_points: number;
   passed: boolean;
   completion_fired: boolean;
+}
+
+export interface LmsSurveySubmitResult {
+  response: LmsSurveyResponse;
+  completion_fired: boolean;
+  already_submitted: boolean;
 }
 
 export type LmsDataErrorKind = 'denied' | 'unavailable';
@@ -85,6 +93,11 @@ export interface LmsProvider {
     lessonId: string,
     learnerId: LearnerStateKey,
   ): Promise<LmsLessonProgress>;
+  submitSurvey(
+    lessonId: string,
+    answers: SurveyAnswers,
+    learnerId: LearnerStateKey,
+  ): Promise<LmsSurveySubmitResult>;
   getQuiz(
     quizId: string,
     learnerId: LearnerStateKey,

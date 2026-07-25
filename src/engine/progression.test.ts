@@ -8,6 +8,7 @@ import type {
   LmsModule,
   LmsModuleQuiz,
   LmsQuizAttempt,
+  LmsSurveyResponse,
 } from '../data/types';
 import {
   courseComplete,
@@ -93,16 +94,19 @@ const context = (
   overrides: Partial<{
     course: LmsCourse;
     quizzes: LmsModuleQuiz[];
+    lessons: LmsLesson[];
     progress: LmsLessonProgress[];
+    surveyResponses: LmsSurveyResponse[];
     attempts: LmsQuizAttempt[];
   }> = {},
 ) => ({
   course: overrides.course ?? course(),
   module,
   modules,
-  lessons,
+  lessons: overrides.lessons ?? lessons,
   quizzes: overrides.quizzes ?? quizzes,
   progress: overrides.progress ?? [],
+  surveyResponses: overrides.surveyResponses ?? [],
   attempts: overrides.attempts ?? [],
 });
 
@@ -144,8 +148,17 @@ describe('course prerequisite and terms gates', () => {
 });
 
 describe('module progression', () => {
-  it('always unlocks module 1 in a sequential course', () => {
+  it('unlocks a lowest-position module at position 1 with no prior passes', () => {
     expect(moduleUnlocked(context(modules[0]))).toBe(true);
+  });
+
+  it('unlocks a lowest-position module at position 0 with no prior passes', () => {
+    const introduction = { ...modules[0], id: 'module-0', position: 0 };
+    expect(moduleUnlocked({
+      ...context(introduction),
+      module: introduction,
+      modules: [introduction, ...modules],
+    })).toBe(true);
   });
 
   it('locks module N until module N-1 has a passed quiz attempt', () => {
@@ -179,6 +192,19 @@ describe('quiz attempt rules', () => {
     expect(
       quizAttemptable(context(modules[0], { progress: [completeProgress(lessons[0])] })),
     ).toBe(true);
+  });
+
+  it('does not let a required survey gate its module quiz', () => {
+    const survey: LmsLesson = {
+      ...lessons[0],
+      id: 'survey-1',
+      position: 2,
+      kind: 'survey',
+    };
+    expect(quizAttemptable(context(modules[0], {
+      lessons: [lessons[0], survey],
+      progress: [completeProgress(lessons[0])],
+    }))).toBe(true);
   });
 
   it('allows unlimited attempts by always returning the next sequence number', () => {
@@ -226,6 +252,62 @@ describe('completion rules', () => {
     expect(
       courseComplete(course(), modules, lessons, quizzes, allProgress, [cumulativeAttempt]),
     ).toBe(false);
+  });
+
+  it('blocks course completion until required surveys have responses', () => {
+    const survey: LmsLesson = {
+      ...lessons[0],
+      id: 'survey-required',
+      position: 2,
+      kind: 'survey',
+    };
+    const response: LmsSurveyResponse = {
+      id: 'response-1',
+      enrollment_id: 'enrollment-1',
+      lesson_id: survey.id,
+      submitted_at: createdAt(),
+      answers: {},
+    };
+    const allProgress = lessons.map(completeProgress);
+    const allAttempts = quizzes.map((quiz) => attempt(quiz.id, 1, true));
+
+    expect(courseComplete(
+      course(),
+      modules,
+      [...lessons, survey],
+      quizzes,
+      allProgress,
+      allAttempts,
+      [],
+    )).toBe(false);
+    expect(courseComplete(
+      course(),
+      modules,
+      [...lessons, survey],
+      quizzes,
+      allProgress,
+      allAttempts,
+      [response],
+    )).toBe(true);
+  });
+
+  it('does not let an optional survey block course completion', () => {
+    const optionalSurvey: LmsLesson = {
+      ...lessons[0],
+      id: 'survey-optional',
+      position: 2,
+      kind: 'survey',
+      is_required: false,
+    };
+    expect(courseComplete(
+      course(),
+      modules,
+      [...lessons, optionalSurvey],
+      quizzes,
+      lessons.map(completeProgress),
+      quizzes.map((quiz) => attempt(quiz.id, 1, true)),
+      [],
+    )).toBe(true);
   });
 });
 
