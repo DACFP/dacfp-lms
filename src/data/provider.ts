@@ -138,7 +138,10 @@ export interface LmsAuthProvider {
   signUp(input: {
     email: string;
     password: string;
-    displayName: string;
+    firstName: string;
+    lastName: string;
+    firm: string;
+    jobTitle: string;
   }): Promise<LmsAuthResult>;
   login(email: string, password: string): Promise<LmsAuthResult>;
   logout(): Promise<void>;

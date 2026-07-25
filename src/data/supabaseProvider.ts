@@ -31,6 +31,7 @@ import type {
   LmsModuleQuiz,
   LmsQuizAttempt,
 } from './types';
+import { profileDisplayName } from '../lib/profile';
 
 export const GENERIC_LOGIN_ERROR =
   'Unable to sign in. Check your credentials and try again.';
@@ -95,7 +96,14 @@ function toSession(session: Session | null): LmsAuthSession | null {
       displayName:
         typeof session.user.user_metadata.display_name === 'string'
           ? session.user.user_metadata.display_name
-          : '',
+          : profileDisplayName(
+              typeof session.user.user_metadata.first_name === 'string'
+                ? session.user.user_metadata.first_name
+                : '',
+              typeof session.user.user_metadata.last_name === 'string'
+                ? session.user.user_metadata.last_name
+                : '',
+            ),
       role: toRole(session.user.app_metadata.role),
     },
   };
@@ -117,6 +125,11 @@ const learnerMetadata: Record<
     id: 'fresh',
     label: 'Fresh learner',
     description: 'Terms not yet accepted',
+  },
+  'near-expiry@example.test': {
+    id: 'near-expiry',
+    label: 'Near Expiry',
+    description: 'Renewal window open',
   },
   'midmodule@example.test': {
     id: 'mid-module-2',
@@ -340,6 +353,13 @@ const contentProvider: LmsProvider = {
       .from('lms_learner_profiles')
       .update({
         display_name: profile.display_name,
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        firm: profile.firm,
+        job_title: profile.job_title,
+        phone: profile.phone,
+        firm_url: profile.firm_url,
+        address: profile.address,
         credential_ids: profile.credential_ids,
       })
       .eq('auth_user_id', profile.auth_user_id)
@@ -467,12 +487,21 @@ export const supabaseProvider: LmsProvider & LmsAuthProvider & LmsAdminProvider 
     return () => subscription.unsubscribe();
   },
 
-  async signUp({ email, password, displayName }) {
+  async signUp({ email, password, firstName, lastName, firm, jobTitle }) {
     try {
+      const displayName = profileDisplayName(firstName, lastName);
       const { data, error } = await getClient().auth.signUp({
         email: email.trim().toLowerCase(),
         password,
-        options: { data: { display_name: displayName.trim() } },
+        options: {
+          data: {
+            display_name: displayName,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            firm: firm.trim(),
+            job_title: jobTitle.trim(),
+          },
+        },
       });
       if (error) return result(false, GENERIC_SIGNUP_ERROR);
       return result(

@@ -82,7 +82,7 @@ describe('LessonPlayer lifecycle', () => {
       progress(lessonId, position));
 
     const { rerender } = render(
-      <LessonPlayer key="lesson-a" course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 120)} />,
+      <LessonPlayer key="lesson-a" course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 120)} reviewMode={false} />,
     );
     await waitFor(() => expect(lms.requestPlayback).toHaveBeenCalledWith('lesson-a'));
     // brief #7 retired the raw-seconds format ("120s") for mm:ss through the
@@ -92,7 +92,7 @@ describe('LessonPlayer lifecycle', () => {
     expect(resumeValue()).toBe('2:00');
 
     rerender(
-      <LessonPlayer key="lesson-b" course={course} lesson={lesson('lesson-b')} progress={progress('lesson-b', 5)} />,
+      <LessonPlayer key="lesson-b" course={course} lesson={lesson('lesson-b')} progress={progress('lesson-b', 5)} reviewMode={false} />,
     );
     await waitFor(() => expect(lms.requestPlayback).toHaveBeenCalledWith('lesson-b'));
     expect(resumeValue()).toBe('0:05');
@@ -113,7 +113,7 @@ describe('LessonPlayer lifecycle', () => {
       .mockImplementation(async (lessonId: string, position: number) =>
         progress(lessonId, position));
 
-    render(<LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} />);
+    render(<LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} reviewMode={false} />);
     const video = await screen.findByLabelText('lesson-a video') as HTMLVideoElement;
     fireEvent.loadedMetadata(video);
     await waitFor(() => expect(lms.recordHeartbeat).toHaveBeenCalledTimes(1));
@@ -134,7 +134,7 @@ describe('LessonPlayer lifecycle', () => {
       progress(lessonId, position));
 
     const rendered = render(
-      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} />,
+      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} reviewMode={false} />,
     );
     await act(async () => Promise.resolve());
     const video = screen.getByLabelText('lesson-a video');
@@ -143,5 +143,31 @@ describe('LessonPlayer lifecycle', () => {
 
     rendered.unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clamps first-pass forward skip and unlocks 2x plus free skip in review mode', async () => {
+    lms.requestPlayback.mockResolvedValue(token('lesson-a', 30));
+    lms.recordHeartbeat.mockImplementation(async (lessonId: string, position: number) =>
+      progress(lessonId, position));
+
+    const rendered = render(
+      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 30)} reviewMode={false} />,
+    );
+    const video = await screen.findByLabelText('lesson-a video') as HTMLVideoElement;
+    Object.defineProperty(video, 'duration', { configurable: true, value: 600 });
+    fireEvent.loadedMetadata(video);
+    video.currentTime = 20;
+    fireEvent.click(screen.getByRole('button', { name: '15s forward' }));
+    expect(video.currentTime).toBe(30);
+    expect(screen.queryByLabelText('Playback speed')).not.toBeInTheDocument();
+
+    rendered.rerender(
+      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={{ ...progress('lesson-a', 30), completed_at: '2026-07-16T00:10:00.000Z' }} reviewMode />,
+    );
+    video.currentTime = 20;
+    fireEvent.click(screen.getByRole('button', { name: '15s forward' }));
+    expect(video.currentTime).toBe(35);
+    fireEvent.change(screen.getByLabelText('Playback speed'), { target: { value: '2' } });
+    expect(video.playbackRate).toBe(2);
   });
 });

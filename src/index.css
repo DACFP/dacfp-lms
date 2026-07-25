@@ -9,6 +9,16 @@
    dark-OS learner would get half-dark chrome in a light-only product. */
 @custom-variant dark (&:is(.dark *));
 
+@media print {
+  body { background: white !important; }
+  .certificate-actions,
+  header,
+  footer,
+  nav { display: none !important; }
+  .certificate-page { padding: 0 !important; }
+  .certificate-page article { box-shadow: none !important; max-width: none !important; }
+}
+
 /* ===========================================================================
    DACFP BRAND PALETTE — authoritative values from Brand/TOKENS.md
    (measured from Brand/ assets; commit 02582e1). Do not eyeball new values.

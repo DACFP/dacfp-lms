@@ -60,7 +60,7 @@ export function TermsModal({
             id="terms-description"
             className="mt-3 text-base leading-7 text-dacfp-gray-text"
           >
-            {course.title} uses sequential lessons, short module checkpoints, and compliance-style video progress. Your learning access and designation standing are managed separately.
+            {course.title} uses sequential lessons, short module quizzes, and compliance-style video progress. Your learning access and designation standing are managed separately.
           </DialogDescription>
           <DarkBuildOnly>
             <div className="mt-6 rounded-[0.1875rem] border border-dacfp-line bg-dacfp-wash p-4">

@@ -86,7 +86,7 @@ export function QuizPage() {
       setPayload(await loadQuiz(quiz.id));
     } catch {
       setPayload(null);
-      setError('Unable to load this checkpoint. Please retry.');
+      setError('Unable to load this quiz. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -101,8 +101,8 @@ export function QuizPage() {
   if (!module || !course || !quiz) {
     return (
       <EmptyState
-        title="Checkpoint not found"
-        description="This checkpoint is unavailable or the link is no longer current."
+        title="Quiz not found"
+        description="This quiz is unavailable or the link is no longer current."
         action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
@@ -112,7 +112,7 @@ export function QuizPage() {
     return (
       <EmptyState
         title="No course access"
-        description="This account is not enrolled in the course that contains this checkpoint."
+        description="This account is not enrolled in the course that contains this quiz."
         action={<Link className="button-secondary" to={'/dashboard'}>Back to dashboard</Link>}
       />
     );
@@ -152,7 +152,7 @@ export function QuizPage() {
         `${graded.passed ? 'Passed' : 'Not passed yet'}. You scored ${graded.score} out of ${graded.possible_points}.`,
       );
     } catch {
-      setError('Checkpoint submission failed. Your selections remain on this page so you can try again.');
+      setError('Quiz submission failed. Your selections remain on this page so you can try again.');
     } finally {
       setSubmitting(false);
     }
@@ -180,8 +180,8 @@ export function QuizPage() {
 
       <PageHeader
         eyebrow={`${course.title} · Module ${module.position}`}
-        title={`Module ${module.position} checkpoint`}
-        description={`A short check of understanding — not an exam. ${quiz.question_count} questions; score ${quiz.pass_pct}% or higher to pass and move on. Attempts are unlimited, and there is no cumulative final exam.`}
+        title={`Module ${module.position} quiz`}
+        description="A short check of understanding — not an exam. 10 questions, 70% or higher, unlimited attempts, no final exam."
         action={
           latest?.passed ? (
             <StatusPill tone="positive">Passed</StatusPill>
@@ -190,7 +190,7 @@ export function QuizPage() {
           ) : accessible ? (
             <StatusPill tone="neutral">Ready</StatusPill>
           ) : (
-            <LockedBadge reason="This checkpoint opens once every required lesson and any prior module checkpoint is complete." />
+            <LockedBadge reason="This quiz opens once every required lesson and any prior module quiz is complete." />
           )
         }
       />
@@ -199,18 +199,18 @@ export function QuizPage() {
         <section className="min-w-0" aria-labelledby="attempt-heading">
           {!accessible ? (
             <div className="card p-6 sm:p-8">
-              {/* No LockedBadge here: the heading already says "Checkpoint
+              {/* No LockedBadge here: the heading already says "Quiz
                   unavailable", and a badge carrying that same string as its
                   sr-only reason would announce it twice. */}
               <p className="flex items-center gap-2 font-bold text-dacfp-navy">
-                <LockKeyhole className="size-icon-sm" aria-hidden="true" /> Checkpoint unavailable
+                <LockKeyhole className="size-icon-sm" aria-hidden="true" /> Quiz unavailable
               </p>
               <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">
                 {accessState === 'expired'
                   ? 'Course access has expired. Designation standing is governed separately.'
                   : accessState === 'revoked'
                     ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
-                    : 'Complete all required lessons and any prior module before starting this checkpoint.'}
+                    : 'Complete all required lessons and any prior module before starting this quiz.'}
               </p>
               <Link className="button-quiet mt-3" to={`/course/${course.slug}/module/${module.position}`}>
                 Back to module
@@ -252,7 +252,7 @@ export function QuizPage() {
                 </div>
                 {!result.passed ? (
                   <p className="mt-4 text-sm leading-6 text-dacfp-gray-text">
-                    Attempts are unlimited and there is no cooldown. Retake the checkpoint whenever you are ready — this is a check of understanding, not an exam.
+                    Attempts are unlimited and there is no cooldown. Retake the quiz whenever you are ready — this is a check of understanding, not an exam.
                   </p>
                 ) : null}
                 {result.completion_fired ? (
@@ -273,7 +273,7 @@ export function QuizPage() {
               </div>
               <div className="mt-6 flex flex-wrap gap-3">
                 <button className="button-secondary" onClick={() => void startAttempt()} type="button">
-                  <RotateCcw className="size-icon-sm" aria-hidden="true" /> Retake checkpoint
+                  <RotateCcw className="size-icon-sm" aria-hidden="true" /> Retake quiz
                 </button>
                 {result.passed && nextModule ? (
                   <Link className="button-primary" to={`/course/${course.slug}/module/${nextModule.position}`}>
@@ -305,7 +305,7 @@ export function QuizPage() {
                 <Progress
                   className="mt-3 h-1.5"
                   value={((onReview ? questions.length : step) / questions.length) * 100}
-                  aria-label={`Checkpoint progress: ${answeredCount} of ${questions.length} answered`}
+                  aria-label={`Quiz progress: ${answeredCount} of ${questions.length} answered`}
                 />
               </div>
 
@@ -456,7 +456,7 @@ export function QuizPage() {
           ) : (
             <div className="card p-6 sm:p-8">
               <button className="button-primary" onClick={() => void startAttempt()} type="button">
-                Start checkpoint attempt
+                Start quiz attempt
               </button>
             </div>
           )}

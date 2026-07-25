@@ -9,6 +9,7 @@ import {
 describe('supabaseProvider row mapping', () => {
   it.each([
     ['fresh@example.test', 'fresh'],
+    ['near-expiry@example.test', 'near-expiry'],
     ['midmodule@example.test', 'mid-module-2'],
     ['failedquiz@example.test', 'quiz-failed-on-3'],
     ['almostdone@example.test', 'one-quiz-from-done'],
@@ -24,6 +25,13 @@ describe('supabaseProvider row mapping', () => {
       profile: {
         auth_user_id: 'auth-complete',
         display_name: 'Fully complete',
+        first_name: 'Fully',
+        last_name: 'Complete',
+        firm: 'Synthetic Advisory LLC',
+        job_title: 'Financial Advisor',
+        phone: null,
+        firm_url: null,
+        address: null,
         credential_ids: { cfp: 'SYNTH-CFP-1042' },
         created_at: '2026-07-16T16:00:00.000Z',
         updated_at: '2026-07-16T16:00:00.000Z',

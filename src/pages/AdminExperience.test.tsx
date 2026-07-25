@@ -47,6 +47,13 @@ const inspection: LearnerInspection = {
   profile: {
     auth_user_id: 'learner-1',
     display_name: 'Jordan Rivers',
+    first_name: 'Jordan',
+    last_name: 'Rivers',
+    firm: 'Synthetic Advisory LLC',
+    job_title: 'Financial Advisor',
+    phone: null,
+    firm_url: null,
+    address: null,
     credential_ids: { cfp: 'CFP-42', iwi: undefined, cfa: undefined },
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -95,6 +102,10 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
     const cfp = await screen.findByText('CFP ID');
     expect(cfp.tagName).toBe('DT');
     expect(screen.getByText('CFP-42')).toBeInTheDocument();
+    expect(screen.getByText('Jordan')).toBeInTheDocument();
+    expect(screen.getByText('Rivers')).toBeInTheDocument();
+    expect(screen.getByText('Synthetic Advisory LLC')).toBeInTheDocument();
+    expect(screen.getByText('Financial Advisor')).toBeInTheDocument();
     // Empty credentials read as an em dash, never "null"/"undefined".
     expect(screen.queryByText(/null|undefined/)).toBeNull();
     // No raw JSON dump survives.

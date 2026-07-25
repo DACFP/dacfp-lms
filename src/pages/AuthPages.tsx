@@ -14,6 +14,7 @@ import { BrandLockup } from '../components/BrandLockup';
 import { Field } from '../components/Field';
 import { IconTile } from '../components/IconTile';
 import { useAuth } from '../context/AuthContext';
+import { JOB_TITLE_OPTIONS } from '../lib/profile';
 
 function AuthShell({
   eyebrow,
@@ -43,8 +44,8 @@ function AuthShell({
           </p>
           <p className="mt-5 max-w-md leading-7 text-white/70">
             {darkBuildCopy(
-              'Sandbox authentication protects synthetic learner content, progress, and checkpoint attempts end to end.',
-              'Authentication protects your learner content, progress, and checkpoint attempts end to end.',
+              'Sandbox authentication protects synthetic learner content, progress, and quiz attempts end to end.',
+              'Authentication protects your learner content, progress, and quiz attempts end to end.',
             )}
           </p>
         </div>
@@ -76,7 +77,11 @@ export function LoginPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [firm, setFirm] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [otherJobTitle, setOtherJobTitle] = useState('');
   const [message, setMessage] = useState('');
   const [successful, setSuccessful] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -88,7 +93,14 @@ export function LoginPage() {
     const response =
       mode === 'login'
         ? await login(email, password)
-        : await signUp({ email, password, displayName });
+        : await signUp({
+            email,
+            password,
+            firstName,
+            lastName,
+            firm,
+            jobTitle: jobTitle === 'Other' ? otherJobTitle : jobTitle,
+          });
     setSubmitting(false);
     setSuccessful(response.ok);
     setMessage(response.message);
@@ -152,14 +164,14 @@ export function LoginPage() {
 
       <form onSubmit={(event) => void submit(event)} className="space-y-5">
         {mode === 'signup' ? (
-          <Field label="Full name">
-            <Input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              autoComplete="name"
-              required
-            />
-          </Field>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="First name">
+              <Input value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" required />
+            </Field>
+            <Field label="Last name">
+              <Input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" required />
+            </Field>
+          </div>
         ) : null}
         <Field label="Email">
           <Input
@@ -188,6 +200,33 @@ export function LoginPage() {
             required
           />
         </Field>
+        {mode === 'signup' ? (
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Firm">
+              <Input value={firm} onChange={(event) => setFirm(event.target.value)} autoComplete="organization" required />
+            </Field>
+            <Field label="Job title">
+              <select
+                className="min-h-11 w-full rounded-[0.1875rem] border border-dacfp-line bg-white px-3 text-base text-dacfp-navy"
+                value={jobTitle}
+                onChange={(event) => setJobTitle(event.target.value)}
+                autoComplete="organization-title"
+                required
+              >
+                <option value="">Select a role</option>
+                {JOB_TITLE_OPTIONS.map((title) => <option key={title} value={title}>{title}</option>)}
+                <option value="Other">Other</option>
+              </select>
+            </Field>
+            {jobTitle === 'Other' ? (
+              <div className="sm:col-start-2">
+                <Field label="Other job title">
+                  <Input value={otherJobTitle} onChange={(event) => setOtherJobTitle(event.target.value)} autoComplete="organization-title" required />
+                </Field>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {message ? <AuthMessage successful={successful} message={message} /> : null}
         <button className="button-primary w-full" type="submit" disabled={submitting}>
           {mode === 'signup' ? <UserPlus className="size-icon-sm" aria-hidden="true" /> : null}

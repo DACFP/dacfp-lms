@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -138,9 +138,9 @@ describe('D0 route shell', () => {
     ['/dashboard', /^Good (morning|afternoon|evening), Fully\.$/],
     ['/course/fpt-sandbox/module/1', 'Bitcoin Foundations'],
     ['/lesson/fpt-m1-video', 'Bitcoin Foundations: Video lesson'],
-    // T1 vocabulary: the quiz surface is the module checkpoint.
-    ['/quiz/fpt-m1', 'Module 1 checkpoint'],
+    ['/quiz/fpt-m1', 'Module 1 quiz'],
     ['/account', 'Profile and credentials'],
+    ['/certificate', 'Fully complete'],
   ])('renders %s on mock data', async (path, heading) => {
     renderRoute(path);
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
@@ -207,7 +207,7 @@ describe('D0 route shell', () => {
   it.each<[string, LearnerStateKey, string]>([
     ['/course/fpt-sandbox/module/4', 'quiz-failed-on-3', 'Content is not available yet'],
     ['/lesson/fpt-m4-video', 'quiz-failed-on-3', 'This lesson is locked'],
-    ['/quiz/fpt-m4', 'quiz-failed-on-3', 'Checkpoint unavailable'],
+    ['/quiz/fpt-m4', 'quiz-failed-on-3', 'Quiz unavailable'],
   ])('renders a recoverable locked state on %s', async (path, learner, message) => {
     renderRoute(path, learner);
     expect(await screen.findByText(message)).toBeInTheDocument();
@@ -224,18 +224,65 @@ describe('D0 route shell', () => {
     expect(screen.getByRole('link', { name: /Bitcoin foundations workbook/ })).toBeInTheDocument();
   });
 
-  it('shows the locked bonus promise until the FPT completion event exists', async () => {
+  it('keeps the bonus library entirely invisible until the FPT completion event exists', async () => {
     renderRoute('/dashboard', 'fresh');
-    expect(
-      await screen.findByText(/Complete FPT to unlock this bonus course/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Accept the program terms to continue' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Bonus library' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Portfolio Case Study')).not.toBeInTheDocument();
+    expect(screen.queryByText('Renewal 2026 Sandbox')).not.toBeInTheDocument();
   });
 
-  it('shows the renewal enrollment and flips the bonus card after FPT completion', async () => {
+  it('shows a bonus card per module after FPT completion and keeps renewal hidden outside its window', async () => {
     renderRoute('/dashboard', 'fpt-completed');
-    expect(await screen.findByRole('heading', { name: 'Bonus Sandbox' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Renewal 2026 Sandbox' })).toBeInTheDocument();
-    expect(screen.queryByText(/Complete FPT to unlock this bonus course/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Bonus library' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Portfolio Case Study' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Advisor Conversation Lab' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Market Structure Briefing' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Renewal 2026 Sandbox' })).not.toBeInTheDocument();
+  });
+
+  it('shows renewal only for the staged learner inside the 30-day window', async () => {
+    renderRoute('/dashboard', 'near-expiry');
+    expect(await screen.findByRole('heading', { name: 'Renewal 2026 Sandbox' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['mid-module-2', '1/4', 'On certification'],
+    ['fpt-completed', '4/4', 'Jul 16, 2027'],
+  ] as const)('renders the X1 header stats for %s', async (learner, modules, designation) => {
+    renderRoute('/dashboard', learner);
+    expect(await screen.findByText(modules)).toBeInTheDocument();
+    expect(screen.getByText('Modules')).toBeInTheDocument();
+    expect(screen.getByText('Enrollment remaining')).toBeInTheDocument();
+    expect(screen.getAllByText(designation).length).toBeGreaterThan(0);
+  });
+
+  it('renders the interim certificate only after FPT completion', async () => {
+    renderRoute('/certificate', 'mid-module-2');
+    expect(await screen.findByText('Certificate not available yet')).toBeInTheDocument();
+  });
+
+  it('renders a completed learner interim certificate with designation dates', async () => {
+    renderRoute('/certificate', 'fpt-completed');
+    expect(await screen.findByRole('heading', { level: 1, name: 'FPT completed' })).toBeInTheDocument();
+    expect(screen.getByText('Certified in Blockchain and Digital Assets')).toBeInTheDocument();
+    expect(screen.getByText('Interim demonstration certificate')).toBeInTheDocument();
+    expect(screen.getByText('Jul 16, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Jul 16, 2027')).toBeInTheDocument();
+  });
+
+  it('opens every course module for review after course completion', async () => {
+    renderRoute('/course/fpt-sandbox/module/4', 'fpt-completed');
+    expect(await screen.findByText('Course complete: every module and lesson is open for review in any order.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Bitcoin Foundations/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Blockchain and DLT/ })).toBeInTheDocument();
+  });
+
+  it('keeps the module page quiz-focused and removes learner CE chips', async () => {
+    renderRoute('/course/fpt-sandbox/module/2', 'mid-module-2');
+    expect(await screen.findByText("Opens when this module's lessons are complete.")).toBeInTheDocument();
+    expect(screen.getByText('10 questions, 70% or higher, unlimited attempts, no final exam.')).toBeInTheDocument();
+    expect(screen.queryByText(/CE credit/i)).not.toBeInTheDocument();
   });
 
   it('does not mistake RLS-hidden gated modules for a completed course', async () => {
@@ -249,7 +296,6 @@ describe('D0 route shell', () => {
 
     renderRoute('/dashboard', 'fresh', testAuthProvider(signedInSession), gatedCatalogProvider);
     expect(await screen.findByText('Terms required')).toBeInTheDocument();
-    expect(screen.getByText('Locked')).toBeInTheDocument();
     expect(screen.queryByText(/^Complete$/)).not.toBeInTheDocument();
   });
 
@@ -341,6 +387,68 @@ describe('D0 route shell', () => {
     expect(screen.getByLabelText('CFA ID')).toBeInTheDocument();
   });
 
+  it('round-trips the expanded account fields through the profile provider', async () => {
+    let current = await mockProvider.getLearnerSnapshot('fully-complete');
+    const updateProfile = vi.fn(async (profile) => {
+      const saved = { ...profile, updated_at: '2026-07-25T06:00:00.000Z' };
+      current = { ...current, profile: saved };
+      return saved;
+    });
+    const profileProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot() {
+        return structuredClone(current);
+      },
+      updateProfile,
+    };
+    renderRoute('/account', 'fully-complete', testAuthProvider(signedInSession), profileProvider);
+    fireEvent.change(await screen.findByLabelText('First name'), { target: { value: 'Casey' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Morgan' } });
+    fireEvent.change(screen.getByLabelText('Firm'), { target: { value: 'Synthetic Planning LLC' } });
+    fireEvent.change(screen.getByLabelText('Job title'), { target: { value: 'Other' } });
+    fireEvent.change(screen.getByLabelText('Other job title'), { target: { value: 'Education Lead' } });
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '+1 555 0100' } });
+    fireEvent.change(screen.getByLabelText('Firm website'), { target: { value: 'https://example.test' } });
+    fireEvent.change(screen.getByLabelText('Address line 1'), { target: { value: '100 Test Way' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
+
+    await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(1));
+    expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({
+      display_name: 'Casey Morgan',
+      first_name: 'Casey',
+      last_name: 'Morgan',
+      firm: 'Synthetic Planning LLC',
+      job_title: 'Education Lead',
+      phone: '+1 555 0100',
+      firm_url: 'https://example.test',
+      address: { line1: '100 Test Way' },
+    }));
+  });
+
+  it('submits the expanded low-friction signup fields to auth', async () => {
+    const signUp = vi.fn(async () => ({ ok: true, message: 'Account created.', session: null }));
+    renderRoute('/login', 'fresh', { ...testAuthProvider(null), signUp });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create account', pressed: false }));
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Taylor' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lee' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'taylor@example.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'synthetic-pass' } });
+    fireEvent.change(screen.getByLabelText('Firm'), { target: { value: 'Synthetic Advisory LLC' } });
+    fireEvent.change(screen.getByLabelText('Job title'), { target: { value: 'Financial Advisor' } });
+    const submit = screen.getAllByRole('button', { name: 'Create account' }).find((button) => button.getAttribute('type') === 'submit');
+    expect(submit).toBeDefined();
+    fireEvent.click(submit!);
+
+    await waitFor(() => expect(signUp).toHaveBeenCalledWith({
+      email: 'taylor@example.test',
+      password: 'synthetic-pass',
+      firstName: 'Taylor',
+      lastName: 'Lee',
+      firm: 'Synthetic Advisory LLC',
+      jobTitle: 'Financial Advisor',
+    }));
+  });
+
   it('marks an accessible reading complete through the provider action', async () => {
     renderRoute('/lesson/fpt-m2-reading', 'mid-module-2');
     const button = await screen.findByRole('button', {
@@ -377,7 +485,7 @@ describe('D0 route shell', () => {
     await screen.findByText('Select one answer');
     fireEvent.click(await walkToReview());
     expect(await screen.findByText('7/10')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Retake checkpoint' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retake quiz' })).toBeInTheDocument();
     expect(screen.getByText('All course requirements are complete.')).toBeInTheDocument();
     expect(screen.getByText(/Bonus Sandbox unlocked on your dashboard/i)).toBeInTheDocument();
     expect(getCatalog).toHaveBeenCalledTimes(2);

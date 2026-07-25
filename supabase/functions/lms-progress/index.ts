@@ -18,6 +18,7 @@ const corsHeaders = {
 
 interface AccessContext {
   enrollmentId: string;
+  reviewMode: boolean;
   lesson: {
     id: string;
     module_id: string;
@@ -171,7 +172,20 @@ async function requireLessonAccess(
   };
   if (!moduleUnlocked(context)) throw new AccessDenied();
 
-  return { enrollmentId: enrollment.id, lesson, context };
+  const lessonProgress = context.progress.find((item) => item.lesson_id === lesson.id);
+  const reviewMode =
+    course.progression === 'open' ||
+    Boolean(lessonProgress?.completed_at) ||
+    courseComplete(
+      context.course,
+      context.modules,
+      context.lessons,
+      context.quizzes,
+      context.progress,
+      context.attempts,
+    );
+
+  return { enrollmentId: enrollment.id, lesson, context, reviewMode };
 }
 
 async function detectCompletion(
@@ -244,7 +258,11 @@ Deno.serve(async (req: Request) => {
       const completionFired = !previous?.completed_at && data.completed_at
         ? await detectCompletion(admin, access, data)
         : false;
-      return jsonResponse(200, { progress: data, completion_fired: completionFired });
+      return jsonResponse(200, {
+        progress: data,
+        completion_fired: completionFired,
+        review_mode: access.reviewMode,
+      });
     }
 
     if (action === 'complete_reading') {

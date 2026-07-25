@@ -18,6 +18,7 @@ import type {
 
 const createdAt = '2026-07-16T16:00:00.000Z';
 const futureExpiry = '2027-07-16T23:59:59.000Z';
+const nearExpiry = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
 
 const courses: LmsCourse[] = [
   {
@@ -86,7 +87,7 @@ function moduleLessons(module: LmsModule, duration = 600): LmsLesson[] {
       id: `${module.id}-reading`,
       module_id: module.id,
       position: 2,
-      title: `${module.title}: Key concepts`,
+      title: `${module.title}: Reading`,
       kind: 'reading',
       video_ref: null,
       duration_seconds: null,
@@ -156,6 +157,7 @@ export const mockCatalog: Catalog = { courses, modules, lessons, resources, quiz
 
 const learnerSummaries: LearnerSummary[] = [
   { id: 'fresh', label: 'Fresh learner', description: 'Terms not yet accepted', email: 'fresh@example.test' },
+  { id: 'near-expiry', label: 'Near Expiry', description: 'Renewal window open', email: 'near-expiry@example.test' },
   { id: 'mid-module-2', label: 'Mid-module 2', description: 'Resuming required content', email: 'midmodule@example.test' },
   { id: 'quiz-failed-on-3', label: 'Quiz failed on 3', description: 'Retake is available', email: 'failedquiz@example.test' },
   { id: 'one-quiz-from-done', label: 'One quiz from done', description: 'Final FPT quiz remains', email: 'almostdone@example.test' },
@@ -257,6 +259,13 @@ function baseSnapshot(learner: LearnerSummary): LearnerSnapshot {
     profile: {
       auth_user_id: `auth-${learner.id}`,
       display_name: learner.label,
+      first_name: learner.label.split(/\s+/)[0] ?? '',
+      last_name: learner.label.split(/\s+/).slice(1).join(' '),
+      firm: 'Synthetic Advisory LLC',
+      job_title: 'Financial Advisor',
+      phone: null,
+      firm_url: null,
+      address: null,
       email: learner.email,
       credential_ids:
         learner.id === 'fully-complete'
@@ -301,6 +310,20 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
     },
   );
   mid.attempts.push(attempt(midFpt.id, mid.learner.id, quizzes[0], 1, 8));
+
+  const expiring = snapshots['near-expiry'];
+  const expiringFpt = expiring.enrollments[0];
+  expiringFpt.expires_at = nearExpiry;
+  const expiringRenewal = enrollment(expiring.learner, 'course-renewal-2026', true);
+  expiring.enrollments.push(expiringRenewal);
+  expiring.progress.push(
+    ...completedProgress(
+      expiringFpt.id,
+      expiring.learner.id,
+      lessons.filter((lesson) => lesson.module_id === 'fpt-m1'),
+    ),
+  );
+  expiring.attempts.push(attempt(expiringFpt.id, expiring.learner.id, quizzes[0], 1, 8));
 
   const failed = snapshots['quiz-failed-on-3'];
   const failedFpt = failed.enrollments[0];
@@ -498,7 +521,9 @@ export const mockProvider: LmsProvider = {
       Math.max(0, Math.floor(positionSeconds)),
     );
     return upsertMockProgress(learnerId, lessonId, (current) => {
-      const maxWatched = Math.max(current?.max_watched_seconds ?? 0, position);
+      const maxWatched = current?.completed_at
+        ? current.max_watched_seconds
+        : Math.max(current?.max_watched_seconds ?? 0, position);
       return {
         id: current?.id ?? `${learnerId}-progress-${lessonId}`,
         enrollment_id: enrollment.id,

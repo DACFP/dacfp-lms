@@ -81,9 +81,25 @@ export interface CredentialIds {
   cfa?: string;
 }
 
+export interface LearnerAddress {
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  postal?: string;
+  country?: string;
+}
+
 export interface LmsLearnerProfile {
   auth_user_id: string;
   display_name: string;
+  first_name: string;
+  last_name: string;
+  firm: string;
+  job_title: string;
+  phone: string | null;
+  firm_url: string | null;
+  address: LearnerAddress | null;
   email: string;
   credential_ids: CredentialIds;
   created_at: string;
@@ -150,6 +166,7 @@ export interface Catalog {
 
 export const learnerStateKeys = [
   'fresh',
+  'near-expiry',
   'mid-module-2',
   'quiz-failed-on-3',
   'one-quiz-from-done',

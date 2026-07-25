@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { RouteFocus } from './components/RouteFocus';
 import type { LmsAdminProvider } from './data/provider';
 import { AccountPage } from './pages/AccountPage';
+import { CertificatePage } from './pages/CertificatePage';
 import { LoginPage, ResetPage } from './pages/AuthPages';
 import { DashboardPage } from './pages/DashboardPage';
 import { LessonPage } from './pages/LessonPage';
@@ -53,6 +54,7 @@ export function App({ adminProvider }: { adminProvider?: LmsAdminProvider }) {
           <Route path="/lesson/:id" element={<LessonPage />} />
           <Route path="/quiz/:moduleId" element={<QuizPage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/certificate" element={<CertificatePage />} />
         </Route>
         <Route path="/" element={<Navigate replace to="/dashboard" />} />
         <Route path="*" element={<Navigate replace to="/dashboard" />} />
