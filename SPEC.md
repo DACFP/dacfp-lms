@@ -1,4 +1,4 @@
-# DACFP-LMS — DARK BUILD SPEC v3.1 (standing reference for all Codex sessions)
+# DACFP-LMS — DARK BUILD SPEC v3.2 (standing reference for all Codex sessions)
 
 This document is the contract for every session in this repo. Read it fully
 before writing code. Where a session prompt and this spec conflict, STOP and
@@ -8,7 +8,7 @@ v3.1 supersedes all prior versions. Changes from v2: real FPT structure
 confirmed (14 modules); exam policy confirmed as PUBLICLY MARKETED (locked
 hard); CE credits confirmed as part of the product → ce_credits modeling +
 credential ID collection; lesson resources table; optional per-course terms
-acknowledgment. v3.1 change: Hard Rule 1 rewritten in allowlist form — the
+acknowledgment. v3.1 change: Hard Rule 1 rewritten in allowlist form; v3.2 change: 'survey' lesson kind added (V1-SPEC) with the courseComplete/quizAttemptable rule in §3 — the
 production project ref is deliberately not written anywhere in this file,
 so the repo can be audited to contain no trace of it. Repo is
 DACFP/dacfp-lms.
@@ -122,7 +122,7 @@ Cloudflare Stream integration is deferred; interfaces are shaped for it.
                          ce_credits numeric null,   -- optional per-module
                          unique (course_id, position)
     lms_lessons          id, module_id fk, position int, title text,
-                         kind text check (kind in ('video','reading')),
+                         kind text check (kind in ('video','reading','survey')),
                          video_ref text,            -- provider-agnostic;
                                                     -- Stream UID later,
                                                     -- placeholder now
@@ -203,7 +203,10 @@ identically against the mock provider (D0) and live rows (D4+):
   max_watched_seconds (§4). Readings: explicit mark-complete.
 - `courseComplete(course, progress, attempts)`: every required lesson
   complete AND every module quiz (where one exists) passed. No cumulative
-  exam exists or may be added (Hard Rule 12).
+  exam exists or may be added (Hard Rule 12). Required survey lessons
+  count toward course completion but are EXCLUDED from
+  quizAttemptable's required-lesson check: evaluations never gate the
+  exam.
 - Grading (server-side only, D4): score = sum of points where the answer
   set matches `correct`; passed = score/total ≥ pass_pct. Question order
   and choice order shuffled per attempt at display time; grading maps by
