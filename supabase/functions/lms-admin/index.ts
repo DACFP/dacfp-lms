@@ -327,27 +327,38 @@ async function uploadResource(admin: SupabaseClient, actorId: string, input: Rec
   return data;
 }
 
-async function exportQuestionBank(admin: SupabaseClient, moduleId: string) {
-  const { data: quiz, error: quizError } = await admin.from('lms_module_quizzes').select('*').eq('module_id', moduleId).maybeSingle();
+async function exportQuestionBank(
+  admin: SupabaseClient,
+  actorId: string,
+  moduleId: string,
+) {
+  const [{ data: module, error: moduleError }, { data: quiz, error: quizError }] =
+    await Promise.all([
+      admin.from('lms_modules').select('id,position').eq('id', moduleId).maybeSingle(),
+      admin.from('lms_module_quizzes').select('*').eq('module_id', moduleId).maybeSingle(),
+    ]);
+  assertQuery(moduleError);
   assertQuery(quizError);
-  if (!quiz) throw new InvalidRequest('Question bank is unavailable.');
+  if (!module || !quiz) throw new InvalidRequest('Question bank is unavailable.');
   const { data, error } = await admin.from('lms_quiz_questions').select('position,prompt,choices,correct,points').eq('quiz_id', quiz.id).order('position');
   assertQuery(error);
-  return {
-    pass_pct: quiz.pass_pct,
-    questions: (data ?? []).map((question) => {
-      const choices = new Map((question.choices as Array<{ id: string; text: string }>).map((choice) => [choice.id, choice.text]));
-      return {
+  const moduleSelector = `module_${String(module.position).padStart(2, '0')}`;
+  const questions = (data ?? []).map((question) => ({
         position: question.position,
         prompt: question.prompt,
-        choice_a: choices.get('a') ?? '',
-        choice_b: choices.get('b') ?? '',
-        choice_c: choices.get('c') ?? '',
-        choice_d: choices.get('d') ?? '',
-        correct: (question.correct as string[])[0] ?? '',
-        points: question.points,
-      };
-    }),
+        choices: question.choices as Array<{ id: string; text: string }>,
+        correct: question.correct as string[],
+      }));
+  await audit(admin, actorId, 'export_question_bank', {
+    module_id: moduleId,
+    quiz_id: quiz.id,
+    question_count: questions.length,
+  });
+  return {
+    format: 'dacfp-question-bank-v1',
+    modules: {
+      [moduleSelector]: { questions },
+    },
   };
 }
 
@@ -638,8 +649,29 @@ async function previewCeReport(
     p_period_start: periodStart,
     p_period_end: periodEnd,
     p_include_already_reported: input.include_already_reported === true,
+    p_include_manual: input.include_manual === true,
   });
   assertQuery(error);
+  const buckets = data && typeof data === 'object'
+    ? data as Record<string, unknown>
+    : {};
+  const count = (key: string) => Array.isArray(buckets[key])
+    ? buckets[key].length
+    : 0;
+  await audit(admin, actorId, 'preview_ce_report', {
+    course_ids: courseIds,
+    period_start: periodStart,
+    period_end: periodEnd,
+    counts: {
+      reportable: count('reportable'),
+      manual: count('manual'),
+      missing_id: count('missing_id'),
+      already_reported: count('already_reported'),
+      excluded: count('excluded'),
+    },
+    include_already_reported: input.include_already_reported === true,
+    include_manual: input.include_manual === true,
+  });
   return data;
 }
 
@@ -659,19 +691,31 @@ async function createCeReportRun(
     p_period_end: periodEnd,
     p_completion_ids: requiredUuidArray(input.completion_ids, 'completion_ids'),
     p_include_already_reported: input.include_already_reported === true,
+    p_include_manual: input.include_manual === true,
   });
   assertQuery(error);
   return data;
 }
 
-async function inspectLearner(admin: SupabaseClient, email: string) {
+async function inspectLearner(
+  admin: SupabaseClient,
+  actorId: string,
+  email: string,
+) {
   const normalized = email.trim().toLowerCase();
   const { data: user, error: userError } = await admin.rpc(
     'lms_admin_find_auth_user_by_email',
     { p_email: normalized },
   );
   assertQuery(userError);
-  if (!user) return null;
+  if (!user) {
+    await audit(admin, actorId, 'inspect_learner', {
+      email: normalized,
+      found: false,
+      enrollment_count: 0,
+    });
+    return null;
+  }
   const [profile, enrollments] = await Promise.all([
     admin.from('lms_learner_profiles').select('*').eq('auth_user_id', user.id).maybeSingle(),
     admin.from('lms_enrollments').select('*,lms_courses(id,slug,title,ce_credits,cfp_program_id)').eq('auth_user_id', user.id).order('enrolled_at'),
@@ -697,27 +741,66 @@ async function inspectLearner(admin: SupabaseClient, email: string) {
   assertQuery(surveyResponses.error);
   assertQuery(completions.error);
 
-  const summaries = await Promise.all((enrollments.data ?? []).map(async (enrollment) => {
+  const courseIds = [...new Set((enrollments.data ?? []).map((enrollment) => {
     const course = Array.isArray(enrollment.lms_courses) ? enrollment.lms_courses[0] : enrollment.lms_courses;
-    const { data: modules } = await admin.from('lms_modules').select('id').eq('course_id', course.id);
-    const moduleIds = (modules ?? []).map((row) => row.id);
-    const [{ data: lessons }, { data: quizzes }] = moduleIds.length
-      ? await Promise.all([
-          admin.from('lms_lessons').select('id,kind').in('module_id', moduleIds).eq('is_required', true),
-          admin.from('lms_module_quizzes').select('id').in('module_id', moduleIds),
-        ])
-      : [{ data: [] }, { data: [] }];
+    return course.id;
+  }))];
+  const modulesResult = courseIds.length
+    ? await admin.from('lms_modules').select('id,course_id').in('course_id', courseIds)
+    : { data: [], error: null };
+  assertQuery(modulesResult.error);
+  const moduleIds = (modulesResult.data ?? []).map((module) => module.id);
+  const [lessonsResult, quizzesResult] = moduleIds.length
+    ? await Promise.all([
+        admin
+          .from('lms_lessons')
+          .select('id,module_id,kind')
+          .in('module_id', moduleIds)
+          .eq('is_required', true),
+        admin
+          .from('lms_module_quizzes')
+          .select('id,module_id')
+          .in('module_id', moduleIds),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+  assertQuery(lessonsResult.error);
+  assertQuery(quizzesResult.error);
+  const moduleIdsByCourse = new Map<string, Set<string>>();
+  for (const module of modulesResult.data ?? []) {
+    const ids = moduleIdsByCourse.get(module.course_id) ?? new Set<string>();
+    ids.add(module.id);
+    moduleIdsByCourse.set(module.course_id, ids);
+  }
+
+  const summaries = (enrollments.data ?? []).map((enrollment) => {
+    const course = Array.isArray(enrollment.lms_courses) ? enrollment.lms_courses[0] : enrollment.lms_courses;
+    const courseModuleIds = moduleIdsByCourse.get(course.id) ?? new Set<string>();
+    const lessons = (lessonsResult.data ?? []).filter((lesson) =>
+      courseModuleIds.has(lesson.module_id)
+    );
+    const quizzes = (quizzesResult.data ?? []).filter((quiz) =>
+      courseModuleIds.has(quiz.module_id)
+    );
     const completedLessonIds = new Set((progress.data ?? []).filter((row) => row.enrollment_id === enrollment.id && row.completed_at).map((row) => row.lesson_id));
     const submittedSurveyIds = new Set((surveyResponses.data ?? []).filter((row) => row.enrollment_id === enrollment.id).map((row) => row.lesson_id));
     const passedQuizIds = new Set((attempts.data ?? []).filter((row) => row.enrollment_id === enrollment.id && row.passed).map((row) => row.quiz_id));
-    const required = (lessons?.length ?? 0) + (quizzes?.length ?? 0);
-    const completed = (lessons ?? []).filter((row) =>
+    const required = lessons.length + quizzes.length;
+    const completed = lessons.filter((row) =>
       row.kind === 'survey'
         ? submittedSurveyIds.has(row.id)
         : completedLessonIds.has(row.id)
-    ).length + (quizzes ?? []).filter((row) => passedQuizIds.has(row.id)).length;
+    ).length + quizzes.filter((row) => passedQuizIds.has(row.id)).length;
     return { enrollment_id: enrollment.id, percent_complete: required ? Math.round((completed / required) * 100) : 0 };
-  }));
+  });
+
+  await audit(admin, actorId, 'inspect_learner', {
+    email: normalized,
+    found: true,
+    enrollment_count: (enrollments.data ?? []).length,
+  });
 
   return {
     user: { id: user.id, email: user.email },
@@ -753,8 +836,8 @@ Deno.serve(async (req: Request) => {
         data = result.data ?? [];
         break;
       }
-      case 'inspect_learner': data = await inspectLearner(admin, requiredString(payload.email, 'email')); break;
-      case 'export_question_bank': data = await exportQuestionBank(admin, requiredUuid(payload.module_id, 'module_id')); break;
+      case 'inspect_learner': data = await inspectLearner(admin, actor.id, requiredString(payload.email, 'email')); break;
+      case 'export_question_bank': data = await exportQuestionBank(admin, actor.id, requiredUuid(payload.module_id, 'module_id')); break;
       case 'survey_results': data = await surveyResults(admin, actor.id, requiredUuid(payload.lesson_id, 'lesson_id')); break;
       case 'export_survey_responses': data = await exportSurveyResponses(admin, actor.id, payload); break;
       case 'preview_ce_report': data = await previewCeReport(admin, actor.id, payload); break;
@@ -766,7 +849,11 @@ Deno.serve(async (req: Request) => {
           .order('created_at', { ascending: false })
           .limit(250);
         assertQuery(result.error);
-        data = result.data ?? [];
+        const rows = result.data ?? [];
+        data = rows;
+        await audit(admin, actor.id, 'list_ce_report_runs', {
+          count: rows.length,
+        });
         break;
       }
       case 'create_course': data = await createCourse(admin, actor.id, payload); break;
@@ -798,6 +885,7 @@ Deno.serve(async (req: Request) => {
             p_actor_auth_user_id: actor.id,
             p_lesson_id: requiredUuid(payload.lesson_id, 'lesson_id'),
             p_sections: Array.isArray(payload.sections) ? payload.sections : [],
+            p_confirm_orphan: payload.confirm_orphan === true,
           },
         );
         assertQuery(error);
@@ -816,7 +904,6 @@ Deno.serve(async (req: Request) => {
         break;
       }
       case 'import_question_bank': {
-        if (Number(payload.pass_pct) !== 70) throw new InvalidRequest('pass_pct is published policy and must remain 70.');
         const { data: result, error } = await admin.rpc('lms_admin_import_question_bank', {
           p_actor_auth_user_id: actor.id,
           p_module_id: requiredUuid(payload.module_id, 'module_id'),

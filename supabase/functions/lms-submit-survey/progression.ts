@@ -55,12 +55,7 @@ export function lessonComplete(
   }
 
   const record = progress.find((item) => item.lesson_id === lesson.id);
-  if (!record) return false;
-
-  if (lesson.kind === 'reading') return record.completed_at !== null;
-  if (!lesson.duration_seconds || lesson.duration_seconds <= 0) return false;
-
-  return record.max_watched_seconds >= lesson.duration_seconds * 0.95;
+  return record?.completed_at !== null && record?.completed_at !== undefined;
 }
 
 export function moduleRequirementsComplete(
@@ -86,15 +81,15 @@ export function moduleUnlocked(context: ProgressionContext): boolean {
     attempts,
   } = context;
 
-  const courseModules = modules.filter((candidate) => candidate.course_id === course.id);
-  const lowestPosition = Math.min(...courseModules.map((candidate) => candidate.position));
-  if (course.progression === 'open' || module.position === lowestPosition) return true;
+  const courseModules = modules
+    .filter((candidate) => candidate.course_id === course.id)
+    .sort((left, right) => left.position - right.position);
+  const moduleIndex = courseModules.findIndex((candidate) => candidate.id === module.id);
+  if (course.progression === 'open') return true;
+  if (moduleIndex === 0) return true;
+  if (moduleIndex < 0) return false;
 
-  const previousModule = modules.find(
-    (candidate) =>
-      candidate.course_id === course.id && candidate.position === module.position - 1,
-  );
-  if (!previousModule) return false;
+  const previousModule = courseModules[moduleIndex - 1];
 
   const previousQuiz = quizzes.find((quiz) => quiz.module_id === previousModule.id);
   if (previousQuiz) return hasPassedAttempt(previousQuiz.id, attempts);

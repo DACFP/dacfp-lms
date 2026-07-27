@@ -22,7 +22,6 @@ import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import {
   enrollmentAccessState,
   enrollmentForCourse,
-  isCourseComplete,
   moduleIsUnlocked,
 } from '../lib/progress';
 
@@ -94,7 +93,6 @@ export function LessonPage() {
     snapshot.progress.filter((item) => item.enrollment_id === enrollment.id),
     snapshot.surveyResponses.filter((item) => item.enrollment_id === enrollment.id),
   );
-  const courseComplete = isCourseComplete(catalog, snapshot, course);
   const courseModules = catalog.modules
     .filter((item) => item.course_id === course.id)
     .sort((a, b) => a.position - b.position);
@@ -195,7 +193,6 @@ export function LessonPage() {
           course={course}
           lesson={lesson}
           progress={progress}
-          reviewMode={complete || courseComplete}
           initialResumeOffsetSeconds={replaySeconds}
         />
       ) : lesson.kind === 'survey' ? (

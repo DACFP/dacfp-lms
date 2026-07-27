@@ -28,13 +28,11 @@ export function LessonPlayer({
   course,
   lesson,
   progress,
-  reviewMode,
   initialResumeOffsetSeconds = 0,
 }: {
   course: LmsCourse;
   lesson: LmsLesson;
   progress: LmsLessonProgress | undefined;
-  reviewMode: boolean;
   initialResumeOffsetSeconds?: number;
 }) {
   const { requestPlayback, recordHeartbeat } = useLms();
@@ -60,6 +58,7 @@ export function LessonPlayer({
   const [message, setMessage] = useState('Requesting secure playback…');
   const [error, setError] = useState('');
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [reviewMode, setReviewMode] = useState(false);
   const flexiblePlayback = course.progression === 'open' || reviewMode;
 
   const clearHeartbeatTimer = useCallback(() => {
@@ -143,6 +142,7 @@ export function LessonPlayer({
         token.max_watched_seconds,
       );
       setSavedMax((current) => Math.max(current, token.max_watched_seconds));
+      setReviewMode(token.review_mode);
       sourceRef.current = token.url;
       setSource(token.url);
       const refreshIn = Math.max(

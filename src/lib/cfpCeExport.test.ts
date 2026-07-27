@@ -40,6 +40,7 @@ const rows: CfpCeExportRow[] = [
     completion_id: '10000000-0000-4000-8000-000000000001',
     course_id: '20000000-0000-4000-8000-000000000001',
     person_email: 'reportable@example.test',
+    trigger: 'all_requirements_met',
     cfp_program_id: '312442',
     date_individual_completed: '2026-07-16',
     attendee_cfp_board_id: '123456',
@@ -54,9 +55,16 @@ describe('CFP CE workbook export', () => {
     const workbook = buildCfpCeWorkbook(template, rows);
     expect(workbook.SheetNames).toContain(CFP_CE_SHEET_NAME);
     const sheet = workbook.Sheets[CFP_CE_SHEET_NAME];
-    expect(XLSX.utils.sheet_to_json(sheet, { header: 1, range: 'A1:F2', defval: '' })).toEqual([
+    expect(XLSX.utils.sheet_to_json(sheet, { header: 1, range: 'A1:F1', defval: '' })).toEqual([
       [...CFP_CE_HEADERS],
-      ['312442', 46219, '123456', 'Rivera', 'Casey', ''],
+    ]);
+    expect([sheet.A2.v, sheet.B2.v, sheet.C2.v, sheet.D2.v, sheet.E2.v, sheet.F2.v]).toEqual([
+      '312442',
+      46219,
+      '123456',
+      'Rivera',
+      'Casey',
+      '',
     ]);
     expect(sheet.B2.t).toBe('n');
     expect(sheet.B2.z).toBe('m/d/yy');
@@ -76,9 +84,16 @@ describe('CFP CE workbook export', () => {
     const workbook = XLSX.read(bytes, { type: 'array', cellDates: false, cellStyles: true });
     expect(workbook.SheetNames).toContain(CFP_CE_SHEET_NAME);
     const sheet = workbook.Sheets[CFP_CE_SHEET_NAME];
-    expect(XLSX.utils.sheet_to_json(sheet, { header: 1, range: 'A1:F2', defval: '' })).toEqual([
+    expect(XLSX.utils.sheet_to_json(sheet, { header: 1, range: 'A1:F1', defval: '' })).toEqual([
       [...CFP_CE_HEADERS],
-      ['312442', 46219, '123456', 'Rivera', 'Casey', ''],
+    ]);
+    expect([sheet.A2.v, sheet.B2.v, sheet.C2.v, sheet.D2.v, sheet.E2.v, sheet.F2.v]).toEqual([
+      '312442',
+      46219,
+      '123456',
+      'Rivera',
+      'Casey',
+      '',
     ]);
   });
 });

@@ -170,6 +170,35 @@ describe('module progression', () => {
     ).toBe(true);
   });
 
+  it('uses sorted module order when positions are non-contiguous', () => {
+    const nonContiguous = [
+      modules[0],
+      modules[1],
+      { ...modules[2], position: 4 },
+    ];
+    expect(moduleUnlocked({
+      ...context(nonContiguous[2], { attempts: [attempt('quiz-2', 1, true)] }),
+      module: nonContiguous[2],
+      modules: nonContiguous,
+    })).toBe(true);
+  });
+
+  it('unlocks the new first module after the original first module is deleted', () => {
+    expect(moduleUnlocked({
+      ...context(modules[1]),
+      module: modules[1],
+      modules: [modules[1], modules[2]],
+    })).toBe(true);
+  });
+
+  it('uses the preceding survivor after a middle module is deleted mid-progress', () => {
+    expect(moduleUnlocked({
+      ...context(modules[2], { attempts: [attempt('quiz-1', 1, true)] }),
+      module: modules[2],
+      modules: [modules[0], modules[2]],
+    })).toBe(true);
+  });
+
   it('treats a quizless previous module as passed after required lessons complete', () => {
     const withoutFirstQuiz = quizzes.filter((quiz) => quiz.module_id !== 'module-1');
     expect(moduleUnlocked(context(modules[1], { quizzes: withoutFirstQuiz }))).toBe(false);
@@ -223,7 +252,7 @@ describe('quiz attempt rules', () => {
 });
 
 describe('completion rules', () => {
-  it('marks video complete only at max_watched >= 95 percent', () => {
+  it('uses server-stamped completed_at even if a video duration later changes', () => {
     const video: LmsLesson = {
       ...lessons[0],
       kind: 'video',
@@ -232,8 +261,18 @@ describe('completion rules', () => {
     };
     const record = completeProgress(video);
 
-    expect(lessonComplete(video, [{ ...record, max_watched_seconds: 94.99 }])).toBe(false);
-    expect(lessonComplete(video, [{ ...record, max_watched_seconds: 95 }])).toBe(true);
+    expect(lessonComplete(video, [{
+      ...record,
+      completed_at: null,
+      max_watched_seconds: 100,
+    }])).toBe(false);
+    expect(lessonComplete({
+      ...video,
+      duration_seconds: 1_000,
+    }, [{
+      ...record,
+      max_watched_seconds: 95,
+    }])).toBe(true);
   });
 
   it('requires every required lesson and every existing module quiz, with no cumulative exam', () => {

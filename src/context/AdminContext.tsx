@@ -43,6 +43,7 @@ interface AdminContextValue extends AdminSnapshot {
     period_start: string;
     period_end: string;
     include_already_reported: boolean;
+    include_manual: boolean;
   }) => Promise<CfpCePreview>;
   createCeReportRun: (scope: {
     course_ids: string[];
@@ -50,6 +51,7 @@ interface AdminContextValue extends AdminSnapshot {
     period_end: string;
     completion_ids: string[];
     include_already_reported: boolean;
+    include_manual: boolean;
   }) => Promise<CfpCeReportRun>;
   listCeReportRuns: () => Promise<CfpCeReportRun[]>;
 }
@@ -147,21 +149,29 @@ export function AdminProvider({
     mutate,
     inspectLearner: (email) => provider.adminRequest<LearnerInspection | null>('inspect_learner', { email }),
     exportQuestionBank: (moduleId) => provider.adminRequest<QuestionBank>('export_question_bank', { module_id: moduleId }),
-    surveyResults: async (lessonId) => {
-      const result = await provider.adminRequest<SurveyResults>('survey_results', {
+    surveyResults: (lessonId) => runMutationLifecycle({
+      mutate: () => provider.adminRequest<SurveyResults>('survey_results', {
         lesson_id: lessonId,
-      });
-      await loadAdminSnapshot();
-      return result;
-    },
-    exportSurveyResponses: async (scope) => {
-      const result = await provider.adminRequest<SurveyExport>(
+      }),
+      refresh: () => loadAdminSnapshot(),
+      onRefreshFailure: () => setMutationNotice({
+        kind: 'warning',
+        message: 'Survey results were loaded and audited, but the audit ledger could not be refreshed.',
+        retry: () => void refresh().catch(() => undefined),
+      }),
+    }),
+    exportSurveyResponses: (scope) => runMutationLifecycle({
+      mutate: () => provider.adminRequest<SurveyExport>(
         'export_survey_responses',
         scope,
-      );
-      await loadAdminSnapshot();
-      return result;
-    },
+      ),
+      refresh: () => loadAdminSnapshot(),
+      onRefreshFailure: () => setMutationNotice({
+        kind: 'warning',
+        message: 'Survey responses were exported and audited, but the audit ledger could not be refreshed.',
+        retry: () => void refresh().catch(() => undefined),
+      }),
+    }),
     previewCeReport: (scope) => provider.adminRequest<CfpCePreview>(
       'preview_ce_report',
       scope,

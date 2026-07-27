@@ -1,5 +1,6 @@
 import type {
   Catalog,
+  CompletionTrigger,
   LmsCompletionEvent,
   LmsEnrollment,
   LmsLearnerProfile,
@@ -47,16 +48,17 @@ export interface AdminSnapshot {
 export interface QuestionBankRow {
   position: number;
   prompt: string;
-  choice_a: string;
-  choice_b: string;
-  choice_c: string;
-  choice_d: string;
-  correct: 'a' | 'b' | 'c' | 'd';
-  points: number;
+  choices: Array<{ id: string; text: string }>;
+  correct: string[];
 }
 
 export interface QuestionBank {
-  pass_pct: 70;
+  format: 'dacfp-question-bank-v1';
+  modules: Record<string, { questions: QuestionBankRow[] }>;
+}
+
+export interface QuestionBankSelection {
+  module_selector: string;
   questions: QuestionBankRow[];
 }
 
@@ -112,6 +114,7 @@ export interface CfpCeExportRow {
   completion_id: string;
   course_id: string;
   person_email: string;
+  trigger: CompletionTrigger;
   cfp_program_id: string;
   date_individual_completed: string;
   attendee_cfp_board_id: string;
@@ -128,6 +131,7 @@ export interface CfpCePreview {
   period_start: string;
   period_end: string;
   reportable: CfpCeExportRow[];
+  manual: CfpCeExportRow[];
   missing_id: CfpCeExportRow[];
   already_reported: CfpCeExportRow[];
   excluded: CfpCeExcludedRow[];

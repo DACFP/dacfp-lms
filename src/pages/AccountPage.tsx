@@ -160,11 +160,14 @@ export function AccountPage() {
               <p className="eyebrow">Post-certification</p><h2 id="ce-reporting-heading" className="mt-1 text-xl font-bold text-dacfp-navy">CE reporting</h2>
               <ul className="mt-5 divide-y divide-dacfp-line rounded-lg border border-dacfp-line">
                 {completedCourses.map(({ completion, course, reporting }) => {
-                  const message = !credentialIds.cfp
-                    ? 'Add your CFP Board ID to be included'
-                    : reporting?.reported_at
-                      ? `Reported to CFP Board on ${formatDate(reporting.reported_at)}`
-                      : 'Reporting scheduled — DACFP reports within 14 days of certification';
+                  const savedCfpId = profile.credential_ids.cfp;
+                  const message = !course.cfp_program_id
+                    ? 'CE reporting for this course is not yet available'
+                    : !savedCfpId
+                      ? 'Add and save your CFP Board ID to be included'
+                      : reporting?.reported_at
+                        ? `Reported to CFP Board on ${formatDate(reporting.reported_at)}`
+                        : 'Reporting scheduled — DACFP reports within 14 days of certification';
                   return <li className="flex flex-col gap-1 px-4 py-4 sm:flex-row sm:items-center sm:justify-between" key={completion.id}><span className="font-bold text-dacfp-navy">{course.title}</span><span className="text-sm text-dacfp-gray-text">{message}</span></li>;
                 })}
               </ul>

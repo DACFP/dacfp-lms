@@ -847,15 +847,21 @@ export const mockProvider: LmsProvider = {
     return clone(snapshot.profile);
   },
   async getPlaybackToken(lessonId, learnerId) {
-    const { snapshot, enrollment } = progressTarget(learnerId, lessonId);
+    const { snapshot, lesson, enrollment } = progressTarget(learnerId, lessonId);
     const progress = snapshot.progress.find(
       (item) =>
         item.enrollment_id === enrollment.id && item.lesson_id === lessonId,
     );
+    const module = modules.find((item) => item.id === lesson.module_id);
+    const course = courses.find((item) => item.id === module?.course_id);
     return {
       url: 'data:video/mp4;base64,',
       expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       max_watched_seconds: progress?.max_watched_seconds ?? 0,
+      review_mode:
+        course?.progression === 'open'
+        || Boolean(progress?.completed_at)
+        || snapshot.completions.some((completion) => completion.course_id === course?.id),
     };
   },
   async getResourceToken(resourceId) {

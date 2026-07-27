@@ -456,13 +456,14 @@ describe('D0 route shell', () => {
 
   it('asks a certified learner for a missing CFP Board ID', async () => {
     renderRoute('/account', 'fpt-completed');
-    expect(await screen.findByText('Add your CFP Board ID to be included')).toBeInTheDocument();
+    expect(await screen.findByText('Add and save your CFP Board ID to be included')).toBeInTheDocument();
   });
 
   it('shows the frozen report-run date to a reported learner', async () => {
     renderRoute('/account', 'fully-complete');
     expect(await screen.findByText(/Reported to CFP Board on/)).toBeInTheDocument();
     expect(screen.getAllByText(/Reporting scheduled — DACFP reports within 14 days/).length).toBeGreaterThan(0);
+    expect(screen.getByText('CE reporting for this course is not yet available')).toBeInTheDocument();
   });
 
   it('round-trips the expanded account fields through the profile provider', async () => {

@@ -1,44 +1,79 @@
 import { describe, expect, it } from 'vitest';
-import type { QuestionBank } from '../data/admin';
+import type { QuestionBank, QuestionBankRow } from '../data/admin';
 import {
-  parseQuestionBankCsv,
+  moduleSelectorForPosition,
   parseQuestionBankJson,
-  serializeQuestionBankCsv,
+  serializeQuestionBankJson,
 } from './adminCsv';
 
 function bank(): QuestionBank {
+  const questions: QuestionBankRow[] = Array.from({ length: 10 }, (_, index) => ({
+    position: index + 1,
+    prompt: `Synthetic renewal question ${index + 1}?`,
+    choices: Array.from(
+      { length: index === 0 ? 7 : 4 },
+      (_, choiceIndex) => ({
+        id: `choice_${choiceIndex + 1}`,
+        text: `Synthetic choice ${choiceIndex + 1}`,
+      }),
+    ),
+    correct: index === 1 ? ['choice_1', 'choice_3'] : ['choice_1'],
+  }));
   return {
-    pass_pct: 70,
-    questions: Array.from({ length: 10 }, (_, index) => ({
-      position: index + 1,
-      prompt: `Renewal question ${index + 1}, with context?`,
-      choice_a: 'Choice A',
-      choice_b: 'Choice B',
-      choice_c: 'Choice C',
-      choice_d: 'Choice D',
-      correct: 'a' as const,
-      points: 1,
-    })),
+    format: 'dacfp-question-bank-v1',
+    modules: { module_01: { questions } },
   };
 }
 
 describe('admin question-bank policy', () => {
-  it('round-trips the canonical CSV byte for byte', () => {
-    const csv = serializeQuestionBankCsv(bank());
-    expect(serializeQuestionBankCsv(parseQuestionBankCsv(csv))).toBe(csv);
+  it('round-trips a 7-choice and multi-answer bank byte for byte', () => {
+    const json = serializeQuestionBankJson(bank());
+    const parsed = parseQuestionBankJson(json, 'module_01');
+    expect(parsed.questions[0].choices).toHaveLength(7);
+    expect(parsed.questions[1].correct).toEqual(['choice_1', 'choice_3']);
+    expect(serializeQuestionBankJson({
+      format: 'dacfp-question-bank-v1',
+      modules: { [parsed.module_selector]: { questions: parsed.questions } },
+    })).toBe(json);
   });
 
-  it('rejects a CSV pass_pct other than 70', () => {
-    const csv = serializeQuestionBankCsv(bank()).replace(
-      'position,prompt',
-      'pass_pct,position,prompt',
-    ).replace(/\n/g, (line, offset) => offset === 0 ? line : line);
-    const lines = csv.trimEnd().split('\n');
-    const withPolicy = [lines[0], ...lines.slice(1).map((line) => `80,${line}`)].join('\n');
-    expect(() => parseQuestionBankCsv(withPolicy)).toThrow(/must remain 70/);
+  it('accepts a single module questions array', () => {
+    const questions = bank().modules.module_01.questions;
+    expect(parseQuestionBankJson(JSON.stringify(questions), 'module_07')).toEqual({
+      module_selector: 'module_07',
+      questions,
+    });
   });
 
-  it('rejects a JSON pass_pct other than 70', () => {
-    expect(() => parseQuestionBankJson(JSON.stringify({ ...bank(), pass_pct: 80 }))).toThrow(/must remain 70/);
+  it.each([
+    [
+      'duplicate choice ids',
+      (questions: QuestionBankRow[]) => {
+        questions[0].choices[1].id = questions[0].choices[0].id;
+      },
+      /choice ids must be unique/,
+    ],
+    [
+      'empty correct array',
+      (questions: QuestionBankRow[]) => {
+        questions[0].correct = [];
+      },
+      /correct must contain at least one choice id/,
+    ],
+    [
+      'unknown correct id',
+      (questions: QuestionBankRow[]) => {
+        questions[0].correct = ['not-a-choice'];
+      },
+      /correct contains unknown choice id "not-a-choice"/,
+    ],
+  ])('loudly rejects %s', (_label, mutate, message) => {
+    const questions = structuredClone(bank().modules.module_01.questions);
+    mutate(questions);
+    expect(() => parseQuestionBankJson(JSON.stringify(questions), 'module_01')).toThrow(message);
+  });
+
+  it('derives the confidential-artifact module selector', () => {
+    expect(moduleSelectorForPosition(7)).toBe('module_07');
   });
 });

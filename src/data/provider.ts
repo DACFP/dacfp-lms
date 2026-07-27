@@ -16,6 +16,7 @@ export interface LmsPlaybackToken {
   url: string;
   expires_at: string;
   max_watched_seconds: number;
+  review_mode: boolean;
 }
 
 export interface LmsResourceToken {

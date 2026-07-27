@@ -1,6 +1,7 @@
 import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
+  courseComplete,
   courseUnlocked,
   moduleUnlocked,
   termsGateSatisfied,
@@ -13,6 +14,7 @@ const SIGNED_URL_TTL_SECONDS = 6 * 60 * 60;
 const DENIED_BODY = { error: 'Lesson is unavailable.' };
 interface AccessContext {
   enrollmentId: string;
+  reviewMode: boolean;
   lesson: {
     id: string;
     module_id: string;
@@ -153,7 +155,20 @@ async function requireLessonAccess(
     attempts: attemptsResult.data ?? [],
   };
   if (!moduleUnlocked(context)) throw new AccessDenied();
-  return { enrollmentId: enrollment.id, lesson };
+  const lessonProgress = context.progress.find((item) => item.lesson_id === lesson.id);
+  const reviewMode =
+    course.progression === 'open' ||
+    Boolean(lessonProgress?.completed_at) ||
+    courseComplete(
+      context.course,
+      context.modules,
+      context.lessons,
+      context.quizzes,
+      context.progress,
+      context.attempts,
+      context.surveyResponses,
+    );
+  return { enrollmentId: enrollment.id, lesson, reviewMode };
 }
 
 function decodePlaceholder() {
@@ -222,6 +237,7 @@ Deno.serve(async (req: Request) => {
       url: signed.signedUrl,
       expires_at: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString(),
       max_watched_seconds: progress?.max_watched_seconds ?? 0,
+      review_mode: access.reviewMode,
     });
   } catch (error) {
     if (error instanceof AccessDenied) return jsonResponse(req, 403, DENIED_BODY);

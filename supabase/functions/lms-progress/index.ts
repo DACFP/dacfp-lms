@@ -1,7 +1,6 @@
 import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
-  courseComplete,
   courseUnlocked,
   moduleUnlocked,
   termsGateSatisfied,
@@ -12,7 +11,6 @@ const DENIED_BODY = { error: 'Lesson is unavailable.' };
 const REJECTED_BODY = { error: 'Progress update rejected.' };
 interface AccessContext {
   enrollmentId: string;
-  reviewMode: boolean;
   lesson: {
     id: string;
     module_id: string;
@@ -172,21 +170,7 @@ async function requireLessonAccess(
   };
   if (!moduleUnlocked(context)) throw new AccessDenied();
 
-  const lessonProgress = context.progress.find((item) => item.lesson_id === lesson.id);
-  const reviewMode =
-    course.progression === 'open' ||
-    Boolean(lessonProgress?.completed_at) ||
-    courseComplete(
-      context.course,
-      context.modules,
-      context.lessons,
-      context.quizzes,
-      context.progress,
-      context.attempts,
-      context.surveyResponses,
-    );
-
-  return { enrollmentId: enrollment.id, lesson, context, reviewMode };
+  return { enrollmentId: enrollment.id, lesson, context };
 }
 
 async function detectCompletion(
@@ -263,7 +247,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, 200, {
         progress: data,
         completion_fired: completionFired,
-        review_mode: access.reviewMode,
       });
     }
 

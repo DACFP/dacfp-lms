@@ -66,6 +66,19 @@ function dataError(error: unknown, message: string) {
   return new LmsDataError(denied ? 'denied' : 'unavailable', message);
 }
 
+async function functionErrorMessage(error: unknown, fallback: string) {
+  const context = (error as { context?: Response } | null)?.context;
+  if (!context || typeof context.clone !== 'function') return fallback;
+  try {
+    const body = await context.clone().json() as { error?: unknown };
+    return typeof body.error === 'string' && body.error.trim()
+      ? body.error
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function getClient() {
   if (client) return client;
 
@@ -281,72 +294,179 @@ const contentProvider: LmsProvider = {
 
   async getLearnerSnapshot(_learnerId: LearnerStateKey) {
     const user = await currentUser();
-    const [profiles, enrollments, progress, attempts, surveyResponses, completions, ceReportingStatus] =
-      await Promise.all([
-        tableRows<Omit<LmsLearnerProfile, 'email'>>('lms_learner_profiles'),
-        tableRows<LmsEnrollment>('lms_enrollments', ['enrolled_at']),
-        tableRows<LmsLessonProgress>('lms_lesson_progress', ['updated_at']),
-        tableRows<LmsQuizAttempt>('lms_quiz_attempts', [
-          'quiz_id',
-          'attempt_number',
-        ]),
-        tableRows<LmsSurveyResponse>('lms_survey_responses', ['submitted_at']),
-        tableRows<LmsCompletionEvent>('lms_completion_events', ['completed_at']),
-        getClient().rpc('lms_ce_reporting_status'),
-      ]);
-    const profile = profiles.find((item) => item.auth_user_id === user.id);
-    if (!profile) {
-      throw new LmsDataError('denied', 'Learner profile not found.');
+    const [profileResult, enrollmentResult, ceReportingStatus] = await Promise.all([
+      getClient()
+        .from('lms_learner_profiles')
+        .select('*')
+        .eq('auth_user_id', user.id)
+        .maybeSingle(),
+      getClient()
+        .from('lms_enrollments')
+        .select('*')
+        .eq('auth_user_id', user.id)
+        .order('enrolled_at'),
+      getClient().rpc('lms_ce_reporting_status'),
+    ]);
+    if (profileResult.error || !profileResult.data) {
+      throw dataError(profileResult.error, 'Learner profile not found.');
+    }
+    if (enrollmentResult.error) {
+      throw dataError(enrollmentResult.error, 'Unable to load learner enrollments.');
     }
     if (ceReportingStatus.error) {
       throw dataError(ceReportingStatus.error, 'Unable to load CE reporting status.');
     }
+    const enrollments = (enrollmentResult.data ?? []) as LmsEnrollment[];
+    const enrollmentIds = enrollments.map((enrollment) => enrollment.id);
+    const [progressResult, attemptsResult, surveyResponsesResult, completionsResult] =
+      enrollmentIds.length
+        ? await Promise.all([
+            getClient()
+              .from('lms_lesson_progress')
+              .select('*')
+              .in('enrollment_id', enrollmentIds)
+              .order('updated_at'),
+            getClient()
+              .from('lms_quiz_attempts')
+              .select('*')
+              .in('enrollment_id', enrollmentIds)
+              .order('quiz_id')
+              .order('attempt_number'),
+            getClient()
+              .from('lms_survey_responses')
+              .select('*')
+              .in('enrollment_id', enrollmentIds)
+              .order('submitted_at'),
+            getClient()
+              .from('lms_completion_events')
+              .select('*')
+              .in('enrollment_id', enrollmentIds)
+              .order('completed_at'),
+          ])
+        : [
+            { data: [], error: null },
+            { data: [], error: null },
+            { data: [], error: null },
+            { data: [], error: null },
+          ];
+    for (const result of [
+      progressResult,
+      attemptsResult,
+      surveyResponsesResult,
+      completionsResult,
+    ]) {
+      if (result.error) {
+        throw dataError(result.error, 'Unable to load learner progress.');
+      }
+    }
     return buildLearnerSnapshot({
       email: user.email ?? '',
-      profile,
+      profile: profileResult.data as Omit<LmsLearnerProfile, 'email'>,
       enrollments,
-      progress,
-      attempts,
-      surveyResponses,
-      completions,
+      progress: (progressResult.data ?? []) as LmsLessonProgress[],
+      attempts: (attemptsResult.data ?? []) as LmsQuizAttempt[],
+      surveyResponses: (surveyResponsesResult.data ?? []) as LmsSurveyResponse[],
+      completions: (completionsResult.data ?? []) as LmsCompletionEvent[],
       ceReportingStatuses: (ceReportingStatus.data ?? []) as LmsCeReportingStatus[],
     });
   },
 
   async getModuleView(courseSlug, position) {
-    const catalog = await this.getCatalog();
-    const course = catalog.courses.find((item) => item.slug === courseSlug);
+    const { data: course, error: courseError } = await getClient()
+      .from('lms_courses')
+      .select('*')
+      .eq('slug', courseSlug)
+      .maybeSingle();
+    if (courseError) throw dataError(courseError, 'Unable to load this course.');
     if (!course) return null;
-    const modules = catalog.modules.filter((item) => item.course_id === course.id);
-    const module = modules.find((item) => item.position === position);
+    const { data: modules, error: modulesError } = await getClient()
+      .from('lms_modules')
+      .select('*')
+      .eq('course_id', course.id)
+      .order('position');
+    if (modulesError) throw dataError(modulesError, 'Unable to load this course.');
+    const module = (modules ?? []).find((item) => item.position === position);
     if (!module) return null;
-    const lessons = catalog.lessons.filter((item) => item.module_id === module.id);
-    const lessonIds = new Set(lessons.map((lesson) => lesson.id));
+    const [{ data: lessons, error: lessonsError }, { data: quiz, error: quizError }] =
+      await Promise.all([
+        getClient()
+          .from('lms_lessons')
+          .select('*')
+          .eq('module_id', module.id)
+          .order('position'),
+        getClient()
+          .from('lms_module_quizzes')
+          .select('*')
+          .eq('module_id', module.id)
+          .maybeSingle(),
+      ]);
+    if (lessonsError) throw dataError(lessonsError, 'Unable to load this module.');
+    if (quizError) throw dataError(quizError, 'Unable to load this module.');
+    const lessonIds = (lessons ?? []).map((lesson) => lesson.id);
+    const { data: resources, error: resourcesError } = lessonIds.length
+      ? await getClient()
+          .from('lms_lesson_resources')
+          .select('*')
+          .in('lesson_id', lessonIds)
+          .order('lesson_id')
+          .order('position')
+      : { data: [], error: null };
+    if (resourcesError) throw dataError(resourcesError, 'Unable to load module resources.');
     return {
-      course,
-      module,
-      modules,
-      lessons,
-      resources: catalog.resources.filter((item) => lessonIds.has(item.lesson_id)),
-      quiz: catalog.quizzes.find((item) => item.module_id === module.id) ?? null,
+      course: course as LmsCourse,
+      module: module as LmsModule,
+      modules: (modules ?? []) as LmsModule[],
+      lessons: (lessons ?? []) as LmsLesson[],
+      resources: (resources ?? []) as LmsLessonResource[],
+      quiz: quiz as LmsModuleQuiz | null,
     };
   },
 
   async getLessonView(lessonId) {
-    const catalog = await this.getCatalog();
-    const lesson = catalog.lessons.find((item) => item.id === lessonId);
+    const { data: lesson, error: lessonError } = await getClient()
+      .from('lms_lessons')
+      .select('*')
+      .eq('id', lessonId)
+      .maybeSingle();
+    if (lessonError) throw dataError(lessonError, 'Unable to load this lesson.');
     if (!lesson) return null;
-    const module = catalog.modules.find((item) => item.id === lesson.module_id);
-    const course = module
-      ? catalog.courses.find((item) => item.id === module.course_id)
-      : null;
-    if (!module || !course) return null;
+    const { data: module, error: moduleError } = await getClient()
+      .from('lms_modules')
+      .select('*')
+      .eq('id', lesson.module_id)
+      .maybeSingle();
+    if (moduleError) throw dataError(moduleError, 'Unable to load this lesson.');
+    if (!module) return null;
+    const { data: course, error: courseError } = await getClient()
+      .from('lms_courses')
+      .select('*')
+      .eq('id', module.course_id)
+      .maybeSingle();
+    if (courseError) throw dataError(courseError, 'Unable to load this lesson.');
+    if (!course) return null;
+    const [
+      { data: moduleLessons, error: moduleLessonsError },
+      { data: resources, error: resourcesError },
+    ] = await Promise.all([
+      getClient()
+        .from('lms_lessons')
+        .select('*')
+        .eq('module_id', module.id)
+        .order('position'),
+      getClient()
+        .from('lms_lesson_resources')
+        .select('*')
+        .eq('lesson_id', lesson.id)
+        .order('position'),
+    ]);
+    if (moduleLessonsError) throw dataError(moduleLessonsError, 'Unable to load this lesson.');
+    if (resourcesError) throw dataError(resourcesError, 'Unable to load lesson resources.');
     return {
-      course,
-      module,
-      lesson,
-      moduleLessons: catalog.lessons.filter((item) => item.module_id === module.id),
-      resources: catalog.resources.filter((item) => item.lesson_id === lesson.id),
+      course: course as LmsCourse,
+      module: module as LmsModule,
+      lesson: lesson as LmsLesson,
+      moduleLessons: (moduleLessons ?? []) as LmsLesson[],
+      resources: (resources ?? []) as LmsLessonResource[],
     };
   },
 
@@ -406,7 +526,8 @@ const contentProvider: LmsProvider = {
       !data ||
       typeof data.url !== 'string' ||
       typeof data.expires_at !== 'string' ||
-      typeof data.max_watched_seconds !== 'number'
+      typeof data.max_watched_seconds !== 'number' ||
+      typeof data.review_mode !== 'boolean'
     ) {
       throw dataError(error, 'Unable to start this lesson.');
     }
@@ -575,7 +696,7 @@ export const supabaseProvider: LmsProvider & LmsAuthProvider & LmsAdminProvider 
 
   async logout() {
     try {
-      await getClient().auth.signOut({ scope: 'local' });
+      await getClient().auth.signOut({ scope: 'global' });
     } catch {
       // Local session state is cleared by AuthSessionProvider regardless.
     }
@@ -608,8 +729,14 @@ export const supabaseProvider: LmsProvider & LmsAuthProvider & LmsAdminProvider 
     const { data, error } = await getClient().functions.invoke('lms-admin', {
       body: { action, payload },
     });
-    if (error || !data || !Object.prototype.hasOwnProperty.call(data, 'data')) {
-      throw dataError(error, 'Unable to complete this admin request.');
+    if (error) {
+      throw dataError(
+        error,
+        await functionErrorMessage(error, 'Unable to complete this admin request.'),
+      );
+    }
+    if (!data || !Object.prototype.hasOwnProperty.call(data, 'data')) {
+      throw dataError(null, 'Unable to complete this admin request.');
     }
     return data.data as T;
   },

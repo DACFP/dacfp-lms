@@ -300,6 +300,45 @@ describe('Admin surveys — V1b routed editor and results', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.getByText('Shown to 2 respondents')).toBeInTheDocument();
   }, 20_000);
+
+  it('surfaces the affected response count before confirming an orphaning edit', async () => {
+    const replaceFlow = vi.fn(async (payload: Record<string, unknown>) => {
+      if (payload.confirm_orphan !== true) {
+        throw new Error(
+          'SURVEY_ORPHAN_CONFIRMATION_REQUIRED: 2 affected response(s)',
+        );
+      }
+      return {
+        outline: '§1 Synthetic retained section → submit',
+        sections: payload.sections,
+        questions: [],
+      };
+    });
+    renderAdmin('/admin/course/course-fpt', baseAdmin({
+      replace_survey_flow: replaceFlow,
+      reorder: () => ({}),
+    }));
+
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit survey flow' });
+    fireEvent.click(editButtons[0]);
+    const saveButtons = await screen.findAllByRole('button', { name: 'Save survey flow' });
+    fireEvent.click(saveButtons[0]);
+
+    const review = await screen.findByRole('button', {
+      name: 'Review destructive survey edit',
+    });
+    fireEvent.click(review);
+    expect(await screen.findByText(/2 existing responses reference a section being deleted/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Delete and orphan 2 responses',
+    }));
+    await waitFor(() => expect(replaceFlow).toHaveBeenCalledTimes(2));
+    expect(replaceFlow.mock.calls[1][0]).toEqual(expect.objectContaining({
+      confirm_orphan: true,
+    }));
+    expect(await screen.findByLabelText('Survey flow outline')).toHaveTextContent('Synthetic retained');
+  }, 20_000);
 });
 
 describe('Admin CFP CE reporting — R1', () => {
@@ -308,6 +347,7 @@ describe('Admin CFP CE reporting — R1', () => {
       completion_id: '30000000-0000-4000-8000-000000000001',
       course_id: 'course-fpt',
       person_email: 'reportable@example.test',
+      trigger: 'all_requirements_met' as const,
       cfp_program_id: '312442',
       date_individual_completed: '2026-07-16',
       attendee_cfp_board_id: '123456',
@@ -321,6 +361,12 @@ describe('Admin CFP CE reporting — R1', () => {
       person_email: 'missing@example.test',
       attendee_cfp_board_id: '',
     };
+    const manualRow = {
+      ...exportRow,
+      completion_id: '30000000-0000-4000-8000-000000000004',
+      person_email: 'manual@example.test',
+      trigger: 'manual_admin' as const,
+    };
     const excludedRow = {
       ...exportRow,
       completion_id: '30000000-0000-4000-8000-000000000003',
@@ -332,6 +378,7 @@ describe('Admin CFP CE reporting — R1', () => {
       period_start: '2026-07-01',
       period_end: '2026-07-27',
       reportable: [exportRow],
+      manual: [manualRow],
       missing_id: [missingRow],
       already_reported: [],
       excluded: [excludedRow],
@@ -358,6 +405,8 @@ describe('Admin CFP CE reporting — R1', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Preview report' }));
     expect(await screen.findByText('reportable@example.test')).toBeInTheDocument();
+    expect(screen.getByText('manual@example.test')).toBeInTheDocument();
+    expect(screen.getByText('Manual admin')).toBeInTheDocument();
     expect(screen.getByText('missing@example.test')).toBeInTheDocument();
     expect(screen.getByText('excluded@example.test')).toBeInTheDocument();
     expect(screen.getByText('blank-name')).toBeInTheDocument();
@@ -367,6 +416,7 @@ describe('Admin CFP CE reporting — R1', () => {
     await waitFor(() => expect(createRun).toHaveBeenCalledTimes(1));
     expect(createRun).toHaveBeenCalledWith(expect.objectContaining({
       completion_ids: [exportRow.completion_id],
+      include_manual: false,
     }));
     await waitFor(() => expect(workbookDownload).toHaveBeenCalledWith(
       [exportRow],

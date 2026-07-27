@@ -44,7 +44,11 @@ import type {
   LmsSurveySection,
   SurveyQuestionKind,
 } from '../data/types';
-import { parseQuestionBankCsv, parseQuestionBankJson, serializeQuestionBankCsv } from '../lib/adminCsv';
+import {
+  moduleSelectorForPosition,
+  parseQuestionBankJson,
+  serializeQuestionBankJson,
+} from '../lib/adminCsv';
 
 /**
  * Native <select> is retained rather than moving to the shadcn Select
@@ -232,17 +236,19 @@ function ReorderControls({
 function QuestionBankPanel({ module }: { module: LmsModule }) {
   const { mutate, exportQuestionBank } = useAdmin();
   const [input, setInput] = useState('');
-  const [format, setFormat] = useState<'csv' | 'json'>('csv');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  // A stable per-module name so the two format radios form one group (L-12).
-  const formatName = `qb-format-${module.id}`;
+  const moduleSelector = moduleSelectorForPosition(module.position);
 
   const importBank = async () => {
     setError(''); setMessage('');
     try {
-      const bank = format === 'csv' ? parseQuestionBankCsv(input) : parseQuestionBankJson(input);
-      await mutate('import_question_bank', { module_id: module.id, pass_pct: bank.pass_pct, questions: bank.questions });
+      const bank = parseQuestionBankJson(input, moduleSelector);
+      await mutate('import_question_bank', {
+        module_id: module.id,
+        module_selector: bank.module_selector,
+        questions: bank.questions,
+      });
       setMessage('10-question bank imported at the fixed 70% policy.');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Question bank import failed.'); }
   };
@@ -251,32 +257,23 @@ function QuestionBankPanel({ module }: { module: LmsModule }) {
     setError('');
     try {
       const bank = await exportQuestionBank(module.id);
-      if (bank.pass_pct !== 70) throw new Error('Export was blocked because pass_pct was not 70.');
-      const csv = serializeQuestionBankCsv(bank);
-      setFormat('csv');
-      setInput(csv);
-      const anchor = document.createElement('a');
-      anchor.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      anchor.download = `${module.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-questions.csv`;
-      anchor.click();
-      URL.revokeObjectURL(anchor.href);
-      setMessage('Question bank exported in round-trip CSV format.');
+      const json = serializeQuestionBankJson(bank);
+      setInput(json);
+      downloadText(
+        `${module.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-questions.json`,
+        json,
+        'application/json',
+      );
+      setMessage('Question bank exported in canonical round-trip JSON format.');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Question bank export failed.'); }
   };
 
   return (
     <div className="mt-5 rounded-lg border border-dacfp-line bg-dacfp-wash p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="font-bold text-dacfp-navy">Question bank</h4><p className="text-sm text-dacfp-gray-text">Exactly 10 questions · 70% fixed pass policy</p></div><button className="button-secondary" type="button" onClick={() => void exportBank()}><Download className="size-icon-sm" aria-hidden="true" />Export CSV</button></div>
-      <fieldset className="mt-4">
-        <legend className="text-sm font-bold text-dacfp-navy">Import format</legend>
-        <div className="mt-2 flex gap-4">
-          <label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'csv'} name={formatName} onChange={() => setFormat('csv')} type="radio" className="size-4 accent-dacfp-blue" />CSV</label>
-          <label className="flex items-center gap-2 text-sm font-bold"><input checked={format === 'json'} name={formatName} onChange={() => setFormat('json')} type="radio" className="size-4 accent-dacfp-blue" />JSON</label>
-        </div>
-      </fieldset>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="font-bold text-dacfp-navy">Question bank</h4><p className="text-sm text-dacfp-gray-text">Exactly 10 questions · 2–12 choices each · multi-answer supported · module selector <code>{moduleSelector}</code></p></div><button className="button-secondary" type="button" onClick={() => void exportBank()}><Download className="size-icon-sm" aria-hidden="true" />Export JSON</button></div>
       <Field label="Paste or load question bank" className="mt-4"><Textarea className="min-h-40 font-mono text-sm" value={input} onChange={(event) => setInput(event.target.value)} /></Field>
       <Field label="Or load a bank file" className="mt-3">
-        <Input accept=".csv,.json,text/csv,application/json" className="py-2" type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then(setInput).catch(() => setError('Question bank file could not be read.')); }} />
+        <Input accept=".json,application/json" className="py-2" type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then(setInput).catch(() => setError('Question bank file could not be read.')); }} />
       </Field>
       <div className="mt-4 space-y-3"><ErrorMessage message={error} /><SuccessMessage message={message} /><button className="button-primary" type="button" onClick={() => void importBank()}><FileUp className="size-icon-sm" aria-hidden="true" />Import and replace</button></div>
     </div>
@@ -358,8 +355,10 @@ function downloadText(fileName: string, content: string, type = 'text/csv') {
   const anchor = document.createElement('a');
   anchor.href = URL.createObjectURL(new Blob([content], { type }));
   anchor.download = fileName;
+  document.body.append(anchor);
   anchor.click();
-  URL.revokeObjectURL(anchor.href);
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(anchor.href), 0);
 }
 
 function SurveyResultsPanel({ lessonId }: { lessonId: string }) {
@@ -479,6 +478,7 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
   const [error, setError] = useState('');
   const [outline, setOutline] = useState('');
   const [editing, setEditing] = useState(false);
+  const [orphanConfirmationCount, setOrphanConfirmationCount] = useState<number | null>(null);
 
   const updateSection = (
     sectionId: string,
@@ -487,9 +487,10 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
     section.clientId === sectionId ? update(section) : section
   ));
 
-  const save = async () => {
+  const save = async (confirmOrphan = false) => {
     setMessage('');
     setError('');
+    if (!confirmOrphan) setOrphanConfirmationCount(null);
     try {
       const payload = sections.map((section, sectionIndex) => ({
         id: section.clientId,
@@ -529,11 +530,23 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
       const result = await mutate<SurveyFlowSaveResult>('replace_survey_flow', {
         lesson_id: lesson.id,
         sections: payload,
+        confirm_orphan: confirmOrphan,
       });
       setOutline(result.outline);
+      setOrphanConfirmationCount(null);
       setMessage('Survey flow saved, validated, and audited.');
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Survey questions could not be saved.');
+      const failureMessage = failure instanceof Error
+        ? failure.message
+        : 'Survey questions could not be saved.';
+      const orphanMatch = /SURVEY_ORPHAN_CONFIRMATION_REQUIRED:\s*(\d+)\s+affected response/.exec(
+        failureMessage,
+      );
+      if (!confirmOrphan && orphanMatch) {
+        setOrphanConfirmationCount(Number(orphanMatch[1]));
+        return;
+      }
+      setError(failureMessage);
     }
   };
 
@@ -591,7 +604,23 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
           </article>
         ))}
       </div>
-      <div className="mt-4 space-y-3"><ErrorMessage message={error} /><SuccessMessage message={message} />{outline ? <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-dacfp-line bg-white p-4 text-sm text-dacfp-navy" aria-label="Survey flow outline">{outline}</pre> : null}<button className="button-primary" onClick={() => void save()} type="button">Save survey flow</button></div></> : null}
+      <div className="mt-4 space-y-3">
+        <ErrorMessage message={error} />
+        <SuccessMessage message={message} />
+        {outline ? <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-dacfp-line bg-white p-4 text-sm text-dacfp-navy" aria-label="Survey flow outline">{outline}</pre> : null}
+        <div className="flex flex-wrap gap-3">
+          <button className="button-primary" onClick={() => void save()} type="button">Save survey flow</button>
+          {orphanConfirmationCount !== null ? (
+            <ConfirmDialog
+              trigger={<button className="button-secondary text-status-danger" type="button">Review destructive survey edit</button>}
+              title="Delete sections used by submitted responses?"
+              description={`${orphanConfirmationCount} existing response${orphanConfirmationCount === 1 ? '' : 's'} reference a section being deleted. Confirming will preserve each response record but its historical path will no longer resolve to that section.`}
+              confirmLabel={`Delete and orphan ${orphanConfirmationCount} response${orphanConfirmationCount === 1 ? '' : 's'}`}
+              onConfirm={() => save(true)}
+            />
+          ) : null}
+        </div>
+      </div></> : null}
       <SurveyResultsPanel lessonId={lesson.id} />
     </div>
   );

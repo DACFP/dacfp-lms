@@ -63,12 +63,13 @@ function ScopeRows({ title, rows, tone }: {
       {rows.length ? (
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>Course program</TableHead><TableHead>Completed</TableHead><TableHead>Learner</TableHead><TableHead>CFP Board ID</TableHead>{showReason ? <TableHead>Excluded because</TableHead> : null}</TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Course program</TableHead><TableHead>Completed</TableHead><TableHead>Completion source</TableHead><TableHead>Learner</TableHead><TableHead>CFP Board ID</TableHead>{showReason ? <TableHead>Excluded because</TableHead> : null}</TableRow></TableHeader>
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={`${title}-${row.completion_id}`}>
                   <TableCell className="font-mono text-xs">{row.cfp_program_id}</TableCell>
                   <TableCell>{row.date_individual_completed}</TableCell>
+                  <TableCell>{row.trigger === 'manual_admin' ? 'Manual admin' : 'Requirements met'}</TableCell>
                   <TableCell><span className="font-semibold text-dacfp-navy">{[row.attendee_first_name, row.attendee_middle_name, row.attendee_last_name].filter(Boolean).join(' ')}</span><span className="block text-xs text-dacfp-gray-text">{row.person_email}</span></TableCell>
                   <TableCell className="font-mono text-xs">{row.attendee_cfp_board_id || 'Missing'}</TableCell>
                   {showReason ? <TableCell>{'reason' in row ? row.reason : ''}</TableCell> : null}
@@ -95,6 +96,7 @@ export function CeReportingPage() {
   const [periodStart, setPeriodStart] = useState(thirtyDaysAgo());
   const [periodEnd, setPeriodEnd] = useState(isoDate(new Date()));
   const [includeAlreadyReported, setIncludeAlreadyReported] = useState(false);
+  const [includeManual, setIncludeManual] = useState(false);
   const [preview, setPreview] = useState<CfpCePreview | null>(null);
   const [runs, setRuns] = useState<CfpCeReportRun[]>([]);
   const [loading, setLoading] = useState(false);
@@ -120,6 +122,7 @@ export function CeReportingPage() {
     period_start: periodStart,
     period_end: periodEnd,
     include_already_reported: includeAlreadyReported,
+    include_manual: includeManual,
   };
 
   const runPreview = async () => {
@@ -195,6 +198,7 @@ export function CeReportingPage() {
           <label className="text-sm font-bold text-dacfp-navy">Period end<input className="mt-2 min-h-11 w-full rounded-lg border border-dacfp-line px-3 font-normal" type="date" value={periodEnd} onChange={(event) => { setPeriodEnd(event.target.value); setPreview(null); }} /></label>
         </div>
         <label className="mt-5 flex min-h-11 items-center gap-3 rounded-lg border border-dacfp-line p-3"><input className="size-5 accent-dacfp-maroon" type="checkbox" checked={includeAlreadyReported} onChange={(event) => { setIncludeAlreadyReported(event.target.checked); setPreview(null); }} /><span><span className="font-bold text-dacfp-navy">Include already-reported completions</span><span className="ml-2 text-sm text-dacfp-gray-text">Use only for corrections.</span></span></label>
+        <label className="mt-3 flex min-h-11 items-center gap-3 rounded-lg border border-status-warning/40 bg-status-warning/5 p-3"><input className="size-5 accent-dacfp-maroon" type="checkbox" checked={includeManual} onChange={(event) => { setIncludeManual(event.target.checked); setPreview(null); }} /><span><span className="font-bold text-dacfp-navy">Include manual admin completions</span><span className="ml-2 text-sm text-dacfp-gray-text">Explicit opt-in; review the completion source before filing.</span></span></label>
         <div className="mt-5 flex flex-wrap gap-3"><button className="button-secondary" type="button" disabled={loading || courseIds.length === 0 || !periodStart || !periodEnd} onClick={() => void runPreview()}>{loading ? 'Loading…' : 'Preview report'}</button><button className="button-primary" type="button" disabled={loading || !preview?.reportable.length} onClick={() => void exportRun()}><Download className="size-icon-sm" aria-hidden="true" />Create and download .xlsx</button></div>
       </section>
 
@@ -202,6 +206,7 @@ export function CeReportingPage() {
         <div className="space-y-5">
           {preview.pending_program_courses.length ? <Alert tone="warning"><AlertTriangle className="mr-2 inline size-icon-sm" aria-hidden="true" />Program ID pending for {preview.pending_program_courses.map((course) => course.title).join(', ')}. Those completions are not exportable.</Alert> : null}
           <ScopeRows title="Reportable" rows={preview.reportable} tone="positive" />
+          <ScopeRows title="Manual completions (opt-in required)" rows={preview.manual} tone="warning" />
           <ScopeRows title="Missing ID" rows={preview.missing_id} tone="warning" />
           <ScopeRows title="Already reported" rows={preview.already_reported} tone="neutral" />
           <ScopeRows title="Excluded" rows={preview.excluded} tone="warning" />

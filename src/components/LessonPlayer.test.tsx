@@ -55,11 +55,16 @@ function progress(lessonId: string, position: number): LmsLessonProgress {
   };
 }
 
-function token(lessonId: string, maxWatched: number): LmsPlaybackToken {
+function token(
+  lessonId: string,
+  maxWatched: number,
+  reviewMode = false,
+): LmsPlaybackToken {
   return {
     url: `https://sandbox.invalid/${lessonId}?token=signed`,
     expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
     max_watched_seconds: maxWatched,
+    review_mode: reviewMode,
   };
 }
 
@@ -83,7 +88,7 @@ describe('LessonPlayer lifecycle', () => {
       progress(lessonId, position));
 
     const { rerender } = render(
-      <LessonPlayer key="lesson-a" course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 120)} reviewMode={false} />,
+      <LessonPlayer key="lesson-a" course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 120)} />,
     );
     await waitFor(() => expect(lms.requestPlayback).toHaveBeenCalledWith('lesson-a'));
     // brief #7 retired the raw-seconds format ("120s") for mm:ss through the
@@ -93,7 +98,7 @@ describe('LessonPlayer lifecycle', () => {
     expect(resumeValue()).toBe('2:00');
 
     rerender(
-      <LessonPlayer key="lesson-b" course={course} lesson={lesson('lesson-b')} progress={progress('lesson-b', 5)} reviewMode={false} />,
+      <LessonPlayer key="lesson-b" course={course} lesson={lesson('lesson-b')} progress={progress('lesson-b', 5)} />,
     );
     await waitFor(() => expect(lms.requestPlayback).toHaveBeenCalledWith('lesson-b'));
     expect(resumeValue()).toBe('0:05');
@@ -113,7 +118,6 @@ describe('LessonPlayer lifecycle', () => {
         course={course}
         lesson={lesson('lesson-a')}
         progress={progress('lesson-a', 240)}
-        reviewMode={false}
         initialResumeOffsetSeconds={30}
       />,
     );
@@ -138,7 +142,7 @@ describe('LessonPlayer lifecycle', () => {
       .mockImplementation(async (lessonId: string, position: number) =>
         progress(lessonId, position));
 
-    render(<LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} reviewMode={false} />);
+    render(<LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} />);
     const video = await screen.findByLabelText('lesson-a video') as HTMLVideoElement;
     fireEvent.loadedMetadata(video);
     await waitFor(() => expect(lms.recordHeartbeat).toHaveBeenCalledTimes(1));
@@ -159,7 +163,7 @@ describe('LessonPlayer lifecycle', () => {
       progress(lessonId, position));
 
     const rendered = render(
-      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} reviewMode={false} />,
+      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 0)} />,
     );
     await act(async () => Promise.resolve());
     const video = screen.getByLabelText('lesson-a video');
@@ -176,7 +180,7 @@ describe('LessonPlayer lifecycle', () => {
       progress(lessonId, position));
 
     const rendered = render(
-      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 30)} reviewMode={false} />,
+      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 30)} />,
     );
     const video = await screen.findByLabelText('lesson-a video') as HTMLVideoElement;
     Object.defineProperty(video, 'duration', { configurable: true, value: 600 });
@@ -186,13 +190,17 @@ describe('LessonPlayer lifecycle', () => {
     expect(video.currentTime).toBe(30);
     expect(screen.queryByLabelText('Playback speed')).not.toBeInTheDocument();
 
+    lms.requestPlayback.mockResolvedValue(token('lesson-a', 30, true));
     rendered.rerender(
-      <LessonPlayer course={course} lesson={lesson('lesson-a')} progress={{ ...progress('lesson-a', 30), completed_at: '2026-07-16T00:10:00.000Z' }} reviewMode />,
+      <LessonPlayer key="review" course={course} lesson={lesson('lesson-a')} progress={{ ...progress('lesson-a', 30), completed_at: '2026-07-16T00:10:00.000Z' }} />,
     );
-    video.currentTime = 20;
+    const reviewVideo = await screen.findByLabelText('lesson-a video') as HTMLVideoElement;
+    Object.defineProperty(reviewVideo, 'duration', { configurable: true, value: 600 });
+    fireEvent.loadedMetadata(reviewVideo);
+    reviewVideo.currentTime = 20;
     fireEvent.click(screen.getByRole('button', { name: '15s forward' }));
-    expect(video.currentTime).toBe(35);
+    expect(reviewVideo.currentTime).toBe(35);
     fireEvent.change(screen.getByLabelText('Playback speed'), { target: { value: '2' } });
-    expect(video.playbackRate).toBe(2);
+    expect(reviewVideo.playbackRate).toBe(2);
   });
 });
