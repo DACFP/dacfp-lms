@@ -59,7 +59,7 @@ Exit code: 0
 git diff --check
 Exit code: 0
 
-grep -c rneqnrturavmlcmyaqht SPEC.md
+grep -c PRODUCTION-REF-REDACTED SPEC.md
 Output: 0
 Expected grep exit code for zero matches: 1
 

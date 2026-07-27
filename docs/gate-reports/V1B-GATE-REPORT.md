@@ -12,7 +12,7 @@ Sandbox: `xfvaohvismisfdggfdfj` only. Supabase calls through final remote snapsh
 - Starting branch/worktree: clean `main`, tracking `origin/main`.
 - V1 merge present: `c4cb54c Merge Session V1 surveys`.
 - `V1B-SPEC.md` and `docs/cbda-survey-question-structure.md` were committed at `17bec70`.
-- `grep -c rneqnrturavmlcmyaqht SPEC.md` printed `0`.
+- `grep -c PRODUCTION-REF-REDACTED SPEC.md` printed `0`.
 - `SPEC.md` header is v3.2.
 - MCP configuration exposed only `xfvaohvismisfdggfdfj`. No production project call was made.
 
