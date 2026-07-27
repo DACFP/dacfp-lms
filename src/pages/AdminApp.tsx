@@ -8,6 +8,7 @@ import {
   AdminCoursesPage,
   AdminLearnersPage,
 } from './AdminPages';
+import { CeReportingPage } from './CeReportingPage';
 
 /**
  * The whole operator console as one lazy-loadable module (M-12).
@@ -28,6 +29,7 @@ export default function AdminApp({ adminProvider }: { adminProvider?: LmsAdminPr
           <Route index element={<AdminCoursesPage />} />
           <Route path="course/:id" element={<AdminCoursePage />} />
           <Route path="learners" element={<AdminLearnersPage />} />
+          <Route path="ce-reporting" element={<CeReportingPage />} />
           <Route path="audit" element={<AdminAuditPage />} />
         </Route>
       </Routes>

@@ -16,14 +16,21 @@ describe('mockProvider synthetic catalog', () => {
     );
   });
 
-  it('contains the three required sandbox courses and the expected structure', () => {
+  it('contains FPT, six bonus courses, renewal, and the expected structure', () => {
     expect(mockCatalog.courses.map((course) => course.slug)).toEqual([
       'fpt-sandbox',
-      'bonus-sandbox',
+      'custody-security-sandbox',
+      'spot-ethereum-etfs-sandbox',
+      'nfts-sandbox',
+      'defi-daos-sandbox',
+      'staking-lending-borrowing-sandbox',
+      'genius-act-sandbox',
       'renewal-2026-sandbox',
     ]);
     expect(mockCatalog.modules.filter((module) => module.course_id === 'course-fpt')).toHaveLength(5);
-    expect(mockCatalog.modules.filter((module) => module.course_id === 'course-bonus')).toHaveLength(3);
+    expect(mockCatalog.courses.filter((course) => course.id.startsWith('course-bonus-'))).toHaveLength(6);
+    expect(mockCatalog.modules.filter((module) => module.course_id.startsWith('course-bonus-'))).toHaveLength(6);
+    expect(mockCatalog.courses.filter((course) => course.id.startsWith('course-bonus-')).every((course) => course.cfp_program_id)).toBe(true);
     expect(mockCatalog.modules.filter((module) => module.course_id === 'course-renewal-2026')).toHaveLength(1);
     expect(mockCatalog.quizzes.filter((quiz) => quiz.module_id.startsWith('fpt-'))).toHaveLength(4);
     expect(mockCatalog.quizzes.filter((quiz) => quiz.module_id.startsWith('bonus-'))).toHaveLength(0);

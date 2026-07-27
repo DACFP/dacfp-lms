@@ -13,6 +13,12 @@ import {
   type LmsAuthSession,
 } from '../data/provider';
 
+const workbookDownload = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock('../lib/cfpCeExport', () => ({
+  downloadCfpCeWorkbook: workbookDownload,
+}));
+
 const operatorSession: LmsAuthSession = {
   user: { id: 'auth-operator', email: 'operator@example.test', displayName: 'Operator', role: 'operator' },
 };
@@ -48,6 +54,7 @@ const inspection: LearnerInspection = {
     auth_user_id: 'learner-1',
     display_name: 'Jordan Rivers',
     first_name: 'Jordan',
+    middle_name: null,
     last_name: 'Rivers',
     firm: 'Synthetic Advisory LLC',
     job_title: 'Financial Advisor',
@@ -70,7 +77,7 @@ const inspection: LearnerInspection = {
       status: 'active',
       terms_accepted_at: '2026-01-02T00:00:00.000Z',
       order_id: null,
-      lms_courses: { id: 'course-fpt', slug: 'fpt-sandbox', title: 'FPT Sandbox', ce_credits: 18 },
+      lms_courses: { id: 'course-fpt', slug: 'fpt-sandbox', title: 'FPT Sandbox', ce_credits: 18, cfp_program_id: '312442' },
     },
   ],
   progress: [],
@@ -293,4 +300,92 @@ describe('Admin surveys — V1b routed editor and results', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.getByText('Shown to 2 respondents')).toBeInTheDocument();
   }, 20_000);
+});
+
+describe('Admin CFP CE reporting — R1', () => {
+  it('previews the reportable/missing/already split and records an export run', async () => {
+    const exportRow = {
+      completion_id: '30000000-0000-4000-8000-000000000001',
+      course_id: 'course-fpt',
+      person_email: 'reportable@example.test',
+      cfp_program_id: '312442',
+      date_individual_completed: '2026-07-16',
+      attendee_cfp_board_id: '123456',
+      attendee_last_name: 'Rivera',
+      attendee_first_name: 'Casey',
+      attendee_middle_name: '',
+    };
+    const missingRow = {
+      ...exportRow,
+      completion_id: '30000000-0000-4000-8000-000000000002',
+      person_email: 'missing@example.test',
+      attendee_cfp_board_id: '',
+    };
+    const preview = vi.fn(() => ({
+      period_start: '2026-07-01',
+      period_end: '2026-07-27',
+      reportable: [exportRow],
+      missing_id: [missingRow],
+      already_reported: [],
+      pending_program_courses: [],
+      nudge_count: 1,
+    }));
+    const createRun = vi.fn(() => ({
+      id: '40000000-0000-4000-8000-000000000001',
+      created_at: '2026-07-27T18:00:00.000Z',
+      actor_auth_user_id: 'auth-operator',
+      course_ids: ['course-fpt'],
+      period_start: '2026-07-01',
+      period_end: '2026-07-27',
+      row_count: 1,
+      rows: [exportRow],
+      filename: 'cfp-ce-2026-07-01-through-2026-07-27.xlsx',
+    }));
+    workbookDownload.mockClear();
+    renderAdmin('/admin/ce-reporting', baseAdmin({
+      list_ce_report_runs: () => [],
+      preview_ce_report: preview,
+      create_ce_report_run: createRun,
+    }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview report' }));
+    expect(await screen.findByText('reportable@example.test')).toBeInTheDocument();
+    expect(screen.getByText('missing@example.test')).toBeInTheDocument();
+    expect(screen.getByText(/14-day reporting nudge/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Create and download/ }));
+    await waitFor(() => expect(createRun).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(workbookDownload).toHaveBeenCalledWith(
+      [exportRow],
+      'cfp-ce-2026-07-01-through-2026-07-27.xlsx',
+    ));
+    expect(await screen.findByText(/recorded the frozen report run/)).toBeInTheDocument();
+  });
+
+  it('keeps the next default date range valid when the latest run ends today', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    renderAdmin('/admin/ce-reporting', baseAdmin({
+      list_ce_report_runs: () => [{
+        id: '40000000-0000-4000-8000-000000000002',
+        created_at: `${today}T18:00:00.000Z`,
+        actor_auth_user_id: 'auth-operator',
+        course_ids: [
+          'course-fpt',
+          'course-bonus-custody',
+          'course-bonus-ethereum-etfs',
+          'course-bonus-nfts',
+          'course-bonus-defi-daos',
+          'course-bonus-staking',
+          'course-bonus-genius-act',
+        ],
+        period_start: today,
+        period_end: today,
+        row_count: 1,
+        rows: [],
+        filename: `cfp-ce-${today}-through-${today}.xlsx`,
+      }],
+    }));
+    expect(await screen.findByLabelText('Period start')).toHaveValue(today);
+    expect(screen.getByLabelText('Period end')).toHaveValue(today);
+  });
 });

@@ -230,16 +230,19 @@ describe('D0 route shell', () => {
     renderRoute('/dashboard', 'fresh');
     expect(await screen.findByRole('dialog', { name: 'Accept the program terms to continue' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Bonus library' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Portfolio Case Study')).not.toBeInTheDocument();
+    expect(screen.queryByText('Crypto Custody and Security')).not.toBeInTheDocument();
     expect(screen.queryByText('Renewal 2026 Sandbox')).not.toBeInTheDocument();
   });
 
-  it('shows a bonus card per module after FPT completion and keeps renewal hidden outside its window', async () => {
+  it('shows all six bonus-course cards after FPT completion and keeps renewal hidden outside its window', async () => {
     renderRoute('/dashboard', 'fpt-completed');
     expect(await screen.findByRole('heading', { name: 'Bonus library' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Portfolio Case Study' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Advisor Conversation Lab' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Market Structure Briefing' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Crypto Custody and Security' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Spot Ethereum ETFs' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'NFTs' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'DeFi and DAOs' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Staking, Lending and Borrowing' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'GENIUS Act' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Renewal 2026 Sandbox' })).not.toBeInTheDocument();
   });
 
@@ -442,6 +445,24 @@ describe('D0 route shell', () => {
     expect(await screen.findByLabelText('CFP ID')).toBeInTheDocument();
     expect(screen.getByLabelText('IWI ID')).toBeInTheDocument();
     expect(screen.getByLabelText('CFA ID')).toBeInTheDocument();
+    expect(screen.getByLabelText('Middle name')).toBeInTheDocument();
+  });
+
+  it('hides CFP reporting state before certification', async () => {
+    renderRoute('/account', 'mid-module-2');
+    expect(await screen.findByRole('heading', { name: 'Profile and credentials' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'CE reporting' })).toBeNull();
+  });
+
+  it('asks a certified learner for a missing CFP Board ID', async () => {
+    renderRoute('/account', 'fpt-completed');
+    expect(await screen.findByText('Add your CFP Board ID to be included')).toBeInTheDocument();
+  });
+
+  it('shows the frozen report-run date to a reported learner', async () => {
+    renderRoute('/account', 'fully-complete');
+    expect(await screen.findByText(/Reported to CFP Board on/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Reporting scheduled — DACFP reports within 14 days/).length).toBeGreaterThan(0);
   });
 
   it('round-trips the expanded account fields through the profile provider', async () => {
@@ -460,6 +481,7 @@ describe('D0 route shell', () => {
     };
     renderRoute('/account', 'fully-complete', testAuthProvider(signedInSession), profileProvider);
     fireEvent.change(await screen.findByLabelText('First name'), { target: { value: 'Casey' } });
+    fireEvent.change(screen.getByLabelText('Middle name'), { target: { value: 'Avery' } });
     fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Morgan' } });
     fireEvent.change(screen.getByLabelText('Firm'), { target: { value: 'Synthetic Planning LLC' } });
     fireEvent.change(screen.getByLabelText('Job title'), { target: { value: 'Other' } });
@@ -473,6 +495,7 @@ describe('D0 route shell', () => {
     expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({
       display_name: 'Casey Morgan',
       first_name: 'Casey',
+      middle_name: 'Avery',
       last_name: 'Morgan',
       firm: 'Synthetic Planning LLC',
       job_title: 'Education Lead',
@@ -544,7 +567,7 @@ describe('D0 route shell', () => {
     expect(await screen.findByRole('heading', { name: 'Passed — 7/10' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /View completion/ })).toBeInTheDocument();
     expect(screen.getByText('Every requirement is complete')).toBeInTheDocument();
-    expect(screen.getByText(/Bonus Sandbox unlocked on your dashboard/i)).toBeInTheDocument();
+    expect(screen.getByText(/Crypto Custody and Security.*unlocked on your dashboard/i)).toBeInTheDocument();
     expect(getCatalog).toHaveBeenCalledTimes(2);
   });
 

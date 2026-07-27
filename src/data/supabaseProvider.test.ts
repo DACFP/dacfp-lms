@@ -26,6 +26,7 @@ describe('supabaseProvider row mapping', () => {
         auth_user_id: 'auth-complete',
         display_name: 'Fully complete',
         first_name: 'Fully',
+        middle_name: null,
         last_name: 'Complete',
         firm: 'Synthetic Advisory LLC',
         job_title: 'Financial Advisor',

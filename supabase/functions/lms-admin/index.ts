@@ -69,7 +69,10 @@ function optionalString(value: unknown) {
 
 function requiredUuid(value: unknown, field: string) {
   const result = requiredString(value, field);
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(result)) {
+  // PostgreSQL's uuid type accepts all 128-bit UUID values. Synthetic seed
+  // records derived deterministically from md5 are valid UUIDs even when the
+  // version/variant bits do not match RFC-generated identifiers.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result)) {
     throw new InvalidRequest(`${field} is invalid.`);
   }
   return result;
@@ -78,6 +81,25 @@ function requiredUuid(value: unknown, field: string) {
 function optionalUuid(value: unknown, field: string) {
   if (value === null || value === undefined || value === '') return null;
   return requiredUuid(value, field);
+}
+
+function requiredUuidArray(value: unknown, field: string) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new InvalidRequest(`${field} is required.`);
+  }
+  return [...new Set(value.map((item) => requiredUuid(item, field)))];
+}
+
+function requiredDate(value: unknown, field: string) {
+  const result = requiredString(value, field);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) {
+    throw new InvalidRequest(`${field} is invalid.`);
+  }
+  const parsed = new Date(`${result}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== result) {
+    throw new InvalidRequest(`${field} is invalid.`);
+  }
+  return result;
 }
 
 function asNumber(value: unknown, field: string, nullable = false) {
@@ -605,6 +627,228 @@ async function exportSurveyResponses(
   };
 }
 
+type CeCompletionRow = {
+  id: string;
+  enrollment_id: string;
+  completed_at: string;
+};
+
+type CeEnrollmentRow = {
+  id: string;
+  person_email: string;
+  auth_user_id: string;
+  course_id: string;
+};
+
+type CeCourseRow = {
+  id: string;
+  title: string;
+  cfp_program_id: string | null;
+};
+
+type CeProfileRow = {
+  auth_user_id: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  credential_ids: Record<string, unknown>;
+};
+
+type CeExportRow = {
+  completion_id: string;
+  course_id: string;
+  person_email: string;
+  cfp_program_id: string;
+  date_individual_completed: string;
+  attendee_cfp_board_id: string;
+  attendee_last_name: string;
+  attendee_first_name: string;
+  attendee_middle_name: string;
+};
+
+function phoenixDate(isoTimestamp: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Phoenix',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(isoTimestamp));
+  const value = new Map(parts.map((part) => [part.type, part.value]));
+  return `${value.get('year')}-${value.get('month')}-${value.get('day')}`;
+}
+
+function completionIdsFromRuns(runs: Array<{ rows: unknown }>) {
+  const ids = new Set<string>();
+  for (const run of runs) {
+    if (!Array.isArray(run.rows)) continue;
+    for (const row of run.rows) {
+      if (!row || typeof row !== 'object') continue;
+      const id = (row as Record<string, unknown>).completion_id;
+      if (typeof id === 'string') ids.add(id);
+    }
+  }
+  return ids;
+}
+
+async function previewCeReport(
+  admin: SupabaseClient,
+  input: Record<string, unknown>,
+) {
+  const courseIds = requiredUuidArray(input.course_ids, 'course_ids');
+  const periodStart = requiredDate(input.period_start, 'period_start');
+  const periodEnd = requiredDate(input.period_end, 'period_end');
+  if (periodEnd < periodStart) throw new InvalidRequest('period_end is invalid.');
+  const includeAlreadyReported = input.include_already_reported === true;
+  const periodEndExclusive = new Date(`${periodEnd}T07:00:00Z`);
+  periodEndExclusive.setUTCDate(periodEndExclusive.getUTCDate() + 1);
+
+  const [completionResult, courseResult, runResult] = await Promise.all([
+    admin
+      .from('lms_completion_events')
+      .select('id,enrollment_id,completed_at')
+      .gte('completed_at', `${periodStart}T07:00:00Z`)
+      .lt('completed_at', periodEndExclusive.toISOString())
+      .order('completed_at'),
+    admin
+      .from('lms_courses')
+      .select('id,title,cfp_program_id')
+      .in('id', courseIds),
+    admin
+      .from('lms_ce_report_runs')
+      .select('rows'),
+  ]);
+  assertQuery(completionResult.error);
+  assertQuery(courseResult.error);
+  assertQuery(runResult.error);
+  const courses = (courseResult.data ?? []) as CeCourseRow[];
+  if (courses.length !== courseIds.length) throw new InvalidRequest('course_ids is invalid.');
+  const courseById = new Map(courses.map((course) => [course.id, course]));
+  const reportedIds = completionIdsFromRuns(runResult.data ?? []);
+  const completions = (completionResult.data ?? []) as CeCompletionRow[];
+  const enrollmentIds = completions.map((completion) => completion.enrollment_id);
+  const enrollmentResult = enrollmentIds.length
+    ? await admin
+        .from('lms_enrollments')
+        .select('id,person_email,auth_user_id,course_id')
+        .in('id', enrollmentIds)
+        .in('course_id', courseIds)
+    : { data: [], error: null };
+  assertQuery(enrollmentResult.error);
+  const enrollments = (enrollmentResult.data ?? []) as CeEnrollmentRow[];
+  const enrollmentById = new Map(enrollments.map((enrollment) => [enrollment.id, enrollment]));
+  const profileIds = [...new Set(enrollments.map((enrollment) => enrollment.auth_user_id))];
+  const profileResult = profileIds.length
+    ? await admin
+        .from('lms_learner_profiles')
+        .select('auth_user_id,first_name,middle_name,last_name,credential_ids')
+        .in('auth_user_id', profileIds)
+    : { data: [], error: null };
+  assertQuery(profileResult.error);
+  const profiles = (profileResult.data ?? []) as CeProfileRow[];
+  const profileById = new Map(profiles.map((profile) => [profile.auth_user_id, profile]));
+
+  const reportable: CeExportRow[] = [];
+  const missingId: CeExportRow[] = [];
+  const alreadyReported: CeExportRow[] = [];
+  for (const completion of completions) {
+    const enrollment = enrollmentById.get(completion.enrollment_id);
+    if (!enrollment) continue;
+    const course = courseById.get(enrollment.course_id);
+    const profile = profileById.get(enrollment.auth_user_id);
+    if (!course?.cfp_program_id || !profile) continue;
+    const cfpId = typeof profile.credential_ids?.cfp === 'string'
+      ? profile.credential_ids.cfp.trim()
+      : '';
+    const row: CeExportRow = {
+      completion_id: completion.id,
+      course_id: course.id,
+      person_email: enrollment.person_email,
+      cfp_program_id: course.cfp_program_id,
+      date_individual_completed: phoenixDate(completion.completed_at),
+      attendee_cfp_board_id: cfpId,
+      attendee_last_name: profile.last_name,
+      attendee_first_name: profile.first_name,
+      attendee_middle_name: profile.middle_name ?? '',
+    };
+    if (reportedIds.has(completion.id)) {
+      alreadyReported.push(row);
+      if (includeAlreadyReported && cfpId) reportable.push(row);
+    } else if (!cfpId) {
+      missingId.push(row);
+    } else {
+      reportable.push(row);
+    }
+  }
+
+  const nudgeBefore = new Date();
+  nudgeBefore.setUTCDate(nudgeBefore.getUTCDate() - 10);
+  const { data: agedCompletions, error: nudgeError } = await admin
+    .from('lms_completion_events')
+    .select('id,enrollment_id')
+    .lte('completed_at', nudgeBefore.toISOString());
+  assertQuery(nudgeError);
+  const agedEnrollmentIds = [...new Set(
+    (agedCompletions ?? []).map((completion) => completion.enrollment_id),
+  )];
+  const agedEnrollmentResult = agedEnrollmentIds.length
+    ? await admin
+        .from('lms_enrollments')
+        .select('id,course_id')
+        .in('id', agedEnrollmentIds)
+    : { data: [], error: null };
+  assertQuery(agedEnrollmentResult.error);
+  const agedCourseIds = [...new Set(
+    (agedEnrollmentResult.data ?? []).map((enrollment) => enrollment.course_id),
+  )];
+  const agedCourseResult = agedCourseIds.length
+    ? await admin
+        .from('lms_courses')
+        .select('id')
+        .in('id', agedCourseIds)
+        .not('cfp_program_id', 'is', null)
+    : { data: [], error: null };
+  assertQuery(agedCourseResult.error);
+  const reportableCourseIds = new Set((agedCourseResult.data ?? []).map((course) => course.id));
+  const agedEnrollmentCourse = new Map(
+    (agedEnrollmentResult.data ?? []).map((enrollment) => [enrollment.id, enrollment.course_id]),
+  );
+
+  return {
+    period_start: periodStart,
+    period_end: periodEnd,
+    reportable,
+    missing_id: missingId,
+    already_reported: alreadyReported,
+    pending_program_courses: courses
+      .filter((course) => !course.cfp_program_id)
+      .map(({ id, title }) => ({ id, title })),
+    nudge_count: (agedCompletions ?? []).filter((completion) =>
+      reportableCourseIds.has(agedEnrollmentCourse.get(completion.enrollment_id) ?? '')
+      && !reportedIds.has(completion.id)
+    ).length,
+  };
+}
+
+async function createCeReportRun(
+  admin: SupabaseClient,
+  actorId: string,
+  input: Record<string, unknown>,
+) {
+  const courseIds = requiredUuidArray(input.course_ids, 'course_ids');
+  const periodStart = requiredDate(input.period_start, 'period_start');
+  const periodEnd = requiredDate(input.period_end, 'period_end');
+  if (periodEnd < periodStart) throw new InvalidRequest('period_end is invalid.');
+  const { data, error } = await admin.rpc('lms_admin_create_ce_report_run', {
+    p_actor_auth_user_id: actorId,
+    p_course_ids: courseIds,
+    p_period_start: periodStart,
+    p_period_end: periodEnd,
+    p_include_already_reported: input.include_already_reported === true,
+  });
+  assertQuery(error);
+  return data;
+}
+
 async function inspectLearner(admin: SupabaseClient, email: string) {
   const normalized = email.trim().toLowerCase();
   const { data: user, error: userError } = await admin.rpc(
@@ -615,7 +859,7 @@ async function inspectLearner(admin: SupabaseClient, email: string) {
   if (!user) return null;
   const [profile, enrollments] = await Promise.all([
     admin.from('lms_learner_profiles').select('*').eq('auth_user_id', user.id).maybeSingle(),
-    admin.from('lms_enrollments').select('*,lms_courses(id,slug,title,ce_credits)').eq('auth_user_id', user.id).order('enrolled_at'),
+    admin.from('lms_enrollments').select('*,lms_courses(id,slug,title,ce_credits,cfp_program_id)').eq('auth_user_id', user.id).order('enrolled_at'),
   ]);
   assertQuery(profile.error);
   assertQuery(enrollments.error);
@@ -698,6 +942,18 @@ Deno.serve(async (req: Request) => {
       case 'export_question_bank': data = await exportQuestionBank(admin, requiredUuid(payload.module_id, 'module_id')); break;
       case 'survey_results': data = await surveyResults(admin, actor.id, requiredUuid(payload.lesson_id, 'lesson_id')); break;
       case 'export_survey_responses': data = await exportSurveyResponses(admin, actor.id, payload); break;
+      case 'preview_ce_report': data = await previewCeReport(admin, payload); break;
+      case 'create_ce_report_run': data = await createCeReportRun(admin, actor.id, payload); break;
+      case 'list_ce_report_runs': {
+        const result = await admin
+          .from('lms_ce_report_runs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(250);
+        assertQuery(result.error);
+        data = result.data ?? [];
+        break;
+      }
       case 'create_course': data = await createCourse(admin, actor.id, payload); break;
       case 'update_course': data = await updateCourse(admin, actor.id, payload); break;
       case 'delete_course': data = await deleteRow(admin, actor.id, 'delete_course', payload); break;

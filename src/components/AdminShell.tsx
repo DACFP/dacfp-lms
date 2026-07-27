@@ -1,4 +1,4 @@
-import { BookOpen, ClipboardList, LogOut, Menu, Users } from 'lucide-react';
+import { BookOpen, ClipboardList, FileSpreadsheet, LogOut, Menu, Users } from 'lucide-react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ import { BrandLockup } from './BrandLockup';
 const links = [
   { to: '/admin', label: 'Courses', icon: BookOpen, end: true },
   { to: '/admin/learners', label: 'Learners', icon: Users, end: false },
+  { to: '/admin/ce-reporting', label: 'CFP CE', icon: FileSpreadsheet, end: false },
   { to: '/admin/audit', label: 'Audit trail', icon: ClipboardList, end: false },
 ];
 

@@ -22,6 +22,7 @@ const course: LmsCourse = {
   progression: 'sequential',
   prerequisite_course_id: null,
   ce_credits: 18,
+  cfp_program_id: '312442',
   requires_terms_acceptance: false,
   created_at: '2026-07-16T00:00:00.000Z',
 };

@@ -541,15 +541,17 @@ function DesignationPanel({ completion, moduleCount, learnerName }: { completion
   );
 }
 
-function BonusLibrary({ course, modules }: { course: LmsCourse; modules: LmsModule[] }) {
+function BonusLibrary({ entries }: {
+  entries: Array<{ course: LmsCourse; modules: LmsModule[] }>;
+}) {
   return (
     <section aria-labelledby="bonus-library-heading">
       <p className="eyebrow">Unlocked with certification</p>
       <h2 id="bonus-library-heading" className="mt-1 text-xl font-bold text-dacfp-navy">Bonus library</h2>
       <p className="mt-1 text-sm leading-6 text-dacfp-gray-text">Choose any module. Your completed FPT record opens the whole library.</p>
       <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {modules.map((module) => (
-          <article key={module.id} className="card flex flex-col overflow-hidden">
+        {entries.flatMap(({ course, modules }) => modules.map((module) => (
+          <article key={`${course.id}-${module.id}`} className="card flex flex-col overflow-hidden">
             <div className="relative grid aspect-[16/9] place-items-center overflow-hidden bg-dacfp-navy">
               <div className="brand-strip absolute inset-x-0 top-0 h-1" />
               <CbdaSeal size="sm" decorative />
@@ -562,7 +564,7 @@ function BonusLibrary({ course, modules }: { course: LmsCourse; modules: LmsModu
               <Link className="button-secondary mt-5 self-start" to={`/course/${course.slug}/module/${module.position}`}>Open module<ChevronRight className="size-icon-sm" aria-hidden="true" /></Link>
             </div>
           </article>
-        ))}
+        )))}
       </div>
     </section>
   );
@@ -585,7 +587,7 @@ export function DashboardPage() {
   const { catalog, snapshot } = useLms();
   const rows = snapshot.enrollments.map((enrollment) => ({ enrollment, course: catalog.courses.find((item) => item.id === enrollment.course_id) ?? null }));
   const hidden = rows.filter((row) => !row.course);
-  const visible = rows.filter((row): row is { enrollment: LmsEnrollment; course: LmsCourse } => row.course !== null);
+  const visible = rows.filter((row): row is { enrollment: LmsEnrollment; course: LmsCourse } => row.course !== null && row.course.status !== 'archived');
   const flagship = visible.find((row) => courseKind(row.course) === 'flagship') ?? null;
   const renewals = visible.filter((row) => courseKind(row.course) === 'renewal');
   const library = visible.filter((row) => courseKind(row.course) === 'library');
@@ -613,7 +615,7 @@ export function DashboardPage() {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div className="min-w-0 space-y-8">
           {flagship && flagshipView ? <>{!flagshipView.complete ? <OrientationCard moduleCount={ledger.length} storageKey={`dacfp-orientation:${snapshot.profile.auth_user_id}`} /> : null}<NextUpCard view={flagshipView} ledger={ledger} course={flagship.course} /><CourseOfStudy view={flagshipView} ledger={ledger} course={flagship.course} /><ResourcesSection /></> : null}
-          {flagshipCompletion ? library.map(({ course }) => <BonusLibrary key={course.id} course={course} modules={catalog.modules.filter((module) => module.course_id === course.id).sort((a, b) => a.position - b.position)} />) : null}
+          {flagshipCompletion && library.length > 0 ? <BonusLibrary entries={library.map(({ course }) => ({ course, modules: catalog.modules.filter((module) => module.course_id === course.id).sort((a, b) => a.position - b.position) }))} /> : null}
           {(flagshipCompletion || !flagship) && hidden.length > 0 ? <section className="grid gap-5 sm:grid-cols-2">{hidden.map(({ enrollment }) => <HiddenCourseCard key={enrollment.id} enrollment={enrollment} />)}</section> : null}
         </div>
         {flagship && flagshipView ? <aside aria-label="Enrollment and designation" className="space-y-6"><EnrollmentTermCard view={flagshipView} enrollment={flagship.enrollment} moduleCount={ledger.length} /><DesignationPanel completion={flagshipCompletion} moduleCount={ledger.length} learnerName={learnerName} /></aside> : null}

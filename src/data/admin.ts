@@ -24,6 +24,7 @@ export interface AdminEnrollment extends LmsEnrollment {
     slug: string;
     title: string;
     ce_credits: number | null;
+    cfp_program_id: string | null;
   };
 }
 
@@ -105,4 +106,38 @@ export interface SurveyExport {
   file_name: string;
   csv: string;
   row_count: number;
+}
+
+export interface CfpCeExportRow {
+  completion_id: string;
+  course_id: string;
+  person_email: string;
+  cfp_program_id: string;
+  date_individual_completed: string;
+  attendee_cfp_board_id: string;
+  attendee_last_name: string;
+  attendee_first_name: string;
+  attendee_middle_name: string;
+}
+
+export interface CfpCePreview {
+  period_start: string;
+  period_end: string;
+  reportable: CfpCeExportRow[];
+  missing_id: CfpCeExportRow[];
+  already_reported: CfpCeExportRow[];
+  pending_program_courses: Array<{ id: string; title: string }>;
+  nudge_count: number;
+}
+
+export interface CfpCeReportRun {
+  id: string;
+  created_at: string;
+  actor_auth_user_id: string;
+  course_ids: string[];
+  period_start: string;
+  period_end: string;
+  row_count: number;
+  rows: CfpCeExportRow[];
+  filename: string;
 }

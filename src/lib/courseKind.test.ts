@@ -13,6 +13,7 @@ function course(overrides: Partial<LmsCourse>): LmsCourse {
     progression: 'sequential',
     prerequisite_course_id: null,
     ce_credits: null,
+    cfp_program_id: null,
     requires_terms_acceptance: false,
     created_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -26,7 +27,12 @@ describe('courseKind — dashboard IA grouping', () => {
     );
     expect(kinds).toEqual({
       'fpt-sandbox': 'flagship',
-      'bonus-sandbox': 'library',
+      'custody-security-sandbox': 'library',
+      'spot-ethereum-etfs-sandbox': 'library',
+      'nfts-sandbox': 'library',
+      'defi-daos-sandbox': 'library',
+      'staking-lending-borrowing-sandbox': 'library',
+      'genius-act-sandbox': 'library',
       'renewal-2026-sandbox': 'renewal',
     });
   });

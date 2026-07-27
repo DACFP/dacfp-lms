@@ -25,6 +25,15 @@ const createdAt = '2026-07-16T16:00:00.000Z';
 const futureExpiry = '2027-07-16T23:59:59.000Z';
 const nearExpiry = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
 
+const bonusPrograms = [
+  { key: 'custody', slug: 'custody-security-sandbox', title: 'Crypto Custody and Security', cfpProgramId: '332761' },
+  { key: 'ethereum-etfs', slug: 'spot-ethereum-etfs-sandbox', title: 'Spot Ethereum ETFs', cfpProgramId: '328447' },
+  { key: 'nfts', slug: 'nfts-sandbox', title: 'NFTs', cfpProgramId: '321877' },
+  { key: 'defi-daos', slug: 'defi-daos-sandbox', title: 'DeFi and DAOs', cfpProgramId: '321876' },
+  { key: 'staking', slug: 'staking-lending-borrowing-sandbox', title: 'Staking, Lending and Borrowing', cfpProgramId: '321875' },
+  { key: 'genius-act', slug: 'genius-act-sandbox', title: 'GENIUS Act', cfpProgramId: '339638' },
+] as const;
+
 const courses: LmsCourse[] = [
   {
     id: 'course-fpt',
@@ -35,21 +44,23 @@ const courses: LmsCourse[] = [
     progression: 'sequential',
     prerequisite_course_id: null,
     ce_credits: 18,
+    cfp_program_id: '312442',
     requires_terms_acceptance: true,
     created_at: createdAt,
   },
-  {
-    id: 'course-bonus',
-    slug: 'bonus-sandbox',
-    title: 'Bonus Sandbox',
+  ...bonusPrograms.map((program) => ({
+    id: `course-bonus-${program.key}`,
+    slug: program.slug,
+    title: program.title,
     description: 'Open bonus learning unlocked after FPT completion.',
-    status: 'published',
-    progression: 'open',
+    status: 'published' as const,
+    progression: 'open' as const,
     prerequisite_course_id: 'course-fpt',
-    ce_credits: 3,
+    ce_credits: 1,
+    cfp_program_id: program.cfpProgramId,
     requires_terms_acceptance: false,
     created_at: createdAt,
-  },
+  })),
   {
     id: 'course-renewal-2026',
     slug: 'renewal-2026-sandbox',
@@ -59,6 +70,7 @@ const courses: LmsCourse[] = [
     progression: 'sequential',
     prerequisite_course_id: null,
     ce_credits: 1,
+    cfp_program_id: null,
     requires_terms_acceptance: false,
     created_at: createdAt,
   },
@@ -105,30 +117,14 @@ const modules: LmsModule[] = [
     ce_credits: 4.5,
     bridge_copy: 'Connect scaling, tokens, and DeFi to real advisory opportunities and tradeoffs.',
   },
-  {
-    id: 'bonus-m1',
-    course_id: 'course-bonus',
+  ...bonusPrograms.map((program) => ({
+    id: `bonus-${program.key}-m1`,
+    course_id: `course-bonus-${program.key}`,
     position: 1,
-    title: 'Portfolio Case Study',
+    title: program.title,
     ce_credits: 1,
-    bridge_copy: 'Apply portfolio concepts to a realistic client allocation decision.',
-  },
-  {
-    id: 'bonus-m2',
-    course_id: 'course-bonus',
-    position: 2,
-    title: 'Advisor Conversation Lab',
-    ce_credits: 1,
-    bridge_copy: 'Practice explaining digital assets with clarity and professional restraint.',
-  },
-  {
-    id: 'bonus-m3',
-    course_id: 'course-bonus',
-    position: 3,
-    title: 'Market Structure Briefing',
-    ce_credits: 1,
-    bridge_copy: 'Connect market structure to the risks clients encounter in practice.',
-  },
+    bridge_copy: `Apply ${program.title} concepts in an advisory context.`,
+  })),
   {
     id: 'renewal-m1',
     course_id: 'course-renewal-2026',
@@ -414,10 +410,10 @@ const resources = [
     file_ref: '/mock-resources/bitcoin-foundations-workbook.txt',
   },
   {
-    id: 'resource-bonus-case-study',
-    lesson_id: 'bonus-m1-reading',
+    id: 'resource-bonus-custody',
+    lesson_id: 'bonus-custody-m1-reading',
     position: 1,
-    title: 'Portfolio case study (placeholder)',
+    title: 'Custody and security briefing (placeholder)',
     file_ref: '/mock-resources/portfolio-case-study.txt',
   },
   {
@@ -594,6 +590,7 @@ function baseSnapshot(learner: LearnerSummary): LearnerSnapshot {
       auth_user_id: `auth-${learner.id}`,
       display_name: learner.label,
       first_name: learner.label.split(/\s+/)[0] ?? '',
+      middle_name: null,
       last_name: learner.label.split(/\s+/).slice(1).join(' '),
       firm: 'Synthetic Advisory LLC',
       job_title: 'Financial Advisor',
@@ -613,6 +610,7 @@ function baseSnapshot(learner: LearnerSummary): LearnerSnapshot {
     attempts: [],
     surveyResponses: [],
     completions: [],
+    ceReportingStatuses: [],
   };
 }
 
@@ -637,8 +635,10 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
   for (const learner of learnerSummaries) {
     const snapshot = snapshots[learner.id];
     const fpt = enrollment(learner, 'course-fpt', learner.id !== 'fresh');
-    const bonus = enrollment(learner, 'course-bonus', true);
-    snapshot.enrollments.push(fpt, bonus);
+    const bonusEnrollments = bonusPrograms.map((program) =>
+      enrollment(learner, `course-bonus-${program.key}`, true),
+    );
+    snapshot.enrollments.push(fpt, ...bonusEnrollments);
     if (learner.id !== 'fresh') {
       stageCompletedLessons(
         snapshot,
@@ -720,11 +720,13 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
 
   const complete = snapshots['fully-complete'];
   const completeFpt = complete.enrollments[0];
-  const completeBonus = complete.enrollments[1];
+  const completeBonuses = complete.enrollments.filter((item) => item.course_id.startsWith('course-bonus-'));
   const completeRenewal = enrollment(complete.learner, 'course-renewal-2026', true);
   complete.enrollments.push(completeRenewal);
   stageCompletedLessons(complete, completeFpt, courseLessons('course-fpt'));
-  stageCompletedLessons(complete, completeBonus, courseLessons('course-bonus'));
+  for (const bonus of completeBonuses) {
+    stageCompletedLessons(complete, bonus, courseLessons(bonus.course_id));
+  }
   stageCompletedLessons(
     complete,
     completeRenewal,
@@ -740,9 +742,15 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
   );
   complete.completions.push(
     completion(completeFpt.id, complete.learner.id, 'course-fpt'),
-    completion(completeBonus.id, complete.learner.id, 'course-bonus'),
+    ...completeBonuses.map((bonus) => completion(bonus.id, complete.learner.id, bonus.course_id)),
     completion(completeRenewal.id, complete.learner.id, 'course-renewal-2026'),
   );
+  complete.ceReportingStatuses.push({
+    course_id: 'course-fpt',
+    completion_id: complete.completions[0].id,
+    completed_at: complete.completions[0].completed_at,
+    reported_at: '2026-07-18T16:00:00.000Z',
+  });
 
   return snapshots;
 }

@@ -185,7 +185,7 @@ export function QuizPage() {
       : moduleIsPassed(catalog, snapshot, course, item),
   ).length;
   const unlockedCourses = catalog.courses.filter(
-    (item) => item.prerequisite_course_id === course.id,
+    (item) => item.prerequisite_course_id === course.id && item.status !== 'archived',
   );
   const possiblePoints = payload
     ? payload.questions.reduce((total, question) => total + question.points, 0)

@@ -14,6 +14,8 @@ import {
 import { SessionExpiredDialog } from '../components/SessionExpiredDialog';
 import type {
   AdminSnapshot,
+  CfpCePreview,
+  CfpCeReportRun,
   LearnerInspection,
   QuestionBank,
   SurveyExport,
@@ -36,6 +38,19 @@ interface AdminContextValue extends AdminSnapshot {
     lesson_id?: string;
     course_id?: string;
   }) => Promise<SurveyExport>;
+  previewCeReport: (scope: {
+    course_ids: string[];
+    period_start: string;
+    period_end: string;
+    include_already_reported: boolean;
+  }) => Promise<CfpCePreview>;
+  createCeReportRun: (scope: {
+    course_ids: string[];
+    period_start: string;
+    period_end: string;
+    include_already_reported: boolean;
+  }) => Promise<CfpCeReportRun>;
+  listCeReportRuns: () => Promise<CfpCeReportRun[]>;
 }
 
 const AdminContext = createContext<AdminContextValue | null>(null);
@@ -146,6 +161,17 @@ export function AdminProvider({
       await loadAdminSnapshot();
       return result;
     },
+    previewCeReport: (scope) => provider.adminRequest<CfpCePreview>(
+      'preview_ce_report',
+      scope,
+    ),
+    createCeReportRun: (scope) => mutate<CfpCeReportRun>(
+      'create_ce_report_run',
+      scope,
+    ),
+    listCeReportRuns: () => provider.adminRequest<CfpCeReportRun[]>(
+      'list_ce_report_runs',
+    ),
   } : null, [error, loadAdminSnapshot, loading, mutate, provider, refresh, snapshot]);
 
   if (!value) {

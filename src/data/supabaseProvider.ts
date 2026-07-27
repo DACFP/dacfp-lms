@@ -22,6 +22,7 @@ import type {
   LearnerStateKey,
   LearnerSummary,
   LmsCompletionEvent,
+  LmsCeReportingStatus,
   LmsCourse,
   LmsEnrollment,
   LmsLearnerProfile,
@@ -185,6 +186,7 @@ interface SnapshotRows {
   attempts: LmsQuizAttempt[];
   surveyResponses: LmsSurveyResponse[];
   completions: LmsCompletionEvent[];
+  ceReportingStatuses?: LmsCeReportingStatus[];
 }
 
 export function buildLearnerSnapshot(rows: SnapshotRows): LearnerSnapshot {
@@ -205,6 +207,7 @@ export function buildLearnerSnapshot(rows: SnapshotRows): LearnerSnapshot {
     attempts: rows.attempts,
     surveyResponses: rows.surveyResponses,
     completions,
+    ceReportingStatuses: rows.ceReportingStatuses ?? [],
   };
 }
 
@@ -278,7 +281,7 @@ const contentProvider: LmsProvider = {
 
   async getLearnerSnapshot(_learnerId: LearnerStateKey) {
     const user = await currentUser();
-    const [profiles, enrollments, progress, attempts, surveyResponses, completions] =
+    const [profiles, enrollments, progress, attempts, surveyResponses, completions, ceReportingStatus] =
       await Promise.all([
         tableRows<Omit<LmsLearnerProfile, 'email'>>('lms_learner_profiles'),
         tableRows<LmsEnrollment>('lms_enrollments', ['enrolled_at']),
@@ -289,10 +292,14 @@ const contentProvider: LmsProvider = {
         ]),
         tableRows<LmsSurveyResponse>('lms_survey_responses', ['submitted_at']),
         tableRows<LmsCompletionEvent>('lms_completion_events', ['completed_at']),
+        getClient().rpc('lms_ce_reporting_status'),
       ]);
     const profile = profiles.find((item) => item.auth_user_id === user.id);
     if (!profile) {
       throw new LmsDataError('denied', 'Learner profile not found.');
+    }
+    if (ceReportingStatus.error) {
+      throw dataError(ceReportingStatus.error, 'Unable to load CE reporting status.');
     }
     return buildLearnerSnapshot({
       email: user.email ?? '',
@@ -302,6 +309,7 @@ const contentProvider: LmsProvider = {
       attempts,
       surveyResponses,
       completions,
+      ceReportingStatuses: (ceReportingStatus.data ?? []) as LmsCeReportingStatus[],
     });
   },
 
@@ -370,6 +378,7 @@ const contentProvider: LmsProvider = {
       .update({
         display_name: profile.display_name,
         first_name: profile.first_name,
+        middle_name: profile.middle_name,
         last_name: profile.last_name,
         firm: profile.firm,
         job_title: profile.job_title,

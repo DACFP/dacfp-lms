@@ -11,6 +11,7 @@ insert into public.lms_courses (
   progression,
   prerequisite_course_id,
   ce_credits,
+  cfp_program_id,
   requires_terms_acceptance,
   created_at
 )
@@ -24,6 +25,7 @@ values
     'sequential',
     null,
     18,
+    '312442',
     true,
     '2026-07-16T16:00:00Z'
   ),
@@ -36,6 +38,7 @@ values
     'sequential',
     null,
     1,
+    null,
     false,
     '2026-07-16T16:00:00Z'
   )
@@ -47,6 +50,7 @@ set slug = excluded.slug,
     progression = excluded.progression,
     prerequisite_course_id = excluded.prerequisite_course_id,
     ce_credits = excluded.ce_credits,
+    cfp_program_id = excluded.cfp_program_id,
     requires_terms_acceptance = excluded.requires_terms_acceptance;
 
 insert into public.lms_courses (
@@ -58,21 +62,31 @@ insert into public.lms_courses (
   progression,
   prerequisite_course_id,
   ce_credits,
+  cfp_program_id,
   requires_terms_acceptance,
   created_at
 )
-values (
-  '10000000-0000-4000-8000-000000000002',
-  'bonus-sandbox',
-  'Bonus Sandbox',
+select
+  md5('bonus-course:' || bonus.slug)::uuid,
+  bonus.slug,
+  bonus.title,
   'Open bonus learning unlocked after FPT completion.',
   'published',
   'open',
   '10000000-0000-4000-8000-000000000001',
-  3,
+  1,
+  bonus.cfp_program_id,
   false,
   '2026-07-16T16:00:00Z'
-)
+from (
+  values
+    ('custody-security-sandbox', 'Crypto Custody and Security', '332761'),
+    ('spot-ethereum-etfs-sandbox', 'Spot Ethereum ETFs', '328447'),
+    ('nfts-sandbox', 'NFTs', '321877'),
+    ('defi-daos-sandbox', 'DeFi and DAOs', '321876'),
+    ('staking-lending-borrowing-sandbox', 'Staking, Lending and Borrowing', '321875'),
+    ('genius-act-sandbox', 'GENIUS Act', '339638')
+) bonus(slug, title, cfp_program_id)
 on conflict (id) do update
 set slug = excluded.slug,
     title = excluded.title,
@@ -81,6 +95,7 @@ set slug = excluded.slug,
     progression = excluded.progression,
     prerequisite_course_id = excluded.prerequisite_course_id,
     ce_credits = excluded.ce_credits,
+    cfp_program_id = excluded.cfp_program_id,
     requires_terms_acceptance = excluded.requires_terms_acceptance;
 
 insert into public.lms_modules (id, course_id, position, title, ce_credits, bridge_copy)
@@ -90,10 +105,25 @@ values
   (md5('fpt-sandbox:module:2')::uuid, '10000000-0000-4000-8000-000000000001', 2, 'Blockchain and DLT', 4.5, 'See how distributed ledgers create verifiable ownership and settlement beyond Bitcoin.'),
   (md5('fpt-sandbox:module:3')::uuid, '10000000-0000-4000-8000-000000000001', 3, 'Digital Assets and Currencies', 4.5, 'Distinguish the major asset types before evaluating their roles and risks.'),
   (md5('fpt-sandbox:module:4')::uuid, '10000000-0000-4000-8000-000000000001', 4, 'Layer 2, Tokens, and DeFi', 4.5, 'Connect scaling, tokens, and DeFi to real advisory opportunities and tradeoffs.'),
-  (md5('bonus-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000002', 1, 'Portfolio Case Study', 1, 'Apply portfolio concepts to a realistic client allocation decision.'),
-  (md5('bonus-sandbox:module:2')::uuid, '10000000-0000-4000-8000-000000000002', 2, 'Advisor Conversation Lab', 1, 'Practice explaining digital assets with clarity and professional restraint.'),
-  (md5('bonus-sandbox:module:3')::uuid, '10000000-0000-4000-8000-000000000002', 3, 'Market Structure Briefing', 1, 'Connect market structure to the risks clients encounter in practice.'),
   (md5('renewal-2026-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000003', 1, '2026 Annual Update', 1, 'Refresh the developments that matter for the coming designation year.')
+on conflict (id) do update
+set course_id = excluded.course_id,
+    position = excluded.position,
+    title = excluded.title,
+    ce_credits = excluded.ce_credits,
+    bridge_copy = excluded.bridge_copy;
+
+insert into public.lms_modules (id, course_id, position, title, ce_credits, bridge_copy)
+select
+  md5(course.slug || ':module:1')::uuid,
+  course.id,
+  1,
+  course.title,
+  1,
+  'Apply ' || course.title || ' concepts in an advisory context.'
+from public.lms_courses course
+where course.prerequisite_course_id = '10000000-0000-4000-8000-000000000001'
+  and course.status = 'published'
 on conflict (id) do update
 set course_id = excluded.course_id,
     position = excluded.position,
@@ -452,7 +482,7 @@ insert into public.lms_lessons (
   is_required
 )
 select
-  md5('bonus-sandbox:lesson:' || m.position || ':1')::uuid,
+  md5(course.slug || ':lesson:1:1')::uuid,
   m.id,
   1,
   m.title || ': Briefing',
@@ -462,7 +492,9 @@ select
   'Synthetic bonus-course reading content.',
   true
 from public.lms_modules m
-where m.course_id = '10000000-0000-4000-8000-000000000002'
+join public.lms_courses course on course.id = m.course_id
+where course.prerequisite_course_id = '10000000-0000-4000-8000-000000000001'
+  and course.status = 'published'
 on conflict (id) do update
 set module_id = excluded.module_id,
     position = excluded.position,
@@ -679,6 +711,7 @@ where person_email = 'near-expiry@example.test'
 update public.lms_learner_profiles profile
 set display_name = learner.display_name,
     first_name = learner.first_name,
+    middle_name = learner.middle_name,
     last_name = learner.last_name,
     firm = learner.firm,
     job_title = learner.job_title,
@@ -686,22 +719,23 @@ set display_name = learner.display_name,
     updated_at = '2026-07-16T16:05:00Z'
 from (
   values
-    ('fresh@example.test', 'Fresh learner', 'Fresh', 'Learner', 'Synthetic Advisory LLC', 'Financial Advisor', '{}'::jsonb),
-    ('near-expiry@example.test', 'Near Expiry', 'Near', 'Expiry', 'Synthetic Advisory LLC', 'Wealth Manager', '{}'::jsonb),
-    ('midmodule@example.test', 'Mid-module 2', 'Mid-module', 'Learner', 'Synthetic Advisory LLC', 'Portfolio Manager', '{}'::jsonb),
-    ('failedquiz@example.test', 'Quiz failed on 3', 'Quiz', 'Learner', 'Synthetic Advisory LLC', 'Financial Planner', '{}'::jsonb),
-    ('almostdone@example.test', 'One quiz from done', 'Almost', 'Done', 'Synthetic Advisory LLC', 'RIA Principal/Owner', '{}'::jsonb),
-    ('fptcomplete@example.test', 'FPT completed', 'FPT', 'Completed', 'Synthetic Advisory LLC', 'Analyst', '{}'::jsonb),
+    ('fresh@example.test', 'Fresh learner', 'Fresh', null, 'Learner', 'Synthetic Advisory LLC', 'Financial Advisor', '{}'::jsonb),
+    ('near-expiry@example.test', 'Near Expiry', 'Near', null, 'Expiry', 'Synthetic Advisory LLC', 'Wealth Manager', '{}'::jsonb),
+    ('midmodule@example.test', 'Mid-module 2', 'Mid-module', null, 'Learner', 'Synthetic Advisory LLC', 'Portfolio Manager', '{}'::jsonb),
+    ('failedquiz@example.test', 'Quiz failed on 3', 'Quiz', null, 'Learner', 'Synthetic Advisory LLC', 'Financial Planner', '{}'::jsonb),
+    ('almostdone@example.test', 'One quiz from done', 'Almost', null, 'Done', 'Synthetic Advisory LLC', 'RIA Principal/Owner', '{}'::jsonb),
+    ('fptcomplete@example.test', 'FPT completed', 'FPT', null, 'Completed', 'Synthetic Advisory LLC', 'Analyst', '{}'::jsonb),
     (
       'complete@example.test',
       'Fully complete',
       'Fully',
+      'Avery',
       'Complete',
       'Synthetic Advisory LLC',
       'Executive',
       '{"cfp":"SYNTH-CFP-1042","iwi":"SYNTH-IWI-2084","cfa":"SYNTH-CFA-4096"}'::jsonb
     )
-) learner(email, display_name, first_name, last_name, firm, job_title, credential_ids)
+) learner(email, display_name, first_name, middle_name, last_name, firm, job_title, credential_ids)
 join public.lms_enrollments enrollment
   on enrollment.person_email = learner.email
  and enrollment.course_id = '10000000-0000-4000-8000-000000000001'
@@ -794,7 +828,12 @@ from (
     ('almostdone@example.test', 'fpt-sandbox', 4),
     ('fptcomplete@example.test', 'fpt-sandbox', 4),
     ('complete@example.test', 'fpt-sandbox', 4),
-    ('complete@example.test', 'bonus-sandbox', 3),
+    ('complete@example.test', 'custody-security-sandbox', 1),
+    ('complete@example.test', 'spot-ethereum-etfs-sandbox', 1),
+    ('complete@example.test', 'nfts-sandbox', 1),
+    ('complete@example.test', 'defi-daos-sandbox', 1),
+    ('complete@example.test', 'staking-lending-borrowing-sandbox', 1),
+    ('complete@example.test', 'genius-act-sandbox', 1),
     ('complete@example.test', 'renewal-2026-sandbox', 1)
 ) plan(email, course_slug, through_module)
 join public.lms_courses course on course.slug = plan.course_slug
@@ -1011,7 +1050,12 @@ from (
   values
     ('fptcomplete@example.test', 'fpt-sandbox'),
     ('complete@example.test', 'fpt-sandbox'),
-    ('complete@example.test', 'bonus-sandbox'),
+    ('complete@example.test', 'custody-security-sandbox'),
+    ('complete@example.test', 'spot-ethereum-etfs-sandbox'),
+    ('complete@example.test', 'nfts-sandbox'),
+    ('complete@example.test', 'defi-daos-sandbox'),
+    ('complete@example.test', 'staking-lending-borrowing-sandbox'),
+    ('complete@example.test', 'genius-act-sandbox'),
     ('complete@example.test', 'renewal-2026-sandbox')
 ) plan(email, course_slug)
 join public.lms_courses course on course.slug = plan.course_slug

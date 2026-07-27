@@ -85,10 +85,13 @@ A self-hosted LMS for DACFP's CBDA program. The real catalog:
   completion event. Video is compliance-style: no seeking past the
   furthest point watched. Course carries CE credits (up to 18
   CFP/IWI/CFA across the program).
-- **Bonus modules (6):** one `open`-progression course, UNLOCKED only
-  after FPT completion (publicly marketed as "once enrolled and
-  completed"). No sequential gating; quizzes optional; additional CE
-  credits; completion carries no downstream consequence.
+- **Bonus programs (6):** six separate `open`-progression courses, each
+  containing one module and carrying its own CFP Program ID. They are called
+  "bonus modules" in learner-facing copy but are course records because each
+  is a separately registered CE program. All six are UNLOCKED only after FPT
+  completion (publicly marketed as "once enrolled and completed"). No
+  sequential gating; quizzes optional; additional CE credits; completion
+  carries no downstream consequence.
 - **Renewal courses:** NEW content each year, one new course per year
   (e.g. "Renewal 2026"): ~1 hour, 1 module, 1 CE credit, 1 quiz.
   Completion fires a completion event consumed later for renewal
@@ -176,10 +179,10 @@ Cloudflare Stream integration is deferred; interfaces are shaped for it.
 Notes: `source='synthetic'` keeps dark-build rows distinguishable and bulk-
 deletable. `prerequisite_course_id` implements the bonus-after-FPT gate
 generically (one nullable FK, not a rules engine — Hard Rule 11).
-`ce_credits` and `credential_ids` are MODELING + COLLECTION only — no CE
-reporting workflow exists in this repo (Hard Rule 10). `lms_completion_
-events` is append-only and is the ONLY completion signal any external
-system will ever consume.
+`ce_credits` and `credential_ids` are MODELING + COLLECTION only until an
+explicit later reporting spec authorizes a workflow. `lms_completion_events`
+is append-only and is the ONLY completion signal any external system will
+ever consume.
 
 ## 3. PROGRESSION ENGINE (pure functions, unit-tested, no DB required)
 
@@ -244,7 +247,7 @@ identically against the mock provider (D0) and live rows (D4+):
 - `/login`, `/reset` — password + email-OTP reset. Generic auth errors
   (no account enumeration).
 - `/dashboard` — one card per enrollment: FPT (% complete, module states,
-  resume), bonus course (locked with "complete FPT to unlock" until
+  resume), bonus program cards (locked with "complete FPT to unlock" until
   courseUnlocked, then open), current renewal course when enrolled.
   CE credits shown on course cards. Access expiry shown plainly. Copy
   preserves the access-vs-designation separation (course access expires;
@@ -270,8 +273,9 @@ identically against the mock provider (D0) and live rows (D4+):
   p_source, p_expires_at, p_order_id)` — the single entry point anything
   (future provisioner, renewals, enterprise seats, migration) will call.
   Creates auth user if absent (no password; claim flow later), upserts the
-  enrollment. FPT purchase grants BOTH fpt and bonus enrollments (bonus
-  stays locked by the prerequisite gate until earned). Dark build:
+  enrollment. FPT purchase grants the FPT enrollment plus all six bonus-course
+  enrollments (bonus courses stay locked by the prerequisite gate until
+  earned). Dark build:
   exercised only by seed scripts.
 - **OUT:** `lms_completion_events` where processed_at IS NULL is the queue
   a future worker consumes (FPT completion → designation issuance;
@@ -305,8 +309,9 @@ Seed script creates:
   placeholder questions. (Real FPT is 14 modules; 4 is sufficient to
   exercise every mechanic — real structure arrives with real content in
   the later migration spec.)
-- Course "Bonus Sandbox" (open, prerequisite = FPT Sandbox, ce_credits
-  set): 3 modules, no quizzes.
+- Six "Bonus Sandbox" courses (open, prerequisite = FPT Sandbox,
+  ce_credits set): 1 module each, no quizzes. These are the six separately
+  registered CE programs even though learner-facing copy calls them modules.
 - Course "Renewal 2026 Sandbox" (sequential, ce_credits = 1): 1 module,
   1 quiz.
 - 6 synthetic learners at staged states: fresh (terms not yet accepted);

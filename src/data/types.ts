@@ -33,6 +33,7 @@ export interface LmsCourse {
   progression: ProgressionMode;
   prerequisite_course_id: string | null;
   ce_credits: number | null;
+  cfp_program_id: string | null;
   requires_terms_acceptance: boolean;
   created_at: string;
 }
@@ -144,6 +145,7 @@ export interface LmsLearnerProfile {
   auth_user_id: string;
   display_name: string;
   first_name: string;
+  middle_name: string | null;
   last_name: string;
   firm: string;
   job_title: string;
@@ -206,6 +208,13 @@ export interface CompletionEvidence extends LmsCompletionEvent {
   course_id: string;
 }
 
+export interface LmsCeReportingStatus {
+  course_id: string;
+  completion_id: string;
+  completed_at: string;
+  reported_at: string | null;
+}
+
 export interface Catalog {
   courses: LmsCourse[];
   modules: LmsModule[];
@@ -243,6 +252,7 @@ export interface LearnerSnapshot {
   attempts: LmsQuizAttempt[];
   surveyResponses: LmsSurveyResponse[];
   completions: CompletionEvidence[];
+  ceReportingStatuses: LmsCeReportingStatus[];
 }
 
 export interface ModuleView {
