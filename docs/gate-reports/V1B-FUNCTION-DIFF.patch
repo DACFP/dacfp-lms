@@ -1,0 +1,576 @@
+diff --git a/supabase/functions/lms-admin/index.ts b/supabase/functions/lms-admin/index.ts
+index d99b11b..5747755 100644
+--- a/supabase/functions/lms-admin/index.ts
++++ b/supabase/functions/lms-admin/index.ts
+@@ -123,15 +123,16 @@ async function adminCrud(
+ }
+
+ async function catalog(admin: SupabaseClient) {
+-  const [courses, modules, lessons, resources, quizzes, surveyQuestions] = await Promise.all([
++  const [courses, modules, lessons, resources, quizzes, surveySections, surveyQuestions] = await Promise.all([
+     admin.from('lms_courses').select('*').order('created_at'),
+     admin.from('lms_modules').select('*').order('course_id').order('position'),
+     admin.from('lms_lessons').select('*').order('module_id').order('position'),
+     admin.from('lms_lesson_resources').select('*').order('lesson_id').order('position'),
+     admin.from('lms_module_quizzes').select('*').order('module_id'),
+-    admin.from('lms_survey_questions').select('*').order('lesson_id').order('position'),
++    admin.from('lms_survey_sections').select('*').order('lesson_id').order('position'),
++    admin.from('lms_survey_questions').select('*').order('section_id').order('position'),
+   ]);
+-  for (const result of [courses, modules, lessons, resources, quizzes, surveyQuestions]) {
++  for (const result of [courses, modules, lessons, resources, quizzes, surveySections, surveyQuestions]) {
+     assertQuery(result.error);
+   }
+   return {
+@@ -140,6 +141,7 @@ async function catalog(admin: SupabaseClient) {
+     lessons: lessons.data ?? [],
+     resources: resources.data ?? [],
+     quizzes: quizzes.data ?? [],
++    surveySections: surveySections.data ?? [],
+     surveyQuestions: surveyQuestions.data ?? [],
+   };
+ }
+@@ -329,20 +331,33 @@ async function exportQuestionBank(admin: SupabaseClient, moduleId: string) {
+   };
+ }
+
++type SurveySection = {
++  id: string;
++  lesson_id: string;
++  position: number;
++  title: string | null;
++  default_next_section_id: string | null;
++};
++
+ type SurveyQuestion = {
+   id: string;
+   lesson_id: string;
++  section_id: string;
+   position: number;
+   prompt: string;
+   kind: 'scale_1_5' | 'text' | 'single_choice' | 'multi_choice';
+-  choices: Array<{ id: string; text: string }> | null;
++  choices: Array<{ id: string; text: string; allow_free_text?: boolean }> | null;
+   required: boolean;
++  routes: Record<string, string> | null;
+ };
+
+-function surveyBreakdown(
+-  question: SurveyQuestion,
+-  responses: Array<{ answers: Record<string, unknown> }>,
+-) {
++type SurveyResponseRow = {
++  answers: Record<string, unknown>;
++  choice_free_text: Record<string, Record<string, string>>;
++  path: string[];
++};
++
++function surveyBreakdown(question: SurveyQuestion, responses: SurveyResponseRow[]) {
+   const values = responses
+     .map((response) => response.answers?.[question.id])
+     .filter((value) => value !== undefined && value !== null && value !== '');
+@@ -367,11 +382,19 @@ function surveyBreakdown(
+     };
+   }
+
+-  const counts = (question.choices ?? []).map((choice) => ({ ...choice, count: 0 }));
+-  for (const value of values) {
++  const counts = (question.choices ?? []).map((choice) => ({
++    ...choice,
++    count: 0,
++    free_text: [] as string[],
++  }));
++  for (const response of responses) {
++    const value = response.answers?.[question.id];
+     const selected = Array.isArray(value) ? value : [value];
+     for (const choice of counts) {
+-      if (selected.includes(choice.id)) choice.count += 1;
++      if (!selected.includes(choice.id)) continue;
++      choice.count += 1;
++      const detail = response.choice_free_text?.[question.id]?.[choice.id];
++      if (typeof detail === 'string' && detail) choice.free_text.push(detail);
+     }
+   }
+   return { kind: question.kind, counts };
+@@ -401,20 +424,32 @@ async function surveyResults(
+     .eq('id', module.course_id)
+     .single();
+   assertQuery(courseError);
+-  const [questions, responses, enrolled] = await Promise.all([
+-    admin.from('lms_survey_questions').select('*').eq('lesson_id', lessonId).order('position'),
+-    admin.from('lms_survey_responses').select('answers').eq('lesson_id', lessonId),
++  const [sections, questions, responses, enrolled] = await Promise.all([
++    admin.from('lms_survey_sections').select('*').eq('lesson_id', lessonId).order('position'),
++    admin.from('lms_survey_questions').select('*').eq('lesson_id', lessonId).order('section_id').order('position'),
++    admin.from('lms_survey_responses').select('answers,choice_free_text,path').eq('lesson_id', lessonId),
+     admin.from('lms_enrollments').select('id', { count: 'exact', head: true }).eq('course_id', course.id),
+   ]);
+-  assertQuery(questions.error);
+-  assertQuery(responses.error);
+-  assertQuery(enrolled.error);
+-  const responseRows = (responses.data ?? []) as Array<{ answers: Record<string, unknown> }>;
++  for (const result of [sections, questions, responses, enrolled]) assertQuery(result.error);
++  const sectionRows = (sections.data ?? []) as SurveySection[];
++  const sectionPosition = new Map(sectionRows.map((section) => [section.id, section.position]));
++  const responseRows = (responses.data ?? []) as SurveyResponseRow[];
+   const enrollmentCount = enrolled.count ?? 0;
++  const distribution = new Map<string, { path: string[]; count: number }>();
++  for (const response of responseRows) {
++    const key = response.path.join('>');
++    const current = distribution.get(key);
++    if (current) current.count += 1;
++    else distribution.set(key, { path: response.path, count: 1 });
++  }
+   await audit(admin, actorId, 'view_survey_results', {
+     lesson_id: lessonId,
+     response_count: responseRows.length,
+   });
++  const questionRows = ((questions.data ?? []) as SurveyQuestion[]).sort((left, right) =>
++    (sectionPosition.get(left.section_id) ?? 0) - (sectionPosition.get(right.section_id) ?? 0)
++      || left.position - right.position
++  );
+   return {
+     lesson: { id: lesson.id, title: lesson.title },
+     course,
+@@ -423,10 +458,16 @@ async function surveyResults(
+     completion_rate: enrollmentCount
+       ? Number(((responseRows.length / enrollmentCount) * 100).toFixed(2))
+       : 0,
+-    questions: ((questions.data ?? []) as SurveyQuestion[]).map((question) => ({
+-      question,
+-      breakdown: surveyBreakdown(question, responseRows),
+-    })),
++    sections: sectionRows,
++    path_distribution: [...distribution.values()].sort((left, right) => right.count - left.count),
++    questions: questionRows.map((question) => {
++      const eligible = responseRows.filter((response) => response.path.includes(question.section_id));
++      return {
++        question,
++        denominator: eligible.length,
++        breakdown: surveyBreakdown(question, eligible),
++      };
++    }),
+   };
+ }
+
+@@ -485,26 +526,36 @@ async function exportSurveyResponses(
+   }
+
+   const lessonIds = lessons.map((lesson) => lesson.id);
+-  const [questions, responses, course] = await Promise.all([
++  const [sections, questions, responses, course] = await Promise.all([
++    lessonIds.length
++      ? admin.from('lms_survey_sections').select('*').in('lesson_id', lessonIds).order('lesson_id').order('position')
++      : Promise.resolve({ data: [], error: null }),
+     lessonIds.length
+-      ? admin.from('lms_survey_questions').select('*').in('lesson_id', lessonIds).order('lesson_id').order('position')
++      ? admin.from('lms_survey_questions').select('*').in('lesson_id', lessonIds).order('section_id').order('position')
+       : Promise.resolve({ data: [], error: null }),
+     lessonIds.length
+-      ? admin.from('lms_survey_responses').select('lesson_id,submitted_at,answers,lms_enrollments(person_email)').in('lesson_id', lessonIds).order('submitted_at')
++      ? admin.from('lms_survey_responses').select('lesson_id,submitted_at,answers,choice_free_text,path,lms_enrollments(person_email)').in('lesson_id', lessonIds).order('submitted_at')
+       : Promise.resolve({ data: [], error: null }),
+     admin.from('lms_courses').select('slug').eq('id', exportCourseId!).single(),
+   ]);
++  assertQuery(sections.error);
+   assertQuery(questions.error);
+   assertQuery(responses.error);
+   assertQuery(course.error);
+   const lessonById = new Map(lessons.map((lesson) => [lesson.id, lesson]));
+-  const questionRows = (questions.data ?? []) as SurveyQuestion[];
++  const sectionRows = (sections.data ?? []) as SurveySection[];
++  const sectionById = new Map(sectionRows.map((section) => [section.id, section]));
++  const questionRows = ((questions.data ?? []) as SurveyQuestion[]).sort((left, right) =>
++    (sectionById.get(left.section_id)?.position ?? 0) - (sectionById.get(right.section_id)?.position ?? 0)
++      || left.position - right.position
++  );
+   const headers = [
+     'email',
+     'submitted_at',
+     'survey',
++    'path',
+     ...questionRows.map((question) =>
+-      `${lessonById.get(question.lesson_id)?.title ?? 'Survey'} — ${question.prompt}`
++      `${lessonById.get(question.lesson_id)?.title ?? 'Survey'} — ${sectionById.get(question.section_id)?.title ?? `Section ${sectionById.get(question.section_id)?.position ?? ''}`} — ${question.prompt}`
+     ),
+   ];
+   const rows = (responses.data ?? []).map((response) => {
+@@ -512,13 +563,29 @@ async function exportSurveyResponses(
+       ? response.lms_enrollments[0]
+       : response.lms_enrollments;
+     const answers = response.answers as Record<string, unknown>;
++    const choiceFreeText = response.choice_free_text as Record<string, Record<string, string>>;
++    const path = response.path as string[];
++    const pathLabel = path.map((sectionId) => {
++      const section = sectionById.get(sectionId);
++      return section ? `§${section.position}${section.title ? ` ${section.title}` : ''}` : sectionId;
++    }).join(' > ');
+     return [
+       enrollment?.person_email ?? '',
+       response.submitted_at,
+       lessonById.get(response.lesson_id)?.title ?? '',
+-      ...questionRows.map((question) =>
+-        question.lesson_id === response.lesson_id ? answers?.[question.id] ?? '' : ''
+-      ),
++      pathLabel,
++      ...questionRows.map((question) => {
++        if (question.lesson_id !== response.lesson_id || !path.includes(question.section_id)) return '';
++        const value = answers?.[question.id];
++        if (value === undefined || value === null) return '';
++        const selected = Array.isArray(value) ? value : [value];
++        if (!['single_choice', 'multi_choice'].includes(question.kind)) return value;
++        return selected.map((choiceId) => {
++          const label = question.choices?.find((choice) => choice.id === choiceId)?.text ?? choiceId;
++          const detail = choiceFreeText?.[question.id]?.[String(choiceId)];
++          return detail ? `${label}: ${detail}` : label;
++        });
++      }),
+     ];
+   });
+   const csv = [headers, ...rows]
+@@ -651,6 +718,19 @@ Deno.serve(async (req: Request) => {
+         data = result;
+         break;
+       }
++      case 'replace_survey_flow': {
++        const { data: result, error } = await admin.rpc(
++          'lms_admin_replace_survey_flow',
++          {
++            p_actor_auth_user_id: actor.id,
++            p_lesson_id: requiredUuid(payload.lesson_id, 'lesson_id'),
++            p_sections: Array.isArray(payload.sections) ? payload.sections : [],
++          },
++        );
++        assertQuery(error);
++        data = result;
++        break;
++      }
+       case 'reorder': {
+         const { data: result, error } = await admin.rpc('lms_admin_reorder', {
+           p_actor_auth_user_id: actor.id,
+diff --git a/supabase/functions/lms-submit-survey/index.ts b/supabase/functions/lms-submit-survey/index.ts
+index fc6d3e2..197757c 100644
+--- a/supabase/functions/lms-submit-survey/index.ts
++++ b/supabase/functions/lms-submit-survey/index.ts
+@@ -6,6 +6,12 @@ import {
+   termsGateSatisfied,
+   type ProgressionContext,
+ } from './progression.ts';
++import {
++  normalizeRoutedSubmission,
++  SurveyFlowError,
++  type RoutedSurveyQuestion,
++  type RoutedSurveySection,
++} from './routing.ts';
+
+ const DENIED_BODY = { error: 'Survey access is unavailable.' };
+ const corsHeaders = {
+@@ -52,67 +58,6 @@ function assertQuery(error: { message: string } | null) {
+   if (error) throw new Error(error.message);
+ }
+
+-type SurveyQuestion = {
+-  id: string;
+-  kind: 'scale_1_5' | 'text' | 'single_choice' | 'multi_choice';
+-  choices: Array<{ id: string; text: string }> | null;
+-  required: boolean;
+-};
+-
+-function normalizeAnswers(
+-  input: unknown,
+-  questions: SurveyQuestion[],
+-): Record<string, number | string | string[]> {
+-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+-    throw new InvalidSurvey('Answers must be an object.');
+-  }
+-  const supplied = input as Record<string, unknown>;
+-  const answers: Record<string, number | string | string[]> = {};
+-
+-  for (const question of questions) {
+-    const value = supplied[question.id];
+-    if (question.kind === 'scale_1_5') {
+-      if (value === undefined && !question.required) continue;
+-      if (!Number.isInteger(value) || Number(value) < 1 || Number(value) > 5) {
+-        throw new InvalidSurvey('Complete every required survey question.');
+-      }
+-      answers[question.id] = Number(value);
+-      continue;
+-    }
+-
+-    if (question.kind === 'text') {
+-      if ((value === undefined || value === '') && !question.required) continue;
+-      if (typeof value !== 'string' || !value.trim()) {
+-        throw new InvalidSurvey('Complete every required survey question.');
+-      }
+-      answers[question.id] = value.trim();
+-      continue;
+-    }
+-
+-    const allowed = new Set((question.choices ?? []).map((choice) => choice.id));
+-    if (question.kind === 'single_choice') {
+-      if (value === undefined && !question.required) continue;
+-      if (typeof value !== 'string' || !allowed.has(value)) {
+-        throw new InvalidSurvey('Choose a valid survey response.');
+-      }
+-      answers[question.id] = value;
+-      continue;
+-    }
+-
+-    if (value === undefined && !question.required) continue;
+-    if (
+-      !Array.isArray(value) ||
+-      (question.required && value.length === 0) ||
+-      value.some((choice) => typeof choice !== 'string' || !allowed.has(choice))
+-    ) {
+-      throw new InvalidSurvey('Choose a valid survey response.');
+-    }
+-    answers[question.id] = [...new Set(value as string[])];
+-  }
+-
+-  return answers;
+-}
+-
+ async function surveyAccess(
+   admin: SupabaseClient,
+   userId: string,
+@@ -250,14 +195,39 @@ Deno.serve(async (req: Request) => {
+       });
+     }
+
+-    const { data: questions, error: questionsError } = await admin
+-      .from('lms_survey_questions')
+-      .select('id,kind,choices,required')
+-      .eq('lesson_id', lessonId)
+-      .order('position');
+-    assertQuery(questionsError);
++    const [sectionsResult, questionsResult] = await Promise.all([
++      admin
++        .from('lms_survey_sections')
++        .select('id,lesson_id,position,default_next_section_id')
++        .eq('lesson_id', lessonId)
++        .order('position'),
++      admin
++        .from('lms_survey_questions')
++        .select('id,lesson_id,section_id,position,kind,choices,required,routes')
++        .eq('lesson_id', lessonId)
++        .order('section_id')
++        .order('position'),
++    ]);
++    assertQuery(sectionsResult.error);
++    assertQuery(questionsResult.error);
++    const sections = (sectionsResult.data ?? []) as RoutedSurveySection[];
++    const questions = (questionsResult.data ?? []) as RoutedSurveyQuestion[];
+     if (!questions?.length) throw new InvalidSurvey('Survey questions are unavailable.');
+-    const answers = normalizeAnswers(body.answers, questions as SurveyQuestion[]);
++    const normalized = normalizeRoutedSubmission(
++      sections,
++      questions,
++      body.answers,
++      body.choice_free_text,
++    );
++    if (Array.isArray(body.path)) {
++      const suppliedPath = body.path.filter((value: unknown): value is string => typeof value === 'string');
++      if (
++        suppliedPath.length !== normalized.path.length ||
++        suppliedPath.some((value: string, index: number) => value !== normalized.path[index])
++      ) {
++        throw new InvalidSurvey('Survey path changed. Review the current section and try again.');
++      }
++    }
+
+     const { data: response, error: responseError } = await admin
+       .from('lms_survey_responses')
+@@ -265,7 +235,9 @@ Deno.serve(async (req: Request) => {
+         enrollment_id: access.enrollment.id,
+         lesson_id: lessonId,
+         submitted_at: new Date().toISOString(),
+-        answers,
++        answers: normalized.answers,
++        choice_free_text: normalized.choice_free_text,
++        path: normalized.path,
+       })
+       .select('*')
+       .single();
+@@ -321,7 +293,9 @@ Deno.serve(async (req: Request) => {
+     });
+   } catch (error) {
+     if (error instanceof AccessDenied) return jsonResponse(403, DENIED_BODY);
+-    if (error instanceof InvalidSurvey) return jsonResponse(400, { error: error.message });
++    if (error instanceof InvalidSurvey || error instanceof SurveyFlowError) {
++      return jsonResponse(400, { error: error.message });
++    }
+     console.error('lms-submit-survey failed', error instanceof Error ? error.message : 'unknown error');
+     return jsonResponse(500, { error: 'Survey submission could not be completed.' });
+   }
+diff --git a/supabase/functions/lms-submit-survey/routing.ts b/supabase/functions/lms-submit-survey/routing.ts
+new file mode 100644
+index 0000000..54c6126
+--- /dev/null
++++ b/supabase/functions/lms-submit-survey/routing.ts
+@@ -0,0 +1,166 @@
++export type RoutedSurveyAnswer = number | string | string[];
++export type RoutedSurveyAnswers = Record<string, RoutedSurveyAnswer>;
++export type ChoiceFreeText = Record<string, Record<string, string>>;
++
++export interface RoutedSurveySection {
++  id: string;
++  lesson_id: string;
++  position: number;
++  default_next_section_id: string | null;
++}
++
++export interface RoutedSurveyQuestion {
++  id: string;
++  lesson_id: string;
++  section_id: string;
++  position: number;
++  kind: 'scale_1_5' | 'text' | 'single_choice' | 'multi_choice';
++  choices: Array<{ id: string; text: string; allow_free_text?: boolean }> | null;
++  required: boolean;
++  routes: Record<string, string> | null;
++}
++
++export interface NormalizedRoutedSubmission {
++  answers: RoutedSurveyAnswers;
++  choice_free_text: ChoiceFreeText;
++  path: string[];
++}
++
++export class SurveyFlowError extends Error {
++  constructor(message: string) {
++    super(message);
++    this.name = 'SurveyFlowError';
++  }
++}
++
++function objectRecord(value: unknown): Record<string, unknown> {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
++  return value as Record<string, unknown>;
++}
++
++function selectedChoiceIds(value: unknown): string[] {
++  if (typeof value === 'string') return [value];
++  return Array.isArray(value)
++    ? value.filter((item): item is string => typeof item === 'string')
++    : [];
++}
++
++export function nextSurveySectionId(
++  section: RoutedSurveySection,
++  questions: RoutedSurveyQuestion[],
++  answers: Record<string, unknown>,
++) {
++  const gates = questions.filter(
++    (question) =>
++      question.section_id === section.id &&
++      question.routes &&
++      Object.keys(question.routes).length > 0,
++  );
++  if (gates.length > 1) {
++    throw new SurveyFlowError('A survey section may contain only one routing gate.');
++  }
++  const gate = gates[0];
++  if (!gate) return section.default_next_section_id;
++  const selected = selectedChoiceIds(answers[gate.id])[0];
++  return (selected && gate.routes?.[selected]) || section.default_next_section_id;
++}
++
++export function buildSurveyPath(
++  sections: RoutedSurveySection[],
++  questions: RoutedSurveyQuestion[],
++  inputAnswers: unknown,
++) {
++  if (!sections.length) throw new SurveyFlowError('Survey sections are unavailable.');
++  const ordered = [...sections].sort((left, right) => left.position - right.position);
++  const sectionById = new Map(ordered.map((section) => [section.id, section]));
++  const lessonId = ordered[0].lesson_id;
++  if (ordered.some((section) => section.lesson_id !== lessonId)) {
++    throw new SurveyFlowError('Survey sections must belong to one lesson.');
++  }
++  const answers = objectRecord(inputAnswers);
++  const path: string[] = [];
++  const visited = new Set<string>();
++  let current: RoutedSurveySection | undefined = ordered[0];
++  while (current) {
++    if (visited.has(current.id)) throw new SurveyFlowError('Survey routing contains a cycle.');
++    visited.add(current.id);
++    path.push(current.id);
++    const nextId = nextSurveySectionId(current, questions, answers);
++    if (!nextId) break;
++    const next = sectionById.get(nextId);
++    if (!next) throw new SurveyFlowError('Survey routing points outside this lesson.');
++    current = next;
++  }
++  return path;
++}
++
++function normalizeAnswer(question: RoutedSurveyQuestion, value: unknown) {
++  if (question.kind === 'scale_1_5') {
++    if (value === undefined && !question.required) return undefined;
++    if (!Number.isInteger(value) || Number(value) < 1 || Number(value) > 5) {
++      throw new SurveyFlowError('Complete every required survey question.');
++    }
++    return Number(value);
++  }
++  if (question.kind === 'text') {
++    if ((value === undefined || value === '') && !question.required) return undefined;
++    if (typeof value !== 'string' || !value.trim()) {
++      throw new SurveyFlowError('Complete every required survey question.');
++    }
++    return value.trim();
++  }
++
++  const allowed = new Set((question.choices ?? []).map((choice) => choice.id));
++  if (question.kind === 'single_choice') {
++    if (value === undefined && !question.required) return undefined;
++    if (typeof value !== 'string' || !allowed.has(value)) {
++      throw new SurveyFlowError('Choose a valid survey response.');
++    }
++    return value;
++  }
++
++  if (value === undefined && !question.required) return undefined;
++  if (
++    !Array.isArray(value) ||
++    (question.required && value.length === 0) ||
++    value.some((choice) => typeof choice !== 'string' || !allowed.has(choice))
++  ) {
++    throw new SurveyFlowError('Choose a valid survey response.');
++  }
++  return [...new Set(value as string[])];
++}
++
++export function normalizeRoutedSubmission(
++  sections: RoutedSurveySection[],
++  questions: RoutedSurveyQuestion[],
++  inputAnswers: unknown,
++  inputChoiceFreeText: unknown,
++): NormalizedRoutedSubmission {
++  const suppliedAnswers = objectRecord(inputAnswers);
++  const suppliedFreeText = objectRecord(inputChoiceFreeText);
++  const path = buildSurveyPath(sections, questions, suppliedAnswers);
++  const traversed = new Set(path);
++  const answers: RoutedSurveyAnswers = {};
++  const choiceFreeText: ChoiceFreeText = {};
++
++  for (const question of questions) {
++    if (!traversed.has(question.section_id)) continue;
++    const answer = normalizeAnswer(question, suppliedAnswers[question.id]);
++    if (answer === undefined) continue;
++    answers[question.id] = answer;
++
++    const selected = new Set(selectedChoiceIds(answer));
++    const questionFreeText = objectRecord(suppliedFreeText[question.id]);
++    for (const choice of question.choices ?? []) {
++      if (!choice.allow_free_text || !selected.has(choice.id)) continue;
++      const value = questionFreeText[choice.id];
++      if (typeof value !== 'string' || !value.trim()) {
++        throw new SurveyFlowError('Complete the selected option detail.');
++      }
++      choiceFreeText[question.id] ??= {};
++      choiceFreeText[question.id][choice.id] = value.trim();
++    }
++  }
++
++  return { answers, choice_free_text: choiceFreeText, path };
++}

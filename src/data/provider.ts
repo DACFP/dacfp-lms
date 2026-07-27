@@ -9,7 +9,7 @@ import type {
   LmsQuizQuestionPublic,
   LmsSurveyResponse,
   ModuleView,
-  SurveyAnswers,
+  SurveySubmission,
 } from './types';
 
 export interface LmsPlaybackToken {
@@ -95,7 +95,7 @@ export interface LmsProvider {
   ): Promise<LmsLessonProgress>;
   submitSurvey(
     lessonId: string,
-    answers: SurveyAnswers,
+    submission: SurveySubmission,
     learnerId: LearnerStateKey,
   ): Promise<LmsSurveySubmitResult>;
   getQuiz(

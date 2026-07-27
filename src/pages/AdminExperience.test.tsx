@@ -193,26 +193,43 @@ describe('Admin session expiry — brief #21 L-11 (re-auth, UI only)', () => {
   });
 });
 
-describe('Admin surveys — V1 editor and results', () => {
-  it('round-trips seeded survey questions and renders result breakdowns', async () => {
-    const replaceQuestions = vi.fn((payload: Record<string, unknown>) => payload.questions);
+describe('Admin surveys — V1b routed editor and results', () => {
+  it('round-trips seeded routed sections and renders branch-aware result breakdowns', async () => {
+    const replaceFlow = vi.fn((payload: Record<string, unknown>) => ({
+      outline: '§1 Starting questions → §6\n§6 Shared closing questions → submit',
+      sections: payload.sections,
+      questions: [],
+    }));
     const readResults = vi.fn(() => ({
       lesson: { id: 'fpt-pre-course-survey', title: 'Pre-course survey' },
       course: { id: 'course-fpt', title: 'FPT Sandbox' },
       response_count: 2,
       enrolled_count: 4,
       completion_rate: 50,
+      sections: [
+        {
+          id: 'survey-pre-spine',
+          lesson_id: 'fpt-pre-course-survey',
+          position: 1,
+          title: 'Starting questions',
+          default_next_section_id: null,
+        },
+      ],
+      path_distribution: [{ path: ['survey-pre-spine'], count: 2 }],
       questions: [
         {
           question: {
             id: 'survey-pre-q1',
             lesson_id: 'fpt-pre-course-survey',
+            section_id: 'survey-pre-spine',
             position: 1,
             prompt: 'How familiar are you with digital assets today?',
             kind: 'scale_1_5',
             choices: null,
             required: true,
+            routes: null,
           },
+          denominator: 2,
           breakdown: {
             kind: 'scale_1_5',
             counts: { '1': 0, '2': 0, '3': 0, '4': 1, '5': 1 },
@@ -222,27 +239,33 @@ describe('Admin surveys — V1 editor and results', () => {
       ],
     }));
     renderAdmin('/admin/course/course-fpt', baseAdmin({
-      replace_survey_questions: replaceQuestions,
+      replace_survey_flow: replaceFlow,
       survey_results: readResults,
       reorder: () => ({}),
     }));
 
-    const saveButtons = await screen.findAllByRole('button', {
-      name: 'Save survey questions',
-    });
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit survey flow' });
+    fireEvent.click(editButtons[0]);
+    const saveButtons = await screen.findAllByRole('button', { name: 'Save survey flow' });
     fireEvent.click(saveButtons[0]);
-    await waitFor(() => expect(replaceQuestions).toHaveBeenCalled());
-    expect(replaceQuestions.mock.calls[0][0]).toEqual(expect.objectContaining({
+    await waitFor(() => expect(replaceFlow).toHaveBeenCalled());
+    expect(replaceFlow.mock.calls[0][0]).toEqual(expect.objectContaining({
       lesson_id: 'fpt-pre-course-survey',
-      questions: expect.arrayContaining([
-        expect.objectContaining({ kind: 'scale_1_5', required: true }),
+      sections: expect.arrayContaining([
+        expect.objectContaining({
+          questions: expect.arrayContaining([
+            expect.objectContaining({ kind: 'scale_1_5', required: true }),
+          ]),
+        }),
       ]),
     }));
+    expect(await screen.findByLabelText('Survey flow outline')).toHaveTextContent('§1');
 
     const resultButtons = await screen.findAllByRole('button', { name: 'View results' });
     fireEvent.click(resultButtons[0]);
     expect(await screen.findByText('Average:')).toBeInTheDocument();
     expect(screen.getByText('4.5')).toBeInTheDocument();
     expect(screen.getByText('50%')).toBeInTheDocument();
-  });
+    expect(screen.getByText('Shown to 2 respondents')).toBeInTheDocument();
+  }, 20_000);
 });

@@ -29,7 +29,8 @@ describe('mockProvider synthetic catalog', () => {
     expect(mockCatalog.quizzes.filter((quiz) => quiz.module_id.startsWith('bonus-'))).toHaveLength(0);
     expect(mockCatalog.modules.find((module) => module.id === 'fpt-intro')?.position).toBe(0);
     expect(mockCatalog.lessons.filter((lesson) => lesson.kind === 'survey')).toHaveLength(3);
-    expect(mockCatalog.surveyQuestions).toHaveLength(8);
+    expect(mockCatalog.surveySections).toHaveLength(8);
+    expect(mockCatalog.surveyQuestions).toHaveLength(11);
   });
 
   it('uses only clearly synthetic learner identities and enrollment sources', async () => {
@@ -74,18 +75,29 @@ describe('mockProvider synthetic catalog', () => {
     const first = await mockProvider.submitSurvey(
       'fpt-pre-course-survey',
       {
-        'survey-pre-q1': 3,
-        'survey-pre-q2': 'First response',
-        'survey-pre-q3': 'advisor',
+        answers: {
+          'survey-pre-q1': 3,
+          'survey-pre-gate': 'non-owner',
+          'survey-pre-non-owner-reason': 'Synthetic reason',
+          'survey-pre-q2': 'First response',
+        },
+        choice_free_text: {},
+        path: ['survey-pre-spine', 'survey-pre-non-owner', 'survey-pre-tail'],
       },
       'fresh',
     );
     const second = await mockProvider.submitSurvey(
       'fpt-pre-course-survey',
       {
-        'survey-pre-q1': 5,
-        'survey-pre-q2': 'Replacement response',
-        'survey-pre-q3': 'other',
+        answers: {
+          'survey-pre-q1': 5,
+          'survey-pre-gate': 'other',
+          'survey-pre-q2': 'Replacement response',
+        },
+        choice_free_text: {
+          'survey-pre-gate': { other: 'Synthetic other path' },
+        },
+        path: ['survey-pre-spine', 'survey-pre-other', 'survey-pre-tail'],
       },
       'fresh',
     );

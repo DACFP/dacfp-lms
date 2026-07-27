@@ -7,6 +7,7 @@ import type {
   LmsQuizAttempt,
   LmsSurveyQuestion,
   LmsSurveyResponse,
+  LmsSurveySection,
 } from './types';
 
 export interface LmsAdminAction {
@@ -66,7 +67,7 @@ export interface SurveyScaleBreakdown {
 
 export interface SurveyChoiceBreakdown {
   kind: 'single_choice' | 'multi_choice';
-  counts: Array<{ id: string; text: string; count: number }>;
+  counts: Array<{ id: string; text: string; count: number; free_text: string[] }>;
 }
 
 export interface SurveyTextBreakdown {
@@ -76,6 +77,7 @@ export interface SurveyTextBreakdown {
 
 export interface SurveyQuestionResult {
   question: LmsSurveyQuestion;
+  denominator: number;
   breakdown:
     | SurveyScaleBreakdown
     | SurveyChoiceBreakdown
@@ -88,7 +90,15 @@ export interface SurveyResults {
   response_count: number;
   enrolled_count: number;
   completion_rate: number;
+  sections: LmsSurveySection[];
+  path_distribution: Array<{ path: string[]; count: number }>;
   questions: SurveyQuestionResult[];
+}
+
+export interface SurveyFlowSaveResult {
+  outline: string;
+  sections: LmsSurveySection[];
+  questions: LmsSurveyQuestion[];
 }
 
 export interface SurveyExport {

@@ -1,0 +1,68 @@
+Session V1b verification output
+================================
+
+npm run lint
+------------
+
+> dacfp-lms@0.0.0 lint
+> tsc -b --pretty false
+
+Exit code: 0
+
+npm test
+--------
+
+> dacfp-lms@0.0.0 test
+> vitest run
+
+ RUN  v4.1.10 /Users/jackmarshall/Desktop/DACFP LMS
+
+ Test Files  23 passed (23)
+      Tests  181 passed (181)
+   Start at  08:22:19
+   Duration  18.02s (transform 3.27s, setup 3.21s, import 5.37s, tests 26.72s, environment 18.91s)
+
+Exit code: 0
+
+npm run build
+-------------
+
+> dacfp-lms@0.0.0 build
+> tsc -b && vite build
+
+vite v8.1.5 building client environment for production...
+transforming... 2152 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.87 kB | gzip:   0.45 kB
+dist/assets/index-Dctuv2u6.css     92.54 kB | gzip:  15.37 kB
+dist/assets/AdminApp-BRnK6qiD.js   64.05 kB | gzip:  15.73 kB
+dist/assets/Markdown-D4cBYBMU.js  121.64 kB | gzip:  37.12 kB
+dist/assets/index-CkSDOrNl.js     701.08 kB | gzip: 200.79 kB
+
+built in 805ms
+
+Advisory:
+Some chunks are larger than 500 kB after minification.
+
+Exit code: 0
+
+Identity and hygiene
+--------------------
+
+cmp -s src/engine/progression.ts supabase/functions/lms-submit-survey/progression.ts
+Exit code: 0
+
+cmp -s src/survey/routing.ts supabase/functions/lms-submit-survey/routing.ts
+Exit code: 0
+
+git diff --check
+Exit code: 0
+
+grep -c rneqnrturavmlcmyaqht SPEC.md
+Output: 0
+Expected grep exit code for zero matches: 1
+
+Repository-wide production-ref search (excluding node_modules and dist)
+Output: no matches
+Expected rg exit code for zero matches: 1

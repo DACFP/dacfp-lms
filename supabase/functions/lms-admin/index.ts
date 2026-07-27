@@ -123,15 +123,16 @@ async function adminCrud(
 }
 
 async function catalog(admin: SupabaseClient) {
-  const [courses, modules, lessons, resources, quizzes, surveyQuestions] = await Promise.all([
+  const [courses, modules, lessons, resources, quizzes, surveySections, surveyQuestions] = await Promise.all([
     admin.from('lms_courses').select('*').order('created_at'),
     admin.from('lms_modules').select('*').order('course_id').order('position'),
     admin.from('lms_lessons').select('*').order('module_id').order('position'),
     admin.from('lms_lesson_resources').select('*').order('lesson_id').order('position'),
     admin.from('lms_module_quizzes').select('*').order('module_id'),
-    admin.from('lms_survey_questions').select('*').order('lesson_id').order('position'),
+    admin.from('lms_survey_sections').select('*').order('lesson_id').order('position'),
+    admin.from('lms_survey_questions').select('*').order('section_id').order('position'),
   ]);
-  for (const result of [courses, modules, lessons, resources, quizzes, surveyQuestions]) {
+  for (const result of [courses, modules, lessons, resources, quizzes, surveySections, surveyQuestions]) {
     assertQuery(result.error);
   }
   return {
@@ -140,6 +141,7 @@ async function catalog(admin: SupabaseClient) {
     lessons: lessons.data ?? [],
     resources: resources.data ?? [],
     quizzes: quizzes.data ?? [],
+    surveySections: surveySections.data ?? [],
     surveyQuestions: surveyQuestions.data ?? [],
   };
 }
@@ -329,20 +331,33 @@ async function exportQuestionBank(admin: SupabaseClient, moduleId: string) {
   };
 }
 
-type SurveyQuestion = {
+type SurveySection = {
   id: string;
   lesson_id: string;
   position: number;
-  prompt: string;
-  kind: 'scale_1_5' | 'text' | 'single_choice' | 'multi_choice';
-  choices: Array<{ id: string; text: string }> | null;
-  required: boolean;
+  title: string | null;
+  default_next_section_id: string | null;
 };
 
-function surveyBreakdown(
-  question: SurveyQuestion,
-  responses: Array<{ answers: Record<string, unknown> }>,
-) {
+type SurveyQuestion = {
+  id: string;
+  lesson_id: string;
+  section_id: string;
+  position: number;
+  prompt: string;
+  kind: 'scale_1_5' | 'text' | 'single_choice' | 'multi_choice';
+  choices: Array<{ id: string; text: string; allow_free_text?: boolean }> | null;
+  required: boolean;
+  routes: Record<string, string> | null;
+};
+
+type SurveyResponseRow = {
+  answers: Record<string, unknown>;
+  choice_free_text: Record<string, Record<string, string>>;
+  path: string[];
+};
+
+function surveyBreakdown(question: SurveyQuestion, responses: SurveyResponseRow[]) {
   const values = responses
     .map((response) => response.answers?.[question.id])
     .filter((value) => value !== undefined && value !== null && value !== '');
@@ -367,11 +382,19 @@ function surveyBreakdown(
     };
   }
 
-  const counts = (question.choices ?? []).map((choice) => ({ ...choice, count: 0 }));
-  for (const value of values) {
+  const counts = (question.choices ?? []).map((choice) => ({
+    ...choice,
+    count: 0,
+    free_text: [] as string[],
+  }));
+  for (const response of responses) {
+    const value = response.answers?.[question.id];
     const selected = Array.isArray(value) ? value : [value];
     for (const choice of counts) {
-      if (selected.includes(choice.id)) choice.count += 1;
+      if (!selected.includes(choice.id)) continue;
+      choice.count += 1;
+      const detail = response.choice_free_text?.[question.id]?.[choice.id];
+      if (typeof detail === 'string' && detail) choice.free_text.push(detail);
     }
   }
   return { kind: question.kind, counts };
@@ -401,20 +424,32 @@ async function surveyResults(
     .eq('id', module.course_id)
     .single();
   assertQuery(courseError);
-  const [questions, responses, enrolled] = await Promise.all([
-    admin.from('lms_survey_questions').select('*').eq('lesson_id', lessonId).order('position'),
-    admin.from('lms_survey_responses').select('answers').eq('lesson_id', lessonId),
+  const [sections, questions, responses, enrolled] = await Promise.all([
+    admin.from('lms_survey_sections').select('*').eq('lesson_id', lessonId).order('position'),
+    admin.from('lms_survey_questions').select('*').eq('lesson_id', lessonId).order('section_id').order('position'),
+    admin.from('lms_survey_responses').select('answers,choice_free_text,path').eq('lesson_id', lessonId),
     admin.from('lms_enrollments').select('id', { count: 'exact', head: true }).eq('course_id', course.id),
   ]);
-  assertQuery(questions.error);
-  assertQuery(responses.error);
-  assertQuery(enrolled.error);
-  const responseRows = (responses.data ?? []) as Array<{ answers: Record<string, unknown> }>;
+  for (const result of [sections, questions, responses, enrolled]) assertQuery(result.error);
+  const sectionRows = (sections.data ?? []) as SurveySection[];
+  const sectionPosition = new Map(sectionRows.map((section) => [section.id, section.position]));
+  const responseRows = (responses.data ?? []) as SurveyResponseRow[];
   const enrollmentCount = enrolled.count ?? 0;
+  const distribution = new Map<string, { path: string[]; count: number }>();
+  for (const response of responseRows) {
+    const key = response.path.join('>');
+    const current = distribution.get(key);
+    if (current) current.count += 1;
+    else distribution.set(key, { path: response.path, count: 1 });
+  }
   await audit(admin, actorId, 'view_survey_results', {
     lesson_id: lessonId,
     response_count: responseRows.length,
   });
+  const questionRows = ((questions.data ?? []) as SurveyQuestion[]).sort((left, right) =>
+    (sectionPosition.get(left.section_id) ?? 0) - (sectionPosition.get(right.section_id) ?? 0)
+      || left.position - right.position
+  );
   return {
     lesson: { id: lesson.id, title: lesson.title },
     course,
@@ -423,10 +458,16 @@ async function surveyResults(
     completion_rate: enrollmentCount
       ? Number(((responseRows.length / enrollmentCount) * 100).toFixed(2))
       : 0,
-    questions: ((questions.data ?? []) as SurveyQuestion[]).map((question) => ({
-      question,
-      breakdown: surveyBreakdown(question, responseRows),
-    })),
+    sections: sectionRows,
+    path_distribution: [...distribution.values()].sort((left, right) => right.count - left.count),
+    questions: questionRows.map((question) => {
+      const eligible = responseRows.filter((response) => response.path.includes(question.section_id));
+      return {
+        question,
+        denominator: eligible.length,
+        breakdown: surveyBreakdown(question, eligible),
+      };
+    }),
   };
 }
 
@@ -485,26 +526,36 @@ async function exportSurveyResponses(
   }
 
   const lessonIds = lessons.map((lesson) => lesson.id);
-  const [questions, responses, course] = await Promise.all([
+  const [sections, questions, responses, course] = await Promise.all([
     lessonIds.length
-      ? admin.from('lms_survey_questions').select('*').in('lesson_id', lessonIds).order('lesson_id').order('position')
+      ? admin.from('lms_survey_sections').select('*').in('lesson_id', lessonIds).order('lesson_id').order('position')
       : Promise.resolve({ data: [], error: null }),
     lessonIds.length
-      ? admin.from('lms_survey_responses').select('lesson_id,submitted_at,answers,lms_enrollments(person_email)').in('lesson_id', lessonIds).order('submitted_at')
+      ? admin.from('lms_survey_questions').select('*').in('lesson_id', lessonIds).order('section_id').order('position')
+      : Promise.resolve({ data: [], error: null }),
+    lessonIds.length
+      ? admin.from('lms_survey_responses').select('lesson_id,submitted_at,answers,choice_free_text,path,lms_enrollments(person_email)').in('lesson_id', lessonIds).order('submitted_at')
       : Promise.resolve({ data: [], error: null }),
     admin.from('lms_courses').select('slug').eq('id', exportCourseId!).single(),
   ]);
+  assertQuery(sections.error);
   assertQuery(questions.error);
   assertQuery(responses.error);
   assertQuery(course.error);
   const lessonById = new Map(lessons.map((lesson) => [lesson.id, lesson]));
-  const questionRows = (questions.data ?? []) as SurveyQuestion[];
+  const sectionRows = (sections.data ?? []) as SurveySection[];
+  const sectionById = new Map(sectionRows.map((section) => [section.id, section]));
+  const questionRows = ((questions.data ?? []) as SurveyQuestion[]).sort((left, right) =>
+    (sectionById.get(left.section_id)?.position ?? 0) - (sectionById.get(right.section_id)?.position ?? 0)
+      || left.position - right.position
+  );
   const headers = [
     'email',
     'submitted_at',
     'survey',
+    'path',
     ...questionRows.map((question) =>
-      `${lessonById.get(question.lesson_id)?.title ?? 'Survey'} — ${question.prompt}`
+      `${lessonById.get(question.lesson_id)?.title ?? 'Survey'} — ${sectionById.get(question.section_id)?.title ?? `Section ${sectionById.get(question.section_id)?.position ?? ''}`} — ${question.prompt}`
     ),
   ];
   const rows = (responses.data ?? []).map((response) => {
@@ -512,13 +563,29 @@ async function exportSurveyResponses(
       ? response.lms_enrollments[0]
       : response.lms_enrollments;
     const answers = response.answers as Record<string, unknown>;
+    const choiceFreeText = response.choice_free_text as Record<string, Record<string, string>>;
+    const path = response.path as string[];
+    const pathLabel = path.map((sectionId) => {
+      const section = sectionById.get(sectionId);
+      return section ? `§${section.position}${section.title ? ` ${section.title}` : ''}` : sectionId;
+    }).join(' > ');
     return [
       enrollment?.person_email ?? '',
       response.submitted_at,
       lessonById.get(response.lesson_id)?.title ?? '',
-      ...questionRows.map((question) =>
-        question.lesson_id === response.lesson_id ? answers?.[question.id] ?? '' : ''
-      ),
+      pathLabel,
+      ...questionRows.map((question) => {
+        if (question.lesson_id !== response.lesson_id || !path.includes(question.section_id)) return '';
+        const value = answers?.[question.id];
+        if (value === undefined || value === null) return '';
+        const selected = Array.isArray(value) ? value : [value];
+        if (!['single_choice', 'multi_choice'].includes(question.kind)) return value;
+        return selected.map((choiceId) => {
+          const label = question.choices?.find((choice) => choice.id === choiceId)?.text ?? choiceId;
+          const detail = choiceFreeText?.[question.id]?.[String(choiceId)];
+          return detail ? `${label}: ${detail}` : label;
+        });
+      }),
     ];
   });
   const csv = [headers, ...rows]
@@ -645,6 +712,19 @@ Deno.serve(async (req: Request) => {
             p_actor_auth_user_id: actor.id,
             p_lesson_id: requiredUuid(payload.lesson_id, 'lesson_id'),
             p_questions: Array.isArray(payload.questions) ? payload.questions : [],
+          },
+        );
+        assertQuery(error);
+        data = result;
+        break;
+      }
+      case 'replace_survey_flow': {
+        const { data: result, error } = await admin.rpc(
+          'lms_admin_replace_survey_flow',
+          {
+            p_actor_auth_user_id: actor.id,
+            p_lesson_id: requiredUuid(payload.lesson_id, 'lesson_id'),
+            p_sections: Array.isArray(payload.sections) ? payload.sections : [],
           },
         );
         assertQuery(error);
