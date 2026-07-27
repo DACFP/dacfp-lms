@@ -43,6 +43,7 @@ export interface LmsModule {
   position: number;
   title: string;
   ce_credits: number | null;
+  bridge_copy: string | null;
 }
 
 export interface LmsLesson {

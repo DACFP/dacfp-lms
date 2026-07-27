@@ -159,6 +159,31 @@ describe('Admin destructive confirm — brief #21 (alert-dialog, not window.conf
   });
 });
 
+describe('Admin module bridge copy — X2 P39', () => {
+  it('renders and saves the authorable chapter-transition sentence', async () => {
+    const updateModule = vi.fn(() => ({ id: 'fpt-m2' }));
+    renderAdmin('/admin/course/course-fpt', baseAdmin({ update_module: updateModule }));
+
+    const title = await screen.findByLabelText('Module 2 title');
+    const form = title.closest('form');
+    expect(form).not.toBeNull();
+    const bridge = within(form!).getByLabelText('Transition bridge copy');
+    expect(bridge).toHaveValue(
+      'See how distributed ledgers create verifiable ownership and settlement beyond Bitcoin.',
+    );
+
+    fireEvent.change(bridge, {
+      target: { value: 'Understand why distributed settlement matters in client portfolios.' },
+    });
+    fireEvent.click(within(form!).getByRole('button', { name: 'Save module' }));
+
+    await waitFor(() => expect(updateModule).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'fpt-m2',
+      bridge_copy: 'Understand why distributed settlement matters in client portfolios.',
+    })));
+  });
+});
+
 describe('Admin session expiry — brief #21 L-11 (re-auth, UI only)', () => {
   it('surfaces a re-auth prompt instead of a dead retry when the session is denied', async () => {
     const deniedAdmin: LmsAdminProvider = {

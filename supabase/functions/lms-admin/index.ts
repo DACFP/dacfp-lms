@@ -204,6 +204,7 @@ async function createModule(admin: SupabaseClient, actorId: string, input: Recor
     ...(input.position === undefined ? {} : { position: asNumber(input.position, 'position') }),
     title: requiredString(input.title, 'title'),
     ce_credits: asNumber(input.ce_credits, 'ce_credits', true),
+    bridge_copy: optionalString(input.bridge_copy),
   };
   return adminCrud(admin, actorId, 'create_module', row);
 }
@@ -213,6 +214,7 @@ async function updateModule(admin: SupabaseClient, actorId: string, input: Recor
   const patch: Record<string, unknown> = {};
   if (input.title !== undefined) patch.title = requiredString(input.title, 'title');
   if (input.ce_credits !== undefined) patch.ce_credits = asNumber(input.ce_credits, 'ce_credits', true);
+  if (input.bridge_copy !== undefined) patch.bridge_copy = optionalString(input.bridge_copy);
   return adminCrud(admin, actorId, 'update_module', { id, ...patch });
 }
 

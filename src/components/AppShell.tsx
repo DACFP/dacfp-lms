@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogOut, Menu, UserRound } from 'lucide-react';
+import { Award, LayoutDashboard, LogOut, Menu, UserRound } from 'lucide-react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -20,6 +20,7 @@ import { TermsModal } from './TermsModal';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/credentials', label: 'My Credentials', icon: Award },
   { to: '/account', label: 'Account', icon: UserRound },
 ];
 

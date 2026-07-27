@@ -83,22 +83,23 @@ set slug = excluded.slug,
     ce_credits = excluded.ce_credits,
     requires_terms_acceptance = excluded.requires_terms_acceptance;
 
-insert into public.lms_modules (id, course_id, position, title, ce_credits)
+insert into public.lms_modules (id, course_id, position, title, ce_credits, bridge_copy)
 values
-  (md5('fpt-sandbox:module:0')::uuid, '10000000-0000-4000-8000-000000000001', 0, 'Introduction', null),
-  (md5('fpt-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000001', 1, 'Bitcoin Foundations', 4.5),
-  (md5('fpt-sandbox:module:2')::uuid, '10000000-0000-4000-8000-000000000001', 2, 'Blockchain and DLT', 4.5),
-  (md5('fpt-sandbox:module:3')::uuid, '10000000-0000-4000-8000-000000000001', 3, 'Digital Assets and Currencies', 4.5),
-  (md5('fpt-sandbox:module:4')::uuid, '10000000-0000-4000-8000-000000000001', 4, 'Layer 2, Tokens, and DeFi', 4.5),
-  (md5('bonus-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000002', 1, 'Portfolio Case Study', 1),
-  (md5('bonus-sandbox:module:2')::uuid, '10000000-0000-4000-8000-000000000002', 2, 'Advisor Conversation Lab', 1),
-  (md5('bonus-sandbox:module:3')::uuid, '10000000-0000-4000-8000-000000000002', 3, 'Market Structure Briefing', 1),
-  (md5('renewal-2026-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000003', 1, '2026 Annual Update', 1)
+  (md5('fpt-sandbox:module:0')::uuid, '10000000-0000-4000-8000-000000000001', 0, 'Introduction', null, 'See the full path ahead before beginning the Financial Professional Track.'),
+  (md5('fpt-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000001', 1, 'Bitcoin Foundations', 4.5, 'Build the monetary and market foundation behind the asset clients ask about most.'),
+  (md5('fpt-sandbox:module:2')::uuid, '10000000-0000-4000-8000-000000000001', 2, 'Blockchain and DLT', 4.5, 'See how distributed ledgers create verifiable ownership and settlement beyond Bitcoin.'),
+  (md5('fpt-sandbox:module:3')::uuid, '10000000-0000-4000-8000-000000000001', 3, 'Digital Assets and Currencies', 4.5, 'Distinguish the major asset types before evaluating their roles and risks.'),
+  (md5('fpt-sandbox:module:4')::uuid, '10000000-0000-4000-8000-000000000001', 4, 'Layer 2, Tokens, and DeFi', 4.5, 'Connect scaling, tokens, and DeFi to real advisory opportunities and tradeoffs.'),
+  (md5('bonus-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000002', 1, 'Portfolio Case Study', 1, 'Apply portfolio concepts to a realistic client allocation decision.'),
+  (md5('bonus-sandbox:module:2')::uuid, '10000000-0000-4000-8000-000000000002', 2, 'Advisor Conversation Lab', 1, 'Practice explaining digital assets with clarity and professional restraint.'),
+  (md5('bonus-sandbox:module:3')::uuid, '10000000-0000-4000-8000-000000000002', 3, 'Market Structure Briefing', 1, 'Connect market structure to the risks clients encounter in practice.'),
+  (md5('renewal-2026-sandbox:module:1')::uuid, '10000000-0000-4000-8000-000000000003', 1, '2026 Annual Update', 1, 'Refresh the developments that matter for the coming designation year.')
 on conflict (id) do update
 set course_id = excluded.course_id,
     position = excluded.position,
     title = excluded.title,
-    ce_credits = excluded.ce_credits;
+    ce_credits = excluded.ce_credits,
+    bridge_copy = excluded.bridge_copy;
 
 insert into public.lms_lessons (
   id,

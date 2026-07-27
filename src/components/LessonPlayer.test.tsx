@@ -102,6 +102,30 @@ describe('LessonPlayer lifecycle', () => {
     expect(video.currentTime).toBe(5);
   });
 
+  it('replays the prior 30 seconds from the saved resume point without changing the watermark', async () => {
+    lms.requestPlayback.mockResolvedValue(token('lesson-a', 240));
+    lms.recordHeartbeat.mockImplementation(async (lessonId: string, position: number) =>
+      progress(lessonId, position));
+
+    render(
+      <LessonPlayer
+        course={course}
+        lesson={lesson('lesson-a')}
+        progress={progress('lesson-a', 240)}
+        reviewMode={false}
+        initialResumeOffsetSeconds={30}
+      />,
+    );
+
+    const video = await screen.findByLabelText('lesson-a video') as HTMLVideoElement;
+    Object.defineProperty(video, 'duration', { configurable: true, value: 600 });
+    fireEvent.loadedMetadata(video);
+
+    expect(video.currentTime).toBe(210);
+    expect(resumeValue()).toBe('4:00');
+    expect(screen.getByText('Furthest watched').nextElementSibling?.textContent).toContain('4:00');
+  });
+
   it('keeps one trailing heartbeat when a newer save arrives in flight', async () => {
     let releaseFirst: ((value: LmsLessonProgress) => void) | undefined;
     lms.requestPlayback.mockResolvedValue(token('lesson-a', 0));

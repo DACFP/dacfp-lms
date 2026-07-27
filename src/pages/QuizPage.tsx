@@ -27,6 +27,7 @@ import { courseUnlocked, nextAttemptNumber, termsGateSatisfied } from '../engine
 import {
   enrollmentAccessState,
   enrollmentForCourse,
+  moduleIsPassed,
   moduleIsUnlocked,
   quizIsAttemptable,
 } from '../lib/progress';
@@ -149,7 +150,9 @@ export function QuizPage() {
       // the result heading, so it reaches a screen reader and a keyboard user
       // in the same commit rather than only appearing on screen.
       verdict.announceAndFocus(
-        `${graded.passed ? 'Passed' : 'Not passed yet'}. You scored ${graded.score} out of ${graded.possible_points}.`,
+        graded.passed
+          ? `Passed — ${graded.score} out of ${graded.possible_points}.`
+          : `Not yet — ${graded.score} out of ${graded.possible_points}.`,
       );
     } catch {
       setError('Quiz submission failed. Your selections remain on this page so you can try again.');
@@ -161,6 +164,26 @@ export function QuizPage() {
   const nextModule = catalog.modules.find(
     (item) => item.course_id === course.id && item.position === module.position + 1,
   );
+  const courseModules = catalog.modules
+    .filter((item) => item.course_id === course.id)
+    .sort((a, b) => a.position - b.position);
+  const nextModuleLessons = nextModule
+    ? catalog.lessons.filter((item) => item.module_id === nextModule.id)
+    : [];
+  const nextModuleMinutes = Math.max(
+    1,
+    Math.ceil(
+      nextModuleLessons.reduce(
+        (total, item) => total + (item.duration_seconds ?? 0),
+        0,
+      ) / 60,
+    ),
+  );
+  const passedModuleCount = courseModules.filter((item) =>
+    item.id === module.id && result?.passed
+      ? true
+      : moduleIsPassed(catalog, snapshot, course, item),
+  ).length;
   const unlockedCourses = catalog.courses.filter(
     (item) => item.prerequisite_course_id === course.id,
   );
@@ -227,7 +250,9 @@ export function QuizPage() {
                 tabIndex={-1}
                 className="mt-1 text-2xl font-bold text-dacfp-navy outline-none"
               >
-                Attempt result
+                {result.passed
+                  ? `Passed — ${result.score}/${result.possible_points}`
+                  : `Not yet — ${result.score}/${result.possible_points} · ${Math.ceil((result.possible_points * quiz.pass_pct) / 100)}/${result.possible_points} required`}
               </h2>
               <div
                 className={`mt-5 rounded-[0.1875rem] border p-5 ${result.passed ? 'border-status-positive/30 bg-status-positive/5' : 'border-status-danger/30 bg-status-danger/5'}`}
@@ -240,48 +265,78 @@ export function QuizPage() {
                   )}
                   <div>
                     <p className="text-lg font-bold text-dacfp-navy">
-                      {result.passed ? 'Passed' : 'Not passed yet'}
+                      {result.passed ? `Module ${module.position} complete` : 'A review and another attempt can close the gap'}
                     </p>
                     <p className="text-sm text-dacfp-gray-text">
-                      Score{' '}
-                      <strong className="tabular-nums text-dacfp-navy">
-                        {result.score}/{result.possible_points}
-                      </strong>
+                      {result.passed
+                        ? `${passedModuleCount} of ${courseModules.length} modules complete`
+                        : `${Math.ceil((result.possible_points * quiz.pass_pct) / 100) - result.score} more correct ${Math.ceil((result.possible_points * quiz.pass_pct) / 100) - result.score === 1 ? 'answer' : 'answers'} needed`}
                     </p>
                   </div>
                 </div>
                 {!result.passed ? (
                   <p className="mt-4 text-sm leading-6 text-dacfp-gray-text">
-                    Attempts are unlimited and there is no cooldown. Retake the quiz whenever you are ready — this is a check of understanding, not an exam.
-                  </p>
-                ) : null}
-                {result.completion_fired ? (
-                  <p className="mt-4 text-sm font-semibold text-status-positive">
-                    All course requirements are complete.
-                  </p>
-                ) : null}
-                {result.passed && nextModule ? (
-                  <p className="mt-2 text-sm font-semibold text-status-positive">
-                    Module {nextModule.position} unlocked. You can continue immediately.
+                    Review the module lessons, then retry when you are ready. Attempts are unlimited and there is no cooldown.
                   </p>
                 ) : null}
                 {result.completion_fired && unlockedCourses.length > 0 ? (
-                  <p className="mt-2 text-sm font-semibold text-status-positive">
+                  <p className="mt-4 text-sm font-semibold text-status-positive">
                     {unlockedCourses.map((item) => item.title).join(', ')} unlocked on your dashboard.
                   </p>
                 ) : null}
               </div>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button className="button-secondary" onClick={() => void startAttempt()} type="button">
-                  <RotateCcw className="size-icon-sm" aria-hidden="true" /> Retake quiz
-                </button>
-                {result.passed && nextModule ? (
-                  <Link className="button-primary" to={`/course/${course.slug}/module/${nextModule.position}`}>
-                    Continue to module {nextModule.position}
-                    <ArrowRight className="size-icon-sm" aria-hidden="true" />
+              {!result.passed ? (
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link className="button-primary" to={`/course/${course.slug}/module/${module.position}`}>
+                    Review lessons
                   </Link>
-                ) : null}
-              </div>
+                  <button className="button-secondary" onClick={() => void startAttempt()} type="button">
+                    <RotateCcw className="size-icon-sm" aria-hidden="true" /> Retry quiz
+                  </button>
+                </div>
+              ) : result.completion_fired ? (
+                <section aria-labelledby="course-complete-heading" className="mt-6 rounded-[0.1875rem] border border-dacfp-gold/40 bg-dacfp-gold/10 p-5">
+                  <p className="eyebrow text-dacfp-gold-text">Course completion</p>
+                  <h3 id="course-complete-heading" className="mt-1.5 text-xl font-bold text-dacfp-navy">
+                    Every requirement is complete
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
+                    Review your completion checklist, reveal the interim credential, and see what happens next.
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link className="button-primary" to={`/completion/${course.slug}`}>
+                      View completion <ArrowRight className="size-icon-sm" aria-hidden="true" />
+                    </Link>
+                    <Link className="button-secondary" to="/dashboard">Save and exit</Link>
+                  </div>
+                </section>
+              ) : nextModule ? (
+                <section aria-labelledby="bridge-heading" className="mt-6 rounded-[0.1875rem] border border-dacfp-line bg-dacfp-wash p-5">
+                  <p className="eyebrow text-dacfp-gold-text">Next module</p>
+                  <h3 id="bridge-heading" className="mt-1.5 text-xl font-bold text-dacfp-navy">
+                    Module {nextModule.position}: {nextModule.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
+                    {nextModule.bridge_copy ?? 'Continue while this module is fresh and connect it to the next part of the course.'}
+                  </p>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-eyebrow text-dacfp-gray-text">
+                    About {nextModuleMinutes} min · {nextModuleLessons.length} lessons
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link className="button-primary" to={`/course/${course.slug}/module/${nextModule.position}`}>
+                      Start Module {nextModule.position} <ArrowRight className="size-icon-sm" aria-hidden="true" />
+                    </Link>
+                    <Link className="button-secondary" to="/dashboard">Save and exit</Link>
+                  </div>
+                </section>
+              ) : (
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link className="button-primary" to={`/course/${course.slug}/module/${module.position}`}>
+                    Finish remaining requirements
+                  </Link>
+                  <Link className="button-secondary" to="/dashboard">Save and exit</Link>
+                </div>
+              )}
             </div>
           ) : payload && questions.length > 0 ? (
             <form
