@@ -288,7 +288,7 @@ identically against the mock provider (D0) and live rows (D4+):
 
 ## 7. ADMIN (D6, operator-role only) — authoring ease is the requirement
 
-Internal surface behind `app_metadata.role='operator'`:
+Internal surface behind `app_metadata.lms_role='operator'`:
 - Course/module/lesson CRUD with drag-reorder; **"new renewal course"
   must be a ≤30-minute authoring job**: create course → add module(s) →
   attach videos → import question bank → set ce_credits → publish. Treat

@@ -166,10 +166,10 @@ export function LoginPage() {
         {mode === 'signup' ? (
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="First name">
-              <Input value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" required />
+              <Input value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" maxLength={200} required />
             </Field>
             <Field label="Last name">
-              <Input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" required />
+              <Input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" maxLength={200} required />
             </Field>
           </div>
         ) : null}
@@ -203,7 +203,7 @@ export function LoginPage() {
         {mode === 'signup' ? (
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Firm">
-              <Input value={firm} onChange={(event) => setFirm(event.target.value)} autoComplete="organization" required />
+              <Input value={firm} onChange={(event) => setFirm(event.target.value)} autoComplete="organization" maxLength={200} required />
             </Field>
             <Field label="Job title">
               <select
@@ -221,7 +221,7 @@ export function LoginPage() {
             {jobTitle === 'Other' ? (
               <div className="sm:col-start-2">
                 <Field label="Other job title">
-                  <Input value={otherJobTitle} onChange={(event) => setOtherJobTitle(event.target.value)} autoComplete="organization-title" required />
+                  <Input value={otherJobTitle} onChange={(event) => setOtherJobTitle(event.target.value)} autoComplete="organization-title" maxLength={200} required />
                 </Field>
               </div>
             ) : null}

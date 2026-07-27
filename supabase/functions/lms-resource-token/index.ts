@@ -1,3 +1,4 @@
+import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   courseUnlocked,
@@ -10,20 +11,13 @@ const BUCKET = 'lms-resources';
 const SIGNED_URL_TTL_SECONDS = 300;
 const DENIED_BODY = { error: 'Resource is unavailable.' };
 const SEED_PATH = 'seed/bitcoin-foundations-workbook.txt';
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
 class AccessDenied extends Error {}
 
-function jsonResponse(status: number, body: unknown) {
+function jsonResponse(req: Request, status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...corsHeaders(req),
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json',
     },
@@ -177,8 +171,8 @@ async function ensureSeedResource(admin: SupabaseClient, path: string) {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return jsonResponse(405, { error: 'Method not allowed.' });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
+  if (req.method !== 'POST') return jsonResponse(req, 405, { error: 'Method not allowed.' });
 
   try {
     const admin = serviceClient();
@@ -194,14 +188,14 @@ Deno.serve(async (req: Request) => {
       });
     assertQuery(error);
     if (!data?.signedUrl) throw new AccessDenied();
-    return jsonResponse(200, {
+    return jsonResponse(req, 200, {
       url: data.signedUrl,
       expires_at: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString(),
       title: resource.title,
     });
   } catch (error) {
-    if (error instanceof AccessDenied) return jsonResponse(403, DENIED_BODY);
+    if (error instanceof AccessDenied) return jsonResponse(req, 403, DENIED_BODY);
     console.error('lms-resource-token failed', error instanceof Error ? error.message : 'unknown error');
-    return jsonResponse(500, { error: 'Resource is unavailable.' });
+    return jsonResponse(req, 500, { error: 'Resource is unavailable.' });
   }
 });

@@ -48,6 +48,7 @@ interface AdminContextValue extends AdminSnapshot {
     course_ids: string[];
     period_start: string;
     period_end: string;
+    completion_ids: string[];
     include_already_reported: boolean;
   }) => Promise<CfpCeReportRun>;
   listCeReportRuns: () => Promise<CfpCeReportRun[]>;

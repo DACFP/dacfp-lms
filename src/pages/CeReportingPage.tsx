@@ -11,7 +11,12 @@ import {
 import { Alert } from '../components/Alert';
 import { PageHeader, StatusPill } from '../components/common';
 import { useAdmin } from '../context/AdminContext';
-import type { CfpCeExportRow, CfpCePreview, CfpCeReportRun } from '../data/admin';
+import type {
+  CfpCeExcludedRow,
+  CfpCeExportRow,
+  CfpCePreview,
+  CfpCeReportRun,
+} from '../data/admin';
 import { downloadCfpCeWorkbook } from '../lib/cfpCeExport';
 
 function isoDate(date: Date) {
@@ -45,9 +50,10 @@ function defaultStart(courseIds: string[], runs: CfpCeReportRun[]) {
 
 function ScopeRows({ title, rows, tone }: {
   title: string;
-  rows: CfpCeExportRow[];
+  rows: Array<CfpCeExportRow | CfpCeExcludedRow>;
   tone: 'positive' | 'warning' | 'neutral';
 }) {
+  const showReason = rows.some((row) => 'reason' in row);
   return (
     <section className="card overflow-hidden" aria-labelledby={`${title.toLowerCase().replaceAll(' ', '-')}-heading`}>
       <div className="flex items-center justify-between gap-3 border-b border-dacfp-line px-5 py-4">
@@ -57,7 +63,7 @@ function ScopeRows({ title, rows, tone }: {
       {rows.length ? (
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>Course program</TableHead><TableHead>Completed</TableHead><TableHead>Learner</TableHead><TableHead>CFP Board ID</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Course program</TableHead><TableHead>Completed</TableHead><TableHead>Learner</TableHead><TableHead>CFP Board ID</TableHead>{showReason ? <TableHead>Excluded because</TableHead> : null}</TableRow></TableHeader>
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={`${title}-${row.completion_id}`}>
@@ -65,6 +71,7 @@ function ScopeRows({ title, rows, tone }: {
                   <TableCell>{row.date_individual_completed}</TableCell>
                   <TableCell><span className="font-semibold text-dacfp-navy">{[row.attendee_first_name, row.attendee_middle_name, row.attendee_last_name].filter(Boolean).join(' ')}</span><span className="block text-xs text-dacfp-gray-text">{row.person_email}</span></TableCell>
                   <TableCell className="font-mono text-xs">{row.attendee_cfp_board_id || 'Missing'}</TableCell>
+                  {showReason ? <TableCell>{'reason' in row ? row.reason : ''}</TableCell> : null}
                 </TableRow>
               ))}
             </TableBody>
@@ -127,9 +134,13 @@ export function CeReportingPage() {
   };
 
   const exportRun = async () => {
+    if (!preview) return;
     setLoading(true); setError(''); setMessage('');
     try {
-      const run = await createCeReportRun(scope);
+      const run = await createCeReportRun({
+        ...scope,
+        completion_ids: preview.reportable.map((row) => row.completion_id),
+      });
       setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
       try {
         await downloadCfpCeWorkbook(run.rows, run.filename);
@@ -193,6 +204,7 @@ export function CeReportingPage() {
           <ScopeRows title="Reportable" rows={preview.reportable} tone="positive" />
           <ScopeRows title="Missing ID" rows={preview.missing_id} tone="warning" />
           <ScopeRows title="Already reported" rows={preview.already_reported} tone="neutral" />
+          <ScopeRows title="Excluded" rows={preview.excluded} tone="warning" />
         </div>
       ) : null}
 

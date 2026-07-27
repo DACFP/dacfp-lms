@@ -109,9 +109,9 @@ export function AccountPage() {
           <section className="card p-6 sm:p-8" aria-labelledby="identity-heading">
             <div className="flex items-center gap-3"><IconTile icon={ShieldCheck} size="sm" tone="brand" /><div><p className="eyebrow">Identity</p><h2 id="identity-heading" className="text-xl font-bold text-dacfp-navy">Learner identity</h2></div></div>
             <div className="mt-6 grid gap-5 sm:grid-cols-3">
-              <Field label="First name"><Input value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" required /></Field>
-              <Field label="Middle name" hint="Optional"><Input value={middleName} onChange={(event) => setMiddleName(event.target.value)} autoComplete="additional-name" /></Field>
-              <Field label="Last name"><Input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" required /></Field>
+              <Field label="First name"><Input value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" maxLength={200} required /></Field>
+              <Field label="Middle name" hint="Optional"><Input value={middleName} onChange={(event) => setMiddleName(event.target.value)} autoComplete="additional-name" maxLength={200} /></Field>
+              <Field label="Last name"><Input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" maxLength={200} required /></Field>
               <div className="sm:col-span-3"><Field label="Email" hint="Email is your sign-in identity. DACFP support can help if it needs to change."><Input className="bg-dacfp-wash text-dacfp-gray-text" type="email" value={profile.email} readOnly /></Field></div>
             </div>
           </section>
@@ -120,28 +120,28 @@ export function AccountPage() {
             <p className="eyebrow">Professional details</p>
             <h2 id="professional-heading" className="mt-1 text-xl font-bold text-dacfp-navy">Your practice</h2>
             <div className="mt-6 grid gap-5 sm:grid-cols-2">
-              <Field label="Firm"><Input value={firm} onChange={(event) => setFirm(event.target.value)} autoComplete="organization" required /></Field>
+              <Field label="Firm"><Input value={firm} onChange={(event) => setFirm(event.target.value)} autoComplete="organization" maxLength={200} required /></Field>
               <Field label="Job title">
                 <select className="min-h-11 w-full rounded-[0.1875rem] border border-dacfp-line bg-white px-3 text-base text-dacfp-navy" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} autoComplete="organization-title" required>
                   {JOB_TITLE_OPTIONS.map((title) => <option key={title} value={title}>{title}</option>)}
                   <option value="Other">Other</option>
                 </select>
               </Field>
-              {jobTitle === 'Other' ? <Field label="Other job title"><Input value={otherJobTitle} onChange={(event) => setOtherJobTitle(event.target.value)} autoComplete="organization-title" required /></Field> : null}
-              <Field label="Phone" hint="Optional"><Input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" /></Field>
-              <Field label="Firm website" hint="Optional"><Input type="url" value={firmUrl} onChange={(event) => setFirmUrl(event.target.value)} autoComplete="url" placeholder="https://" /></Field>
+              {jobTitle === 'Other' ? <Field label="Other job title"><Input value={otherJobTitle} onChange={(event) => setOtherJobTitle(event.target.value)} autoComplete="organization-title" maxLength={200} required /></Field> : null}
+              <Field label="Phone" hint="Optional"><Input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" maxLength={200} /></Field>
+              <Field label="Firm website" hint="Optional"><Input type="url" value={firmUrl} onChange={(event) => setFirmUrl(event.target.value)} autoComplete="url" placeholder="https://" maxLength={200} /></Field>
             </div>
           </section>
 
           <section className="card p-6 sm:p-8" aria-labelledby="address-heading">
             <p className="eyebrow">Optional</p><h2 id="address-heading" className="mt-1 text-xl font-bold text-dacfp-navy">Mailing address</h2>
             <div className="mt-6 grid gap-5 sm:grid-cols-2">
-              <div className="sm:col-span-2"><Field label="Address line 1"><Input value={address.line1} onChange={(event) => setAddressField('line1', event.target.value)} autoComplete="address-line1" /></Field></div>
-              <div className="sm:col-span-2"><Field label="Address line 2"><Input value={address.line2} onChange={(event) => setAddressField('line2', event.target.value)} autoComplete="address-line2" /></Field></div>
-              <Field label="City"><Input value={address.city} onChange={(event) => setAddressField('city', event.target.value)} autoComplete="address-level2" /></Field>
-              <Field label="State / province"><Input value={address.state} onChange={(event) => setAddressField('state', event.target.value)} autoComplete="address-level1" /></Field>
-              <Field label="Postal code"><Input value={address.postal} onChange={(event) => setAddressField('postal', event.target.value)} autoComplete="postal-code" /></Field>
-              <Field label="Country"><Input value={address.country} onChange={(event) => setAddressField('country', event.target.value)} autoComplete="country-name" /></Field>
+              <div className="sm:col-span-2"><Field label="Address line 1"><Input value={address.line1} onChange={(event) => setAddressField('line1', event.target.value)} autoComplete="address-line1" maxLength={200} /></Field></div>
+              <div className="sm:col-span-2"><Field label="Address line 2"><Input value={address.line2} onChange={(event) => setAddressField('line2', event.target.value)} autoComplete="address-line2" maxLength={200} /></Field></div>
+              <Field label="City"><Input value={address.city} onChange={(event) => setAddressField('city', event.target.value)} autoComplete="address-level2" maxLength={200} /></Field>
+              <Field label="State / province"><Input value={address.state} onChange={(event) => setAddressField('state', event.target.value)} autoComplete="address-level1" maxLength={200} /></Field>
+              <Field label="Postal code"><Input value={address.postal} onChange={(event) => setAddressField('postal', event.target.value)} autoComplete="postal-code" maxLength={200} /></Field>
+              <Field label="Country"><Input value={address.country} onChange={(event) => setAddressField('country', event.target.value)} autoComplete="country-name" maxLength={200} /></Field>
             </div>
           </section>
 
@@ -149,9 +149,9 @@ export function AccountPage() {
             <p className="eyebrow">Optional</p><h2 id="credentials-heading" className="mt-1 text-xl font-bold text-dacfp-navy">Professional credential IDs</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-dacfp-gray-text">Enter only IDs you hold. DACFP uses them to include eligible completions in CE reporting.</p>
             <div className="mt-6 grid gap-5 sm:grid-cols-3">
-              <Field label="CFP ID"><Input value={credentialIds.cfp ?? ''} onChange={(event) => setCredential('cfp', event.target.value)} placeholder="Optional" autoComplete="off" /></Field>
-              <Field label="IWI ID"><Input value={credentialIds.iwi ?? ''} onChange={(event) => setCredential('iwi', event.target.value)} placeholder="Optional" autoComplete="off" /></Field>
-              <Field label="CFA ID"><Input value={credentialIds.cfa ?? ''} onChange={(event) => setCredential('cfa', event.target.value)} placeholder="Optional" autoComplete="off" /></Field>
+              <Field label="CFP ID"><Input value={credentialIds.cfp ?? ''} onChange={(event) => setCredential('cfp', event.target.value)} placeholder="Optional" autoComplete="off" maxLength={64} /></Field>
+              <Field label="IWI ID"><Input value={credentialIds.iwi ?? ''} onChange={(event) => setCredential('iwi', event.target.value)} placeholder="Optional" autoComplete="off" maxLength={64} /></Field>
+              <Field label="CFA ID"><Input value={credentialIds.cfa ?? ''} onChange={(event) => setCredential('cfa', event.target.value)} placeholder="Optional" autoComplete="off" maxLength={64} /></Field>
             </div>
           </section>
 

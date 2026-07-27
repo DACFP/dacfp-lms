@@ -1,3 +1,4 @@
+import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   courseComplete,
@@ -14,21 +15,14 @@ import {
 } from './routing.ts';
 
 const DENIED_BODY = { error: 'Survey access is unavailable.' };
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
 class AccessDenied extends Error {}
 class InvalidSurvey extends Error {}
 
-function jsonResponse(status: number, body: unknown) {
+function jsonResponse(req: Request, status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...corsHeaders(req),
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json',
     },
@@ -169,8 +163,8 @@ async function surveyAccess(
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return jsonResponse(405, { error: 'Method not allowed.' });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
+  if (req.method !== 'POST') return jsonResponse(req, 405, { error: 'Method not allowed.' });
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -188,7 +182,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     assertQuery(existingError);
     if (existing) {
-      return jsonResponse(200, {
+      return jsonResponse(req, 200, {
         response: existing,
         completion_fired: false,
         already_submitted: true,
@@ -249,7 +243,7 @@ Deno.serve(async (req: Request) => {
         .eq('lesson_id', lessonId)
         .single();
       assertQuery(racedError);
-      return jsonResponse(200, {
+      return jsonResponse(req, 200, {
         response: raced,
         completion_fired: false,
         already_submitted: true,
@@ -286,17 +280,17 @@ Deno.serve(async (req: Request) => {
       completionFired = Boolean(completion);
     }
 
-    return jsonResponse(200, {
+    return jsonResponse(req, 200, {
       response,
       completion_fired: completionFired,
       already_submitted: false,
     });
   } catch (error) {
-    if (error instanceof AccessDenied) return jsonResponse(403, DENIED_BODY);
+    if (error instanceof AccessDenied) return jsonResponse(req, 403, DENIED_BODY);
     if (error instanceof InvalidSurvey || error instanceof SurveyFlowError) {
-      return jsonResponse(400, { error: error.message });
+      return jsonResponse(req, 400, { error: error.message });
     }
     console.error('lms-submit-survey failed', error instanceof Error ? error.message : 'unknown error');
-    return jsonResponse(500, { error: 'Survey submission could not be completed.' });
+    return jsonResponse(req, 500, { error: 'Survey submission could not be completed.' });
   }
 });

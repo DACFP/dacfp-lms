@@ -1,3 +1,4 @@
+import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   courseUnlocked,
@@ -10,13 +11,6 @@ import { PLACEHOLDER_MP4_BASE64, PLACEHOLDER_PATH } from './placeholder.ts';
 const BUCKET = 'lms-video';
 const SIGNED_URL_TTL_SECONDS = 6 * 60 * 60;
 const DENIED_BODY = { error: 'Lesson is unavailable.' };
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
 interface AccessContext {
   enrollmentId: string;
   lesson: {
@@ -31,11 +25,11 @@ interface AccessContext {
 
 class AccessDenied extends Error {}
 
-function jsonResponse(status: number, body: unknown) {
+function jsonResponse(req: Request, status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...corsHeaders(req),
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json',
     },
@@ -192,8 +186,8 @@ async function ensurePlaceholderAsset(admin: SupabaseClient, path: string) {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return jsonResponse(405, { error: 'Method not allowed.' });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
+  if (req.method !== 'POST') return jsonResponse(req, 405, { error: 'Method not allowed.' });
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -224,14 +218,14 @@ Deno.serve(async (req: Request) => {
       .eq('lesson_id', access.lesson.id)
       .maybeSingle();
     assertQuery(progressError);
-    return jsonResponse(200, {
+    return jsonResponse(req, 200, {
       url: signed.signedUrl,
       expires_at: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString(),
       max_watched_seconds: progress?.max_watched_seconds ?? 0,
     });
   } catch (error) {
-    if (error instanceof AccessDenied) return jsonResponse(403, DENIED_BODY);
+    if (error instanceof AccessDenied) return jsonResponse(req, 403, DENIED_BODY);
     console.error('lms-playback-token failed', error instanceof Error ? error.message : 'unknown error');
-    return jsonResponse(500, { error: 'Playback is temporarily unavailable.' });
+    return jsonResponse(req, 500, { error: 'Playback is temporarily unavailable.' });
   }
 });

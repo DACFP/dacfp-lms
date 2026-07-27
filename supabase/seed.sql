@@ -1,5 +1,18 @@
 begin;
 
+do $$
+begin
+  if exists (
+    select 1
+    from auth.users user_row
+    where user_row.email is null
+      or lower(user_row.email) not like '%@example.%'
+  ) then
+    raise exception 'seed refused: non-synthetic users present';
+  end if;
+end;
+$$;
+
 set local role service_role;
 
 insert into public.lms_courses (

@@ -321,12 +321,20 @@ describe('Admin CFP CE reporting — R1', () => {
       person_email: 'missing@example.test',
       attendee_cfp_board_id: '',
     };
+    const excludedRow = {
+      ...exportRow,
+      completion_id: '30000000-0000-4000-8000-000000000003',
+      person_email: 'excluded@example.test',
+      attendee_first_name: '',
+      reason: 'blank-name' as const,
+    };
     const preview = vi.fn(() => ({
       period_start: '2026-07-01',
       period_end: '2026-07-27',
       reportable: [exportRow],
       missing_id: [missingRow],
       already_reported: [],
+      excluded: [excludedRow],
       pending_program_courses: [],
       nudge_count: 1,
     }));
@@ -351,10 +359,15 @@ describe('Admin CFP CE reporting — R1', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Preview report' }));
     expect(await screen.findByText('reportable@example.test')).toBeInTheDocument();
     expect(screen.getByText('missing@example.test')).toBeInTheDocument();
+    expect(screen.getByText('excluded@example.test')).toBeInTheDocument();
+    expect(screen.getByText('blank-name')).toBeInTheDocument();
     expect(screen.getByText(/14-day reporting nudge/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Create and download/ }));
     await waitFor(() => expect(createRun).toHaveBeenCalledTimes(1));
+    expect(createRun).toHaveBeenCalledWith(expect.objectContaining({
+      completion_ids: [exportRow.completion_id],
+    }));
     await waitFor(() => expect(workbookDownload).toHaveBeenCalledWith(
       [exportRow],
       'cfp-ce-2026-07-01-through-2026-07-27.xlsx',

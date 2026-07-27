@@ -109,7 +109,7 @@ function toSession(session: Session | null): LmsAuthSession | null {
                 ? session.user.user_metadata.last_name
                 : '',
             ),
-      role: toRole(session.user.app_metadata.role),
+      role: toRole(session.user.app_metadata.lms_role),
     },
   };
 }
@@ -538,6 +538,7 @@ export const supabaseProvider: LmsProvider & LmsAuthProvider & LmsAdminProvider 
         password,
         options: {
           data: {
+            lms_provisioned: 'true',
             display_name: displayName,
             first_name: firstName.trim(),
             last_name: lastName.trim(),

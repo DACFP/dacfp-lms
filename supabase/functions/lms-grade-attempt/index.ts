@@ -1,3 +1,4 @@
+import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   courseComplete,
@@ -16,13 +17,6 @@ import { insertWithAttemptNumberRetry } from './attempt-retry.ts';
 
 const DENIED_BODY = { error: 'Quiz is unavailable.' };
 const REJECTED_BODY = { error: 'Submission was rejected.' };
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
 interface QuizAccess {
   enrollmentId: string;
   quiz: {
@@ -36,11 +30,11 @@ interface QuizAccess {
 
 class AccessDenied extends Error {}
 
-function jsonResponse(status: number, body: unknown) {
+function jsonResponse(req: Request, status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...corsHeaders(req),
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json',
     },
@@ -238,10 +232,10 @@ async function insertAttempt(
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders(req) });
   }
   if (req.method !== 'POST') {
-    return jsonResponse(405, { error: 'Method not allowed.' });
+    return jsonResponse(req, 405, { error: 'Method not allowed.' });
   }
 
   try {
@@ -310,7 +304,7 @@ Deno.serve(async (req: Request) => {
       completionFired = Boolean(completion);
     }
 
-    return jsonResponse(200, {
+    return jsonResponse(req, 200, {
       attempt_number: attempt.attempt_number,
       score,
       possible_points: possiblePoints,
@@ -319,15 +313,15 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     if (error instanceof AccessDenied) {
-      return jsonResponse(403, DENIED_BODY);
+      return jsonResponse(req, 403, DENIED_BODY);
     }
     if (error instanceof InvalidQuizSubmission) {
-      return jsonResponse(422, REJECTED_BODY);
+      return jsonResponse(req, 422, REJECTED_BODY);
     }
     console.error(
       'lms-grade-attempt failed',
       error instanceof Error ? error.message : 'unknown error',
     );
-    return jsonResponse(500, { error: 'Quiz grading is temporarily unavailable.' });
+    return jsonResponse(req, 500, { error: 'Quiz grading is temporarily unavailable.' });
   }
 });

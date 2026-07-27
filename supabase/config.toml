@@ -1,3 +1,7 @@
+[db.seed]
+# Synthetic LMS seed data is opt-in and guarded again inside seed.sql.
+enabled = false
+
 [functions.lms-playback-token]
 verify_jwt = true
 
@@ -14,4 +18,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.lms-resource-token]
+verify_jwt = true
+
+[functions.lms-submit-survey]
 verify_jwt = true

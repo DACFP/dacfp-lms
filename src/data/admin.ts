@@ -120,12 +120,17 @@ export interface CfpCeExportRow {
   attendee_middle_name: string;
 }
 
+export interface CfpCeExcludedRow extends CfpCeExportRow {
+  reason: 'no-profile' | 'no-program-id' | 'non-string-cfp' | 'blank-name';
+}
+
 export interface CfpCePreview {
   period_start: string;
   period_end: string;
   reportable: CfpCeExportRow[];
   missing_id: CfpCeExportRow[];
   already_reported: CfpCeExportRow[];
+  excluded: CfpCeExcludedRow[];
   pending_program_courses: Array<{ id: string; title: string }>;
   nudge_count: number;
 }
