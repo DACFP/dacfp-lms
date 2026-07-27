@@ -2,6 +2,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  BarChart3,
   CheckCircle2,
   Download,
   FileUp,
@@ -29,8 +30,18 @@ import { DetailList, type DetailItem } from '../components/DetailList';
 import { Field } from '../components/Field';
 import { PageHeader, StatusPill, formatDate } from '../components/common';
 import { useAdmin } from '../context/AdminContext';
-import type { AdminEnrollment, LearnerInspection } from '../data/admin';
-import type { LmsCourse, LmsLesson, LmsModule } from '../data/types';
+import type {
+  AdminEnrollment,
+  LearnerInspection,
+  SurveyResults,
+} from '../data/admin';
+import type {
+  LmsCourse,
+  LmsLesson,
+  LmsModule,
+  LmsSurveyQuestion,
+  SurveyQuestionKind,
+} from '../data/types';
 import { parseQuestionBankCsv, parseQuestionBankJson, serializeQuestionBankCsv } from '../lib/adminCsv';
 
 /**
@@ -270,6 +281,216 @@ function QuestionBankPanel({ module }: { module: LmsModule }) {
   );
 }
 
+type SurveyQuestionDraft = {
+  clientId: string;
+  id?: string;
+  prompt: string;
+  kind: SurveyQuestionKind;
+  choicesText: string;
+  required: boolean;
+};
+
+function questionDraft(question?: LmsSurveyQuestion): SurveyQuestionDraft {
+  return {
+    clientId: question?.id ?? crypto.randomUUID(),
+    id: question?.id,
+    prompt: question?.prompt ?? '',
+    kind: question?.kind ?? 'text',
+    choicesText: question?.choices?.map((choice) => choice.text).join(', ') ?? '',
+    required: question?.required ?? true,
+  };
+}
+
+function moveSurveyQuestion(
+  questions: SurveyQuestionDraft[],
+  clientId: string,
+  direction: -1 | 1,
+) {
+  const index = questions.findIndex((question) => question.clientId === clientId);
+  const destination = index + direction;
+  if (index < 0 || destination < 0 || destination >= questions.length) return questions;
+  const next = [...questions];
+  [next[index], next[destination]] = [next[destination], next[index]];
+  return next;
+}
+
+function choiceId(label: string, index: number) {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `choice-${index + 1}`;
+}
+
+function downloadText(fileName: string, content: string, type = 'text/csv') {
+  const anchor = document.createElement('a');
+  anchor.href = URL.createObjectURL(new Blob([content], { type }));
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(anchor.href);
+}
+
+function SurveyResultsPanel({ lessonId }: { lessonId: string }) {
+  const { surveyResults, exportSurveyResponses } = useAdmin();
+  const [results, setResults] = useState<SurveyResults | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setResults(await surveyResults(lessonId));
+    } catch {
+      setError('Survey results could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportRows = async () => {
+    setError('');
+    try {
+      const exported = await exportSurveyResponses({ lesson_id: lessonId });
+      downloadText(exported.file_name, exported.csv);
+    } catch {
+      setError('Survey responses could not be exported.');
+    }
+  };
+
+  return (
+    <section className="mt-5 rounded-lg border border-dacfp-line bg-dacfp-wash p-4" aria-label="Survey results">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h4 className="font-bold text-dacfp-navy">Survey results</h4>
+          <p className="text-sm text-dacfp-gray-text">Operator-gated and audited on every view or export.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="button-secondary" disabled={loading} onClick={() => void load()} type="button">
+            <BarChart3 className="size-icon-sm" aria-hidden="true" />
+            {loading ? 'Loading…' : 'View results'}
+          </button>
+          <button className="button-secondary" onClick={() => void exportRows()} type="button">
+            <Download className="size-icon-sm" aria-hidden="true" />Export CSV
+          </button>
+        </div>
+      </div>
+      <div className="mt-3"><ErrorMessage message={error} /></div>
+      {results ? (
+        <div className="mt-5 space-y-5">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-white p-4"><p className="text-xs font-bold uppercase text-dacfp-gray-text">Responses</p><p className="mt-1 text-2xl font-bold tabular-nums text-dacfp-navy">{results.response_count}</p></div>
+            <div className="rounded-lg bg-white p-4"><p className="text-xs font-bold uppercase text-dacfp-gray-text">Enrolled</p><p className="mt-1 text-2xl font-bold tabular-nums text-dacfp-navy">{results.enrolled_count}</p></div>
+            <div className="rounded-lg bg-white p-4"><p className="text-xs font-bold uppercase text-dacfp-gray-text">Completion</p><p className="mt-1 text-2xl font-bold tabular-nums text-dacfp-navy">{results.completion_rate}%</p></div>
+          </div>
+          <ol className="space-y-3">
+            {results.questions.map(({ question, breakdown }) => (
+              <li className="rounded-lg border border-dacfp-line bg-white p-4" key={question.id}>
+                <p className="font-bold text-dacfp-navy">{question.position}. {question.prompt}</p>
+                {breakdown.kind === 'scale_1_5' ? (
+                  <div className="mt-3 text-sm text-dacfp-gray-text">
+                    <p>Average: <strong className="text-dacfp-navy">{breakdown.average ?? '—'}</strong></p>
+                    <p className="mt-1 tabular-nums">1: {breakdown.counts['1']} · 2: {breakdown.counts['2']} · 3: {breakdown.counts['3']} · 4: {breakdown.counts['4']} · 5: {breakdown.counts['5']}</p>
+                  </div>
+                ) : breakdown.kind === 'text' ? (
+                  breakdown.responses.length ? (
+                    <ul className="mt-3 space-y-2 text-sm text-dacfp-gray-text">
+                      {breakdown.responses.map((response, index) => <li className="rounded bg-dacfp-wash p-3" key={`${question.id}-${index}`}>{response}</li>)}
+                    </ul>
+                  ) : <p className="mt-3 text-sm text-dacfp-gray-text">No text responses.</p>
+                ) : (
+                  <ul className="mt-3 space-y-1 text-sm text-dacfp-gray-text">
+                    {breakdown.counts.map((choice) => <li className="flex justify-between gap-3" key={choice.id}><span>{choice.text}</span><strong className="tabular-nums text-dacfp-navy">{choice.count}</strong></li>)}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
+  const { catalog, mutate } = useAdmin();
+  const existing = catalog.surveyQuestions
+    .filter((question) => question.lesson_id === lesson.id)
+    .sort((a, b) => a.position - b.position);
+  const [questions, setQuestions] = useState<SurveyQuestionDraft[]>(
+    () => existing.map((question) => questionDraft(question)),
+  );
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setMessage('');
+    setError('');
+    try {
+      const payload = questions.map((question, index) => {
+        const labels = question.choicesText
+          .split(',')
+          .map((label) => label.trim())
+          .filter(Boolean);
+        if (
+          (question.kind === 'single_choice' || question.kind === 'multi_choice') &&
+          labels.length < 2
+        ) {
+          throw new Error('Choice questions require at least two comma-separated choices.');
+        }
+        return {
+          ...(question.id ? { id: question.id } : {}),
+          position: index + 1,
+          prompt: question.prompt,
+          kind: question.kind,
+          choices: question.kind === 'single_choice' || question.kind === 'multi_choice'
+            ? labels.map((label, choiceIndex) => ({
+                id: choiceId(label, choiceIndex),
+                text: label,
+              }))
+            : null,
+          required: question.required,
+        };
+      });
+      await mutate('replace_survey_questions', {
+        lesson_id: lesson.id,
+        questions: payload,
+      });
+      setMessage('Survey questions saved and audited.');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Survey questions could not be saved.');
+    }
+  };
+
+  return (
+    <div className="mt-5 rounded-lg border border-dacfp-blue/30 bg-dacfp-wash-blue p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div><h4 className="font-bold text-dacfp-navy">Survey questions</h4><p className="text-sm text-dacfp-gray-text">Add, edit, reorder, and mark questions required.</p></div>
+        <button className="button-secondary" onClick={() => setQuestions((current) => [...current, questionDraft()])} type="button"><Plus className="size-icon-sm" aria-hidden="true" />Add question</button>
+      </div>
+      <div className="mt-4 space-y-3">
+        {questions.map((question, index) => (
+          <article className="rounded-lg border border-dacfp-line bg-white p-4" key={question.clientId}>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field className="md:col-span-2" label={`Question ${index + 1}`}><Input required value={question.prompt} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, prompt: event.target.value } : item))} /></Field>
+              <Field label="Response kind"><select className={selectClass} value={question.kind} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, kind: event.target.value as SurveyQuestionKind } : item))}><option value="scale_1_5">1–5 scale</option><option value="text">Text</option><option value="single_choice">Single choice</option><option value="multi_choice">Multiple choice</option></select></Field>
+              <Field label="Choices" hint="Comma separated; used only for choice questions"><Input value={question.choicesText} disabled={!['single_choice', 'multi_choice'].includes(question.kind)} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, choicesText: event.target.value } : item))} /></Field>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <label className="flex min-h-11 items-center gap-2"><input className="size-5 accent-dacfp-maroon" checked={question.required} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, required: event.target.checked } : item))} type="checkbox" /><span className="font-bold">Required</span></label>
+              <div className="flex gap-1">
+                <ReorderControls label={question.prompt || `question ${index + 1}`} atStart={index === 0} atEnd={index === questions.length - 1} onUp={() => setQuestions((current) => moveSurveyQuestion(current, question.clientId, -1))} onDown={() => setQuestions((current) => moveSurveyQuestion(current, question.clientId, 1))} />
+                <button className="button-quiet px-3 text-status-danger" aria-label={`Delete survey question ${index + 1}`} onClick={() => setQuestions((current) => current.filter((item) => item.clientId !== question.clientId))} type="button"><Trash2 className="size-icon-sm" aria-hidden="true" /></button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="mt-4 space-y-3"><ErrorMessage message={error} /><SuccessMessage message={message} /><button className="button-primary" onClick={() => void save()} type="button">Save survey questions</button></div>
+      <SurveyResultsPanel lessonId={lesson.id} />
+    </div>
+  );
+}
+
 function bytesToBase64(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -278,7 +499,7 @@ function bytesToBase64(buffer: ArrayBuffer) {
 }
 
 function LessonEditor({ lesson }: { lesson: LmsLesson }) {
-  const { mutate } = useAdmin();
+  const { catalog, mutate } = useAdmin();
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -314,7 +535,7 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
     <article className="rounded-lg border border-dacfp-line bg-white p-4">
       <form className="grid gap-3 md:grid-cols-2" onSubmit={(event) => void save(event)}>
         <Field label="Lesson title"><Input name="title" defaultValue={lesson.title} required /></Field>
-        <Field label="Kind"><select className={selectClass} name="kind" defaultValue={lesson.kind}><option value="video">Video</option><option value="reading">Reading</option></select></Field>
+        <Field label="Kind"><select className={selectClass} name="kind" defaultValue={lesson.kind}><option value="video">Video</option><option value="reading">Reading</option><option value="survey">Survey</option></select></Field>
         <Field label="video_ref path"><Input name="video_ref" defaultValue={lesson.video_ref ?? ''} placeholder="placeholder/dacfp-d3-placeholder.mp4" /></Field>
         <Field label="Duration seconds"><Input name="duration_seconds" type="number" min="1" defaultValue={lesson.duration_seconds ?? ''} /></Field>
         <Field label="Reading body" className="md:col-span-2"><Textarea name="body_md" defaultValue={lesson.body_md ?? ''} /></Field>
@@ -341,6 +562,15 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
         <Field label="Or create a text resource" className="sm:col-span-3"><Textarea className="min-h-24" name="text_content" placeholder="Paste sandbox text content when no file is selected." /></Field>
       </form>
       <div className="mt-3 space-y-2"><ErrorMessage message={error} /><SuccessMessage message={message} /></div>
+      {lesson.kind === 'survey' ? (
+        <SurveyQuestionEditor
+          key={`${lesson.id}:${catalog.surveyQuestions
+            .filter((question) => question.lesson_id === lesson.id)
+            .map((question) => question.id)
+            .join(',')}`}
+          lesson={lesson}
+        />
+      ) : null}
     </article>
   );
 }
@@ -440,16 +670,36 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
 
 export function AdminCoursePage() {
   const { id } = useParams();
-  const { catalog, mutate } = useAdmin();
+  const { catalog, mutate, exportSurveyResponses } = useAdmin();
   const course = catalog.courses.find((item) => item.id === id);
   const modules = catalog.modules.filter((item) => item.course_id === id).sort((a, b) => a.position - b.position);
   const [moduleTitle, setModuleTitle] = useState('');
+  const [exportError, setExportError] = useState('');
   if (!course) return <div className="card p-8 text-center"><h1 className="text-2xl font-bold text-dacfp-navy">Course unavailable</h1><Link className="button-secondary mt-5" to="/admin">Back to courses</Link></div>;
 
   return (
     <div className="space-y-8">
       <Link className="button-quiet" to="/admin"><ArrowLeft className="size-icon-sm" aria-hidden="true" />Back to courses</Link>
-      <PageHeader eyebrow={`Course editor · ${course.status}`} title={course.title} description="Manage structure, private resources, fixed-policy question banks, and publication status." />
+      <PageHeader
+        eyebrow={`Course editor · ${course.status}`}
+        title={course.title}
+        description="Manage structure, surveys, private resources, fixed-policy question banks, and publication status."
+        action={
+          <button
+            className="button-secondary"
+            onClick={() => {
+              setExportError('');
+              void exportSurveyResponses({ course_id: course.id })
+                .then((exported) => downloadText(exported.file_name, exported.csv))
+                .catch(() => setExportError('Course survey responses could not be exported.'));
+            }}
+            type="button"
+          >
+            <Download className="size-icon-sm" aria-hidden="true" />Export all survey responses
+          </button>
+        }
+      />
+      <ErrorMessage message={exportError} />
       <CourseSettings course={course} />
       <section className="space-y-4" aria-labelledby="modules-heading">
         <div><p className="eyebrow">Curriculum</p><h2 id="modules-heading" className="mt-1 text-2xl font-bold text-dacfp-navy">Modules and lessons</h2><p className="mt-2 text-sm text-dacfp-gray-text">Drag the grip handle to reorder on larger screens, or use the up/down controls on any device.</p></div>
@@ -478,6 +728,12 @@ function EnrollmentInspector({
   const quizzes = catalog.quizzes.filter((item) => moduleIds.includes(item.module_id));
   const progress = inspection.progress.filter((item) => item.enrollment_id === enrollment.id);
   const attempts = inspection.attempts.filter((item) => item.enrollment_id === enrollment.id);
+  const surveyResponses = inspection.surveyResponses.filter(
+    (item) => item.enrollment_id === enrollment.id,
+  );
+  const surveyLessons = catalog.lessons.filter(
+    (item) => moduleIds.includes(item.module_id) && item.kind === 'survey',
+  );
   const completion = inspection.completions.find((item) => item.enrollment_id === enrollment.id);
 
   const facts: DetailItem[] = [
@@ -502,9 +758,10 @@ function EnrollmentInspector({
         {completion ? <StatusPill tone="positive">Completed</StatusPill> : <StatusPill tone="neutral">In progress</StatusPill>}
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">Progress rows</p><p className="text-2xl font-bold tabular-nums text-dacfp-navy">{progress.length}</p></div>
         <div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">Attempts</p><p className="text-2xl font-bold tabular-nums text-dacfp-navy">{attempts.length}</p></div>
+        <div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">Survey submissions</p><p className="text-2xl font-bold tabular-nums text-dacfp-navy">{surveyResponses.length} / {surveyLessons.length}</p></div>
         <div className="rounded-lg bg-dacfp-wash p-4"><p className="text-sm text-dacfp-gray-text">CE credits</p><p className="text-2xl font-bold tabular-nums text-dacfp-navy">{enrollment.lms_courses.ce_credits ?? '—'}</p></div>
       </div>
 
@@ -532,6 +789,25 @@ function EnrollmentInspector({
                   )}
                 </li>
               ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {surveyLessons.length > 0 ? (
+        <div className="mt-5 border-t border-dacfp-line pt-5">
+          <h4 className="text-sm font-bold text-dacfp-navy">Survey submission status</h4>
+          <ul className="mt-3 space-y-2">
+            {surveyLessons.map((lesson) => {
+              const response = surveyResponses.find((item) => item.lesson_id === lesson.id);
+              return (
+                <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dacfp-line px-3 py-2 text-sm" key={lesson.id}>
+                  <span className="font-semibold text-dacfp-navy">{lesson.title}</span>
+                  <StatusPill tone={response ? 'positive' : 'neutral'}>
+                    {response ? `Submitted ${formatDate(response.submitted_at)}` : 'Not submitted'}
+                  </StatusPill>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}

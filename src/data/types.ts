@@ -1,6 +1,13 @@
 export type CourseStatus = 'draft' | 'published' | 'archived';
 export type ProgressionMode = 'sequential' | 'open';
-export type LessonKind = 'video' | 'reading';
+export type LessonKind = 'video' | 'reading' | 'survey';
+export type SurveyQuestionKind =
+  | 'scale_1_5'
+  | 'text'
+  | 'single_choice'
+  | 'multi_choice';
+export type SurveyAnswer = number | string | string[];
+export type SurveyAnswers = Record<string, SurveyAnswer>;
 export type EnrollmentSource =
   | 'fpt_purchase'
   | 'renewal'
@@ -50,6 +57,24 @@ export interface LmsLessonResource {
   position: number;
   title: string;
   file_ref: string;
+}
+
+export interface LmsSurveyQuestion {
+  id: string;
+  lesson_id: string;
+  position: number;
+  prompt: string;
+  kind: SurveyQuestionKind;
+  choices: QuizChoice[] | null;
+  required: boolean;
+}
+
+export interface LmsSurveyResponse {
+  id: string;
+  enrollment_id: string;
+  lesson_id: string;
+  submitted_at: string;
+  answers: SurveyAnswers;
 }
 
 export interface LmsModuleQuiz {
@@ -162,6 +187,7 @@ export interface Catalog {
   lessons: LmsLesson[];
   resources: LmsLessonResource[];
   quizzes: LmsModuleQuiz[];
+  surveyQuestions: LmsSurveyQuestion[];
 }
 
 export const learnerStateKeys = [
@@ -189,6 +215,7 @@ export interface LearnerSnapshot {
   enrollments: LmsEnrollment[];
   progress: LmsLessonProgress[];
   attempts: LmsQuizAttempt[];
+  surveyResponses: LmsSurveyResponse[];
   completions: CompletionEvidence[];
 }
 

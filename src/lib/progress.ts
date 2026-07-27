@@ -47,6 +47,9 @@ export function moduleContext(
     lessons: catalog.lessons,
     quizzes: catalog.quizzes,
     progress: snapshot.progress.filter((item) => item.enrollment_id === enrollmentId),
+    surveyResponses: snapshot.surveyResponses.filter(
+      (item) => item.enrollment_id === enrollmentId,
+    ),
     attempts: snapshot.attempts.filter((item) => item.enrollment_id === enrollmentId),
   };
 }
@@ -90,6 +93,7 @@ export function moduleIsPassed(
     module,
     catalog.lessons,
     snapshot.progress.filter((item) => item.enrollment_id === enrollment.id),
+    snapshot.surveyResponses.filter((item) => item.enrollment_id === enrollment.id),
   );
 }
 
@@ -124,9 +128,12 @@ export function courseProgressPercent(
   );
   const quizzes = catalog.quizzes.filter((quiz) => moduleIds.has(quiz.module_id));
   const progress = snapshot.progress.filter((item) => item.enrollment_id === enrollment.id);
+  const surveyResponses = snapshot.surveyResponses.filter(
+    (item) => item.enrollment_id === enrollment.id,
+  );
   const attempts = snapshot.attempts.filter((item) => item.enrollment_id === enrollment.id);
   const completedLessonCount = requiredLessons.filter((lesson) =>
-    lessonComplete(lesson, progress),
+    lessonComplete(lesson, progress, surveyResponses),
   ).length;
   const passedQuizCount = quizzes.filter((quiz) =>
     attempts.some((attempt) => attempt.quiz_id === quiz.id && attempt.passed === true),
@@ -151,5 +158,6 @@ export function isCourseComplete(
     catalog.quizzes,
     snapshot.progress.filter((item) => item.enrollment_id === enrollment.id),
     snapshot.attempts.filter((item) => item.enrollment_id === enrollment.id),
+    snapshot.surveyResponses.filter((item) => item.enrollment_id === enrollment.id),
   );
 }

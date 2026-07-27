@@ -127,7 +127,7 @@ async function requireResourceAccess(
     .eq('course_id', course.id);
   assertQuery(modulesError);
   const moduleIds = (modules ?? []).map((item) => item.id);
-  const [lessonsResult, quizzesResult, progressResult, attemptsResult] = await Promise.all([
+  const [lessonsResult, quizzesResult, progressResult, surveyResponsesResult, attemptsResult] = await Promise.all([
     moduleIds.length
       ? admin.from('lms_lessons').select('id,module_id,kind,duration_seconds,is_required').in('module_id', moduleIds)
       : Promise.resolve({ data: [], error: null }),
@@ -135,11 +135,13 @@ async function requireResourceAccess(
       ? admin.from('lms_module_quizzes').select('id,module_id').in('module_id', moduleIds)
       : Promise.resolve({ data: [], error: null }),
     admin.from('lms_lesson_progress').select('lesson_id,completed_at,max_watched_seconds').eq('enrollment_id', enrollment.id),
+    admin.from('lms_survey_responses').select('enrollment_id,lesson_id').eq('enrollment_id', enrollment.id),
     admin.from('lms_quiz_attempts').select('quiz_id,attempt_number,passed').eq('enrollment_id', enrollment.id),
   ]);
   assertQuery(lessonsResult.error);
   assertQuery(quizzesResult.error);
   assertQuery(progressResult.error);
+  assertQuery(surveyResponsesResult.error);
   assertQuery(attemptsResult.error);
   const context: ProgressionContext = {
     course,
@@ -148,6 +150,7 @@ async function requireResourceAccess(
     lessons: lessonsResult.data ?? [],
     quizzes: quizzesResult.data ?? [],
     progress: progressResult.data ?? [],
+    surveyResponses: surveyResponsesResult.data ?? [],
     attempts: attemptsResult.data ?? [],
   };
   if (!moduleUnlocked(context)) throw new AccessDenied();

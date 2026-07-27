@@ -23,6 +23,7 @@ import type {
   LmsQuizGradeResult,
   LmsQuizPayload,
   LmsResourceToken,
+  LmsSurveySubmitResult,
 } from '../data/provider';
 import { isLmsAccessDenied } from '../data/provider';
 import { supabaseProvider } from '../data/supabaseProvider';
@@ -32,6 +33,7 @@ import type {
   LearnerStateKey,
   LmsLearnerProfile,
   LmsLessonProgress,
+  SurveyAnswers,
 } from '../data/types';
 import { runMutationLifecycle } from '../lib/mutationStatus';
 
@@ -48,6 +50,10 @@ interface LmsContextValue {
     positionSeconds: number,
   ) => Promise<LmsLessonProgress>;
   completeReading: (lessonId: string) => Promise<LmsLessonProgress>;
+  submitSurvey: (
+    lessonId: string,
+    answers: SurveyAnswers,
+  ) => Promise<LmsSurveySubmitResult>;
   loadQuiz: (quizId: string) => Promise<LmsQuizPayload>;
   submitQuiz: (
     quizId: string,
@@ -264,6 +270,31 @@ function AuthenticatedLmsProvider({
     [applyProgress, provider],
   );
 
+  const submitSurvey = useCallback(
+    async (lessonId: string, answers: SurveyAnswers) => {
+      return runMutationLifecycle({
+        mutate: () => provider.submitSurvey(lessonId, answers, LEARNER_SCOPE),
+        refresh: () => loadSnapshot(LEARNER_SCOPE),
+        onMutationSuccess: () => setMutationNotice({
+          kind: 'success',
+          message: 'Survey submitted. Your responses are now read-only.',
+        }),
+        onMutationFailure: () => setMutationNotice({
+          kind: 'error',
+          message: 'Survey submission failed. Your answers remain on this page.',
+        }),
+        onRefreshFailure: () => setMutationNotice({
+          kind: 'warning',
+          message: 'The survey was submitted, but refreshed progress could not be loaded.',
+          retry: () => void loadSnapshot(LEARNER_SCOPE)
+            .then(() => setMutationNotice(null))
+            .catch(() => undefined),
+        }),
+      });
+    },
+    [loadSnapshot, provider],
+  );
+
   const loadQuiz = useCallback(
     (quizId: string) => provider.getQuiz(quizId, LEARNER_SCOPE),
     [provider],
@@ -308,6 +339,7 @@ function AuthenticatedLmsProvider({
             requestResource,
             recordHeartbeat,
             completeReading,
+            submitSurvey,
             loadQuiz,
             submitQuiz,
           }
@@ -317,6 +349,7 @@ function AuthenticatedLmsProvider({
       catalog,
       loading,
       completeReading,
+      submitSurvey,
       loadQuiz,
       recordHeartbeat,
       requestPlayback,

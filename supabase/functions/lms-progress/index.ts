@@ -136,7 +136,7 @@ async function requireLessonAccess(
     .eq('course_id', course.id);
   assertQuery(modulesError);
   const moduleIds = (modules ?? []).map((item) => item.id);
-  const [lessonsResult, quizzesResult, progressResult, attemptsResult] =
+  const [lessonsResult, quizzesResult, progressResult, surveyResponsesResult, attemptsResult] =
     await Promise.all([
       moduleIds.length
         ? admin
@@ -152,6 +152,10 @@ async function requireLessonAccess(
         .select('lesson_id,completed_at,max_watched_seconds')
         .eq('enrollment_id', enrollment.id),
       admin
+        .from('lms_survey_responses')
+        .select('enrollment_id,lesson_id')
+        .eq('enrollment_id', enrollment.id),
+      admin
         .from('lms_quiz_attempts')
         .select('quiz_id,attempt_number,passed')
         .eq('enrollment_id', enrollment.id),
@@ -159,6 +163,7 @@ async function requireLessonAccess(
   assertQuery(lessonsResult.error);
   assertQuery(quizzesResult.error);
   assertQuery(progressResult.error);
+  assertQuery(surveyResponsesResult.error);
   assertQuery(attemptsResult.error);
 
   const context: ProgressionContext = {
@@ -168,6 +173,7 @@ async function requireLessonAccess(
     lessons: lessonsResult.data ?? [],
     quizzes: quizzesResult.data ?? [],
     progress: progressResult.data ?? [],
+    surveyResponses: surveyResponsesResult.data ?? [],
     attempts: attemptsResult.data ?? [],
   };
   if (!moduleUnlocked(context)) throw new AccessDenied();
@@ -183,6 +189,7 @@ async function requireLessonAccess(
       context.quizzes,
       context.progress,
       context.attempts,
+      context.surveyResponses,
     );
 
   return { enrollmentId: enrollment.id, lesson, context, reviewMode };
@@ -204,6 +211,7 @@ async function detectCompletion(
     access.context.quizzes,
     progress,
     access.context.attempts,
+    access.context.surveyResponses,
   )) {
     return false;
   }

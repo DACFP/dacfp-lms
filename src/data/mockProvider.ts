@@ -14,6 +14,9 @@ import type {
   LmsModule,
   LmsModuleQuiz,
   LmsQuizAttempt,
+  LmsSurveyQuestion,
+  LmsSurveyResponse,
+  SurveyAnswers,
 } from './types';
 
 const createdAt = '2026-07-16T16:00:00.000Z';
@@ -60,6 +63,7 @@ const courses: LmsCourse[] = [
 ];
 
 const modules: LmsModule[] = [
+  { id: 'fpt-intro', course_id: 'course-fpt', position: 0, title: 'Introduction', ce_credits: null },
   { id: 'fpt-m1', course_id: 'course-fpt', position: 1, title: 'Bitcoin Foundations', ce_credits: 4.5 },
   { id: 'fpt-m2', course_id: 'course-fpt', position: 2, title: 'Blockchain and DLT', ce_credits: 4.5 },
   { id: 'fpt-m3', course_id: 'course-fpt', position: 3, title: 'Digital Assets and Currencies', ce_credits: 4.5 },
@@ -108,9 +112,142 @@ function moduleLessons(module: LmsModule, duration = 600): LmsLesson[] {
   ];
 }
 
-const lessons = modules.flatMap((module) =>
-  moduleLessons(module, module.id === 'renewal-m1' ? 3600 : 600),
-);
+const lessons: LmsLesson[] = [
+  {
+    id: 'fpt-intro-video',
+    module_id: 'fpt-intro',
+    position: 1,
+    title: 'Welcome to the Financial Professional Track',
+    kind: 'video',
+    video_ref: 'placeholder://fpt-introduction',
+    duration_seconds: 120,
+    body_md: null,
+    is_required: true,
+  },
+  {
+    id: 'fpt-pre-course-survey',
+    module_id: 'fpt-intro',
+    position: 2,
+    title: 'Pre-course survey',
+    kind: 'survey',
+    video_ref: null,
+    duration_seconds: null,
+    body_md: null,
+    is_required: true,
+  },
+  ...modules
+    .filter((module) => module.id !== 'fpt-intro')
+    .flatMap((module) => moduleLessons(module, module.id === 'renewal-m1' ? 3600 : 600)),
+  {
+    id: 'fpt-m1-post-survey',
+    module_id: 'fpt-m1',
+    position: 4,
+    title: 'Module 1 survey',
+    kind: 'survey',
+    video_ref: null,
+    duration_seconds: null,
+    body_md: null,
+    is_required: true,
+  },
+  {
+    id: 'fpt-post-course-survey',
+    module_id: 'fpt-m4',
+    position: 4,
+    title: 'Post-course survey',
+    kind: 'survey',
+    video_ref: null,
+    duration_seconds: null,
+    body_md: null,
+    is_required: true,
+  },
+];
+
+const surveyQuestions: LmsSurveyQuestion[] = [
+  {
+    id: 'survey-pre-q1',
+    lesson_id: 'fpt-pre-course-survey',
+    position: 1,
+    prompt: 'How familiar are you with digital assets today?',
+    kind: 'scale_1_5',
+    choices: null,
+    required: true,
+  },
+  {
+    id: 'survey-pre-q2',
+    lesson_id: 'fpt-pre-course-survey',
+    position: 2,
+    prompt: 'What do you most want to learn?',
+    kind: 'text',
+    choices: null,
+    required: true,
+  },
+  {
+    id: 'survey-pre-q3',
+    lesson_id: 'fpt-pre-course-survey',
+    position: 3,
+    prompt: 'Which role best matches your work?',
+    kind: 'single_choice',
+    choices: [
+      { id: 'advisor', text: 'Advisor' },
+      { id: 'planner', text: 'Planner' },
+      { id: 'other', text: 'Other' },
+    ],
+    required: true,
+  },
+  {
+    id: 'survey-module-q1',
+    lesson_id: 'fpt-m1-post-survey',
+    position: 1,
+    prompt: 'How useful was this module?',
+    kind: 'scale_1_5',
+    choices: null,
+    required: true,
+  },
+  {
+    id: 'survey-module-q2',
+    lesson_id: 'fpt-m1-post-survey',
+    position: 2,
+    prompt: 'Which topics should receive more attention?',
+    kind: 'multi_choice',
+    choices: [
+      { id: 'bitcoin', text: 'Bitcoin' },
+      { id: 'custody', text: 'Custody' },
+      { id: 'portfolio', text: 'Portfolio use' },
+    ],
+    required: true,
+  },
+  {
+    id: 'survey-post-q1',
+    lesson_id: 'fpt-post-course-survey',
+    position: 1,
+    prompt: 'How confident are you after the course?',
+    kind: 'scale_1_5',
+    choices: null,
+    required: true,
+  },
+  {
+    id: 'survey-post-q2',
+    lesson_id: 'fpt-post-course-survey',
+    position: 2,
+    prompt: 'What was the most valuable topic?',
+    kind: 'single_choice',
+    choices: [
+      { id: 'foundations', text: 'Foundations' },
+      { id: 'portfolio', text: 'Portfolio construction' },
+      { id: 'practice', text: 'Practice application' },
+    ],
+    required: true,
+  },
+  {
+    id: 'survey-post-q3',
+    lesson_id: 'fpt-post-course-survey',
+    position: 3,
+    prompt: 'What should we improve?',
+    kind: 'text',
+    choices: null,
+    required: true,
+  },
+];
 
 const resources = [
   {
@@ -138,7 +275,7 @@ const resources = [
 
 const quizzes: LmsModuleQuiz[] = [
   ...modules
-    .filter((module) => module.course_id === 'course-fpt')
+    .filter((module) => module.course_id === 'course-fpt' && module.id !== 'fpt-intro')
     .map((module) => ({
       id: `quiz-${module.id}`,
       module_id: module.id,
@@ -153,7 +290,14 @@ const quizzes: LmsModuleQuiz[] = [
   },
 ];
 
-export const mockCatalog: Catalog = { courses, modules, lessons, resources, quizzes };
+export const mockCatalog: Catalog = {
+  courses,
+  modules,
+  lessons,
+  resources,
+  quizzes,
+  surveyQuestions,
+};
 
 const learnerSummaries: LearnerSummary[] = [
   { id: 'fresh', label: 'Fresh learner', description: 'Terms not yet accepted', email: 'fresh@example.test' },
@@ -190,7 +334,7 @@ function completedProgress(
   learnerId: string,
   selectedLessons: LmsLesson[],
 ): LmsLessonProgress[] {
-  return selectedLessons.map((lesson) => ({
+  return selectedLessons.filter((lesson) => lesson.kind !== 'survey').map((lesson) => ({
     id: `${learnerId}-progress-${lesson.id}`,
     enrollment_id: enrollmentId,
     lesson_id: lesson.id,
@@ -201,6 +345,35 @@ function completedProgress(
     max_watched_updated_at: '2026-07-16T16:30:00.000Z',
     updated_at: '2026-07-16T16:30:00.000Z',
   }));
+}
+
+function completedSurveyResponses(
+  enrollmentId: string,
+  learnerId: string,
+  selectedLessons: LmsLesson[],
+): LmsSurveyResponse[] {
+  return selectedLessons
+    .filter((lesson) => lesson.kind === 'survey')
+    .map((lesson) => ({
+      id: `${learnerId}-response-${lesson.id}`,
+      enrollment_id: enrollmentId,
+      lesson_id: lesson.id,
+      submitted_at: '2026-07-16T16:32:00.000Z',
+      answers: Object.fromEntries(
+        surveyQuestions
+          .filter((question) => question.lesson_id === lesson.id)
+          .map((question) => [
+            question.id,
+            question.kind === 'scale_1_5'
+              ? learnerId === 'fully-complete' ? 5 : 4
+              : question.kind === 'multi_choice'
+                ? ['bitcoin', 'custody']
+                : question.kind === 'single_choice'
+                  ? question.choices?.[0]?.id ?? 'other'
+                  : 'Synthetic placeholder response',
+          ]),
+      ),
+    }));
 }
 
 function attempt(
@@ -277,8 +450,22 @@ function baseSnapshot(learner: LearnerSummary): LearnerSnapshot {
     enrollments: [],
     progress: [],
     attempts: [],
+    surveyResponses: [],
     completions: [],
   };
+}
+
+function stageCompletedLessons(
+  snapshot: LearnerSnapshot,
+  enrollment: LmsEnrollment,
+  selectedLessons: LmsLesson[],
+) {
+  snapshot.progress.push(
+    ...completedProgress(enrollment.id, snapshot.learner.id, selectedLessons),
+  );
+  snapshot.surveyResponses.push(
+    ...completedSurveyResponses(enrollment.id, snapshot.learner.id, selectedLessons),
+  );
 }
 
 function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
@@ -291,12 +478,23 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
     const fpt = enrollment(learner, 'course-fpt', learner.id !== 'fresh');
     const bonus = enrollment(learner, 'course-bonus', true);
     snapshot.enrollments.push(fpt, bonus);
+    if (learner.id !== 'fresh') {
+      stageCompletedLessons(
+        snapshot,
+        fpt,
+        lessons.filter((lesson) => lesson.module_id === 'fpt-intro'),
+      );
+    }
   }
 
   const mid = snapshots['mid-module-2'];
   const midFpt = mid.enrollments[0];
+  stageCompletedLessons(
+    mid,
+    midFpt,
+    lessons.filter((lesson) => lesson.module_id === 'fpt-m1'),
+  );
   mid.progress.push(
-    ...completedProgress(midFpt.id, mid.learner.id, lessons.filter((lesson) => lesson.module_id === 'fpt-m1')),
     {
       id: 'mid-module-progress-fpt-m2-video',
       enrollment_id: midFpt.id,
@@ -316,23 +514,19 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
   expiringFpt.expires_at = nearExpiry;
   const expiringRenewal = enrollment(expiring.learner, 'course-renewal-2026', true);
   expiring.enrollments.push(expiringRenewal);
-  expiring.progress.push(
-    ...completedProgress(
-      expiringFpt.id,
-      expiring.learner.id,
-      lessons.filter((lesson) => lesson.module_id === 'fpt-m1'),
-    ),
+  stageCompletedLessons(
+    expiring,
+    expiringFpt,
+    lessons.filter((lesson) => lesson.module_id === 'fpt-m1'),
   );
   expiring.attempts.push(attempt(expiringFpt.id, expiring.learner.id, quizzes[0], 1, 8));
 
   const failed = snapshots['quiz-failed-on-3'];
   const failedFpt = failed.enrollments[0];
-  failed.progress.push(
-    ...completedProgress(
-      failedFpt.id,
-      failed.learner.id,
-      lessons.filter((lesson) => ['fpt-m1', 'fpt-m2', 'fpt-m3'].includes(lesson.module_id)),
-    ),
+  stageCompletedLessons(
+    failed,
+    failedFpt,
+    lessons.filter((lesson) => ['fpt-m1', 'fpt-m2', 'fpt-m3'].includes(lesson.module_id)),
   );
   failed.attempts.push(
     attempt(failedFpt.id, failed.learner.id, quizzes[0], 1, 8),
@@ -342,9 +536,7 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
 
   const almost = snapshots['one-quiz-from-done'];
   const almostFpt = almost.enrollments[0];
-  almost.progress.push(
-    ...completedProgress(almostFpt.id, almost.learner.id, courseLessons('course-fpt')),
-  );
+  stageCompletedLessons(almost, almostFpt, courseLessons('course-fpt'));
   almost.attempts.push(
     ...courseQuizzes('course-fpt')
       .slice(0, 3)
@@ -355,9 +547,7 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
   const fptDoneEnrollment = fptDone.enrollments[0];
   const fptDoneRenewal = enrollment(fptDone.learner, 'course-renewal-2026', true);
   fptDone.enrollments.push(fptDoneRenewal);
-  fptDone.progress.push(
-    ...completedProgress(fptDoneEnrollment.id, fptDone.learner.id, courseLessons('course-fpt')),
-  );
+  stageCompletedLessons(fptDone, fptDoneEnrollment, courseLessons('course-fpt'));
   fptDone.attempts.push(
     ...courseQuizzes('course-fpt').map((quiz) =>
       attempt(fptDoneEnrollment.id, fptDone.learner.id, quiz, 1, 9),
@@ -372,14 +562,12 @@ function buildSnapshots(): Record<LearnerStateKey, LearnerSnapshot> {
   const completeBonus = complete.enrollments[1];
   const completeRenewal = enrollment(complete.learner, 'course-renewal-2026', true);
   complete.enrollments.push(completeRenewal);
-  complete.progress.push(
-    ...completedProgress(completeFpt.id, complete.learner.id, courseLessons('course-fpt')),
-    ...completedProgress(completeBonus.id, complete.learner.id, courseLessons('course-bonus')),
-    ...completedProgress(
-      completeRenewal.id,
-      complete.learner.id,
-      courseLessons('course-renewal-2026'),
-    ),
+  stageCompletedLessons(complete, completeFpt, courseLessons('course-fpt'));
+  stageCompletedLessons(complete, completeBonus, courseLessons('course-bonus'));
+  stageCompletedLessons(
+    complete,
+    completeRenewal,
+    courseLessons('course-renewal-2026'),
   );
   complete.attempts.push(
     ...courseQuizzes('course-fpt').map((quiz) =>
@@ -559,6 +747,35 @@ export const mockProvider: LmsProvider = {
       max_watched_updated_at: current?.max_watched_updated_at ?? now,
       updated_at: now,
     }));
+  },
+  async submitSurvey(lessonId, answers: SurveyAnswers, learnerId) {
+    const { snapshot, lesson, enrollment } = progressTarget(learnerId, lessonId);
+    if (lesson.kind !== 'survey') {
+      throw new Error('Synthetic submission target is not a survey.');
+    }
+    const existing = snapshot.surveyResponses.find(
+      (item) => item.enrollment_id === enrollment.id && item.lesson_id === lessonId,
+    );
+    if (existing) {
+      return {
+        response: clone(existing),
+        completion_fired: false,
+        already_submitted: true,
+      };
+    }
+    const response: LmsSurveyResponse = {
+      id: `${learnerId}-response-${lessonId}`,
+      enrollment_id: enrollment.id,
+      lesson_id: lessonId,
+      submitted_at: new Date().toISOString(),
+      answers: clone(answers),
+    };
+    snapshot.surveyResponses.push(response);
+    return {
+      response: clone(response),
+      completion_fired: false,
+      already_submitted: false,
+    };
   },
   async getQuiz(quizId) {
     const quiz = quizzes.find((item) => item.id === quizId);

@@ -9,6 +9,7 @@ import type {
   LmsModule,
   LmsModuleQuiz,
   LmsQuizAttempt,
+  LmsSurveyResponse,
 } from './progression-types.ts';
 
 export interface ProgressionContext {
@@ -18,6 +19,7 @@ export interface ProgressionContext {
   lessons: LmsLesson[];
   quizzes: LmsModuleQuiz[];
   progress: LmsLessonProgress[];
+  surveyResponses: LmsSurveyResponse[];
   attempts: LmsQuizAttempt[];
 }
 
@@ -46,7 +48,12 @@ export function termsGateSatisfied(
 export function lessonComplete(
   lesson: LmsLesson,
   progress: LmsLessonProgress[],
+  surveyResponses: LmsSurveyResponse[] = [],
 ): boolean {
+  if (lesson.kind === 'survey') {
+    return surveyResponses.some((response) => response.lesson_id === lesson.id);
+  }
+
   const record = progress.find((item) => item.lesson_id === lesson.id);
   if (!record) return false;
 
@@ -60,16 +67,28 @@ export function moduleRequirementsComplete(
   module: LmsModule,
   lessons: LmsLesson[],
   progress: LmsLessonProgress[],
+  surveyResponses: LmsSurveyResponse[] = [],
 ): boolean {
   return lessons
     .filter((lesson) => lesson.module_id === module.id && lesson.is_required)
-    .every((lesson) => lessonComplete(lesson, progress));
+    .every((lesson) => lessonComplete(lesson, progress, surveyResponses));
 }
 
 export function moduleUnlocked(context: ProgressionContext): boolean {
-  const { course, module, modules, lessons, quizzes, progress, attempts } = context;
+  const {
+    course,
+    module,
+    modules,
+    lessons,
+    quizzes,
+    progress,
+    surveyResponses,
+    attempts,
+  } = context;
 
-  if (course.progression === 'open' || module.position === 1) return true;
+  const courseModules = modules.filter((candidate) => candidate.course_id === course.id);
+  const lowestPosition = Math.min(...courseModules.map((candidate) => candidate.position));
+  if (course.progression === 'open' || module.position === lowestPosition) return true;
 
   const previousModule = modules.find(
     (candidate) =>
@@ -80,13 +99,21 @@ export function moduleUnlocked(context: ProgressionContext): boolean {
   const previousQuiz = quizzes.find((quiz) => quiz.module_id === previousModule.id);
   if (previousQuiz) return hasPassedAttempt(previousQuiz.id, attempts);
 
-  return moduleRequirementsComplete(previousModule, lessons, progress);
+  return moduleRequirementsComplete(previousModule, lessons, progress, surveyResponses);
 }
 
 export function quizAttemptable(context: ProgressionContext): boolean {
+  const quizRequirements = context.lessons.filter(
+    (lesson) => lesson.kind !== 'survey',
+  );
   return (
     moduleUnlocked(context) &&
-    moduleRequirementsComplete(context.module, context.lessons, context.progress)
+    moduleRequirementsComplete(
+      context.module,
+      quizRequirements,
+      context.progress,
+      context.surveyResponses,
+    )
   );
 }
 
@@ -116,6 +143,7 @@ export function courseComplete(
   quizzes: LmsModuleQuiz[],
   progress: LmsLessonProgress[],
   attempts: LmsQuizAttempt[],
+  surveyResponses: LmsSurveyResponse[] = [],
 ): boolean {
   const courseModuleIds = new Set(
     modules.filter((module) => module.course_id === course.id).map((module) => module.id),
@@ -126,7 +154,9 @@ export function courseComplete(
   const courseQuizzes = quizzes.filter((quiz) => courseModuleIds.has(quiz.module_id));
 
   return (
-    requiredLessons.every((lesson) => lessonComplete(lesson, progress)) &&
+    requiredLessons.every((lesson) =>
+      lessonComplete(lesson, progress, surveyResponses)
+    ) &&
     courseQuizzes.every((quiz) => hasPassedAttempt(quiz.id, attempts))
   );
 }

@@ -12,7 +12,13 @@ import {
   type MutationNotice,
 } from '../components/MutationStatusBanner';
 import { SessionExpiredDialog } from '../components/SessionExpiredDialog';
-import type { AdminSnapshot, LearnerInspection, QuestionBank } from '../data/admin';
+import type {
+  AdminSnapshot,
+  LearnerInspection,
+  QuestionBank,
+  SurveyExport,
+  SurveyResults,
+} from '../data/admin';
 import type { LmsAdminProvider } from '../data/provider';
 import { isLmsAccessDenied } from '../data/provider';
 import { supabaseProvider } from '../data/supabaseProvider';
@@ -25,6 +31,11 @@ interface AdminContextValue extends AdminSnapshot {
   mutate: <T>(action: string, payload: Record<string, unknown>) => Promise<T>;
   inspectLearner: (email: string) => Promise<LearnerInspection | null>;
   exportQuestionBank: (moduleId: string) => Promise<QuestionBank>;
+  surveyResults: (lessonId: string) => Promise<SurveyResults>;
+  exportSurveyResponses: (scope: {
+    lesson_id?: string;
+    course_id?: string;
+  }) => Promise<SurveyExport>;
 }
 
 const AdminContext = createContext<AdminContextValue | null>(null);
@@ -120,7 +131,22 @@ export function AdminProvider({
     mutate,
     inspectLearner: (email) => provider.adminRequest<LearnerInspection | null>('inspect_learner', { email }),
     exportQuestionBank: (moduleId) => provider.adminRequest<QuestionBank>('export_question_bank', { module_id: moduleId }),
-  } : null, [error, loading, mutate, provider, refresh, snapshot]);
+    surveyResults: async (lessonId) => {
+      const result = await provider.adminRequest<SurveyResults>('survey_results', {
+        lesson_id: lessonId,
+      });
+      await loadAdminSnapshot();
+      return result;
+    },
+    exportSurveyResponses: async (scope) => {
+      const result = await provider.adminRequest<SurveyExport>(
+        'export_survey_responses',
+        scope,
+      );
+      await loadAdminSnapshot();
+      return result;
+    },
+  } : null, [error, loadAdminSnapshot, loading, mutate, provider, refresh, snapshot]);
 
   if (!value) {
     // Boot failed before any snapshot loaded. If it was a denied session, the

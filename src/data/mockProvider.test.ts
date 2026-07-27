@@ -22,11 +22,14 @@ describe('mockProvider synthetic catalog', () => {
       'bonus-sandbox',
       'renewal-2026-sandbox',
     ]);
-    expect(mockCatalog.modules.filter((module) => module.course_id === 'course-fpt')).toHaveLength(4);
+    expect(mockCatalog.modules.filter((module) => module.course_id === 'course-fpt')).toHaveLength(5);
     expect(mockCatalog.modules.filter((module) => module.course_id === 'course-bonus')).toHaveLength(3);
     expect(mockCatalog.modules.filter((module) => module.course_id === 'course-renewal-2026')).toHaveLength(1);
     expect(mockCatalog.quizzes.filter((quiz) => quiz.module_id.startsWith('fpt-'))).toHaveLength(4);
     expect(mockCatalog.quizzes.filter((quiz) => quiz.module_id.startsWith('bonus-'))).toHaveLength(0);
+    expect(mockCatalog.modules.find((module) => module.id === 'fpt-intro')?.position).toBe(0);
+    expect(mockCatalog.lessons.filter((lesson) => lesson.kind === 'survey')).toHaveLength(3);
+    expect(mockCatalog.surveyQuestions).toHaveLength(8);
   });
 
   it('uses only clearly synthetic learner identities and enrollment sources', async () => {
@@ -65,5 +68,31 @@ describe('mockProvider synthetic catalog', () => {
     expect(payload.questions).toHaveLength(10);
     expect(payload.questions.every((question) => question.select_kind === 'single')).toBe(true);
     expect(JSON.stringify(payload)).not.toContain('"correct"');
+  });
+
+  it('keeps survey submission idempotent and preserves the first response', async () => {
+    const first = await mockProvider.submitSurvey(
+      'fpt-pre-course-survey',
+      {
+        'survey-pre-q1': 3,
+        'survey-pre-q2': 'First response',
+        'survey-pre-q3': 'advisor',
+      },
+      'fresh',
+    );
+    const second = await mockProvider.submitSurvey(
+      'fpt-pre-course-survey',
+      {
+        'survey-pre-q1': 5,
+        'survey-pre-q2': 'Replacement response',
+        'survey-pre-q3': 'other',
+      },
+      'fresh',
+    );
+
+    expect(first.already_submitted).toBe(false);
+    expect(second.already_submitted).toBe(true);
+    expect(second.response.id).toBe(first.response.id);
+    expect(second.response.answers['survey-pre-q2']).toBe('First response');
   });
 });

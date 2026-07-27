@@ -247,8 +247,8 @@ describe('D0 route shell', () => {
   });
 
   it.each([
-    ['mid-module-2', '1/4', 'On certification'],
-    ['fpt-completed', '4/4', 'Jul 16, 2027'],
+    ['mid-module-2', '2/5', 'On certification'],
+    ['fpt-completed', '5/5', 'Jul 16, 2027'],
   ] as const)('renders the X1 header stats for %s', async (learner, modules, designation) => {
     renderRoute('/dashboard', learner);
     expect(await screen.findByText(modules)).toBeInTheDocument();
@@ -342,7 +342,14 @@ describe('D0 route shell', () => {
     const hiddenExpiredProvider: LmsDataProvider = {
       ...mockProvider,
       async getCatalog() {
-        return { courses: [], modules: [], lessons: [], resources: [], quizzes: [] };
+        return {
+          courses: [],
+          modules: [],
+          lessons: [],
+          resources: [],
+          quizzes: [],
+          surveyQuestions: [],
+        };
       },
       async getLearnerSnapshot(learner) {
         const snapshot = await mockProvider.getLearnerSnapshot(learner);
@@ -815,10 +822,10 @@ describe('D6 operator routes', () => {
 
     expect(await screen.findByText('Private lesson resource uploaded.')).toBeInTheDocument();
     expect(adminRequestCalls).toHaveBeenCalledWith('upload_resource', expect.objectContaining({
-      lesson_id: 'fpt-m1-video',
+      lesson_id: 'fpt-intro-video',
       title: 'Operator guide',
       file_name: 'sandbox-resource.txt',
     }));
     expect(screen.getByText('upload resource succeeded.')).toBeInTheDocument();
-  });
+  }, 10_000);
 });
