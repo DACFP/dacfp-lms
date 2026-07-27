@@ -2,12 +2,13 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Circle,
   Download,
   FileText,
   LockKeyhole,
 } from 'lucide-react';
 import { Suspense, lazy, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Alert } from '../components/Alert';
 import { LockedBadge } from '../components/LockedBadge';
 import { EmptyState, PageHeader, StatusPill } from '../components/common';
@@ -50,6 +51,7 @@ function ReadingSkeleton() {
 
 export function LessonPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { catalog, snapshot, completeReading, submitSurvey } = useLms();
   const [savingReading, setSavingReading] = useState(false);
   const [readingError, setReadingError] = useState('');
@@ -93,6 +95,10 @@ export function LessonPage() {
     snapshot.surveyResponses.filter((item) => item.enrollment_id === enrollment.id),
   );
   const courseComplete = isCourseComplete(catalog, snapshot, course);
+  const courseModules = catalog.modules
+    .filter((item) => item.course_id === course.id)
+    .sort((a, b) => a.position - b.position);
+  const numberedModules = courseModules.filter((item) => item.position > 0);
   const moduleLessons = catalog.lessons
     .filter((item) => item.module_id === module.id)
     .sort((a, b) => a.position - b.position);
@@ -100,6 +106,16 @@ export function LessonPage() {
   const previous = moduleLessons[lessonIndex - 1];
   const next = moduleLessons[lessonIndex + 1];
   const resources = catalog.resources.filter((resource) => resource.lesson_id === lesson.id);
+  const enrollmentProgress = snapshot.progress.filter(
+    (item) => item.enrollment_id === enrollment.id,
+  );
+  const enrollmentSurveyResponses = snapshot.surveyResponses.filter(
+    (item) => item.enrollment_id === enrollment.id,
+  );
+  const moduleLabel = module.position === 0
+    ? 'Introduction'
+    : `Module ${module.position} of ${numberedModules.length}`;
+  const replaySeconds = searchParams.get('replay') === '30' ? 30 : 0;
   return (
     <div className="space-y-8">
       <PageHeader
@@ -118,6 +134,43 @@ export function LessonPage() {
           </StatusPill>
         }
       />
+
+      <details className="card group" open>
+        <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 font-bold text-dacfp-navy sm:px-6">
+          <span>{moduleLabel} · lesson checklist</span>
+          <span className="text-xs font-semibold tabular-nums text-dacfp-gray-text">
+            {moduleLessons.filter((item) => lessonComplete(item, enrollmentProgress, enrollmentSurveyResponses)).length}/{moduleLessons.length} complete
+          </span>
+        </summary>
+        <ol className="border-t border-dacfp-line">
+          {moduleLessons.map((item, index) => {
+            const itemComplete = lessonComplete(
+              item,
+              enrollmentProgress,
+              enrollmentSurveyResponses,
+            );
+            return (
+              <li key={item.id} className={index === 0 ? undefined : 'border-t border-dacfp-line/60'}>
+                <Link
+                  className={`flex min-h-12 items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-dacfp-wash sm:px-6 ${item.id === lesson.id ? 'font-bold text-dacfp-navy' : 'font-semibold text-dacfp-gray-text'}`}
+                  to={`/lesson/${item.id}`}
+                  aria-current={item.id === lesson.id ? 'page' : undefined}
+                >
+                  {itemComplete ? (
+                    <CheckCircle2 className="size-icon-sm shrink-0 text-status-positive" aria-hidden="true" />
+                  ) : (
+                    <Circle className="size-icon-sm shrink-0 text-dacfp-gray-text" aria-hidden="true" />
+                  )}
+                  <span className="min-w-0 flex-1">{item.position}. {item.title}</span>
+                  <span className="text-xs font-normal text-dacfp-gray-text">
+                    {itemComplete ? 'Complete' : item.id === lesson.id ? 'Current' : 'Not complete'}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ol>
+      </details>
 
       {!accessible ? (
         <section className="card flex gap-4 p-6">
@@ -143,6 +196,7 @@ export function LessonPage() {
           lesson={lesson}
           progress={progress}
           reviewMode={complete || courseComplete}
+          initialResumeOffsetSeconds={replaySeconds}
         />
       ) : lesson.kind === 'survey' ? (
         <SurveyLesson

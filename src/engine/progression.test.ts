@@ -40,6 +40,7 @@ const modules: LmsModule[] = [1, 2, 3].map((position) => ({
   position,
   title: `Module ${position}`,
   ce_credits: null,
+  bridge_copy: null,
 }));
 
 const lessons: LmsLesson[] = modules.map((module) => ({

@@ -140,7 +140,9 @@ describe('D0 route shell', () => {
     ['/lesson/fpt-m1-video', 'Bitcoin Foundations: Video lesson'],
     ['/quiz/fpt-m1', 'Module 1 quiz'],
     ['/account', 'Profile and credentials'],
-    ['/certificate', 'Fully complete'],
+    ['/credentials', 'My Credentials'],
+    ['/certificate', 'My Credentials'],
+    ['/completion/fpt-sandbox', 'You completed the course'],
   ])('renders %s on mock data', async (path, heading) => {
     renderRoute(path);
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
@@ -257,14 +259,61 @@ describe('D0 route shell', () => {
     expect(screen.getAllByText(designation).length).toBeGreaterThan(0);
   });
 
+  it('shows the completion contract and lets the learner collapse it', async () => {
+    window.localStorage.clear();
+    renderRoute('/dashboard', 'mid-module-2');
+    expect(await screen.findByRole('heading', { name: 'How you earn the CBDA' })).toBeInTheDocument();
+    expect(screen.getByText('Pass each 10-question quiz at 70%')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
+    expect(screen.getByText('5 modules · 70% per quiz · unlimited attempts · no final exam')).toBeInTheDocument();
+    expect(screen.queryByText('Pass each 10-question quiz at 70%')).not.toBeInTheDocument();
+  });
+
+  it('gives a returner an exact memory cue plus resume and replay actions', async () => {
+    renderRoute('/dashboard', 'mid-module-2');
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Welcome back — you stopped 4:00 into Module 2: Blockchain and DLT: Video lesson.',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Resume/ })).toHaveAttribute('href', '/lesson/fpt-m2-video');
+    expect(screen.getByRole('link', { name: 'Replay last 30s' })).toHaveAttribute('href', '/lesson/fpt-m2-video?replay=30');
+  });
+
+  it('keeps a collapsible module lesson checklist in the player view', async () => {
+    renderRoute('/lesson/fpt-m2-video', 'mid-module-2');
+    expect(await screen.findByText('Module 2 of 4 · lesson checklist')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Blockchain and DLT: Reading/ })).toBeInTheDocument();
+    expect(screen.getByText('0/3 complete')).toBeInTheDocument();
+  });
+
+  it('names and links the exact blocking quiz for a locked module', async () => {
+    renderRoute('/course/fpt-sandbox/module/4', 'quiz-failed-on-3');
+    expect((await screen.findAllByText("Complete Module 3's quiz to unlock.")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole('link', { name: 'Go to Module 3 quiz' })).toHaveAttribute('href', '/quiz/fpt-m3');
+  });
+
+  it('renders the completed learner checklist and credential reveal', async () => {
+    renderRoute('/completion/fpt-sandbox', 'fpt-completed');
+    expect(await screen.findByRole('heading', { name: 'You completed the course' })).toBeInTheDocument();
+    expect(screen.getByText('5/5')).toBeInTheDocument();
+    expect(screen.getByText('4/4')).toBeInTheDocument();
+    expect(screen.getByText('FPT completed')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your interim CBDA credential is ready' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open My Credentials' })).toHaveAttribute('href', '/credentials');
+    expect(screen.queryByRole('heading', { name: 'CE reporting status' })).not.toBeInTheDocument();
+  });
+
   it('renders the interim certificate only after FPT completion', async () => {
     renderRoute('/certificate', 'mid-module-2');
+    expect(await screen.findByRole('heading', { level: 1, name: 'My Credentials' })).toBeInTheDocument();
     expect(await screen.findByText('Certificate not available yet')).toBeInTheDocument();
   });
 
   it('renders a completed learner interim certificate with designation dates', async () => {
     renderRoute('/certificate', 'fpt-completed');
-    expect(await screen.findByRole('heading', { level: 1, name: 'FPT completed' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'My Credentials' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'FPT completed' })).toBeInTheDocument();
     expect(screen.getByText('Certified in Blockchain and Digital Assets')).toBeInTheDocument();
     expect(screen.getByText('Interim demonstration certificate')).toBeInTheDocument();
     expect(screen.getByText('Jul 16, 2026')).toBeInTheDocument();
@@ -492,14 +541,14 @@ describe('D0 route shell', () => {
     // Wait for the first question before stepping (the payload loads async).
     await screen.findByText('Select one answer');
     fireEvent.click(await walkToReview());
-    expect(await screen.findByText('7/10')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Retake quiz' })).toBeInTheDocument();
-    expect(screen.getByText('All course requirements are complete.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Passed — 7/10' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View completion/ })).toBeInTheDocument();
+    expect(screen.getByText('Every requirement is complete')).toBeInTheDocument();
     expect(screen.getByText(/Bonus Sandbox unlocked on your dashboard/i)).toBeInTheDocument();
     expect(getCatalog).toHaveBeenCalledTimes(2);
   });
 
-  it('announces the next sequential module when a quiz passes', async () => {
+  it('shows the authored next-module bridge when a quiz passes', async () => {
     const quizProvider: LmsDataProvider = {
       ...mockProvider,
       async gradeQuiz() {
@@ -520,7 +569,37 @@ describe('D0 route shell', () => {
     );
     await screen.findByText('Select one answer');
     fireEvent.click(await walkToReview());
-    expect(await screen.findByText('Module 4 unlocked. You can continue immediately.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Module 4: Layer 2, Tokens, and DeFi' })).toBeInTheDocument();
+    expect(screen.getByText(/Connect scaling, tokens, and DeFi/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Start Module 4/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Save and exit' })).toBeInTheDocument();
+  });
+
+  it('uses guided recovery as the only failed-quiz actions', async () => {
+    const quizProvider: LmsDataProvider = {
+      ...mockProvider,
+      async gradeQuiz() {
+        return {
+          attempt_number: 2,
+          score: 6,
+          possible_points: 10,
+          passed: false,
+          completion_fired: false,
+        };
+      },
+    };
+    renderRoute(
+      '/quiz/fpt-m3',
+      'quiz-failed-on-3',
+      testAuthProvider(signedInSession),
+      quizProvider,
+    );
+    await screen.findByText('Select one answer');
+    fireEvent.click(await walkToReview());
+    expect(await screen.findByRole('heading', { name: 'Not yet — 6/10 · 7/10 required' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review lessons' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry quiz' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Start Module/ })).not.toBeInTheDocument();
   });
 
   it('renders normal single-answer quiz questions as radio groups', async () => {

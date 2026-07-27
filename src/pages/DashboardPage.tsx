@@ -1,7 +1,9 @@
 import {
   Award,
   BookMarked,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleHelp,
   ExternalLink,
   FileText,
@@ -9,6 +11,7 @@ import {
   Search,
   ShieldAlert,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CbdaSeal } from '../components/CbdaSeal';
 import { IconTile } from '../components/IconTile';
@@ -36,6 +39,7 @@ import {
 } from '../lib/progress';
 import { QUIZ_POLICY_COPY } from '../lib/quizPolicy';
 import { isRenewalWindowOpen, renewalWindowForEnrollment } from '../lib/renewal';
+import { formatClock } from '../lib/time';
 
 function addOneYear(value: string) {
   const date = new Date(value);
@@ -64,7 +68,7 @@ function courseView(
   const enrollmentSurveyResponses = snapshot.surveyResponses.filter(
     (item) => item.enrollment_id === enrollment.id,
   );
-  const resumeLesson = resumeModule
+  const resumeItem = resumeModule
     ? catalog.lessons
         .filter((lesson) => lesson.module_id === resumeModule.id)
         .map((lesson) => ({
@@ -81,8 +85,10 @@ function courseView(
           lesson,
           enrollmentProgress,
           enrollmentSurveyResponses,
-        ))?.lesson
+        ))
     : null;
+  const resumeLesson = resumeItem?.lesson ?? null;
+  const resumeProgress = resumeItem?.progress ?? null;
   const contentAvailable = accessState === 'active' && unlocked && termsAccepted;
   const resumePath = resumeLesson
     ? `/lesson/${resumeLesson.id}`
@@ -99,6 +105,7 @@ function courseView(
     progress,
     resumeModule,
     resumeLesson,
+    resumeProgress,
     contentAvailable,
     resumePath,
   };
@@ -211,6 +218,79 @@ function ProgressTicker({ ledger, enrollment }: { ledger: LedgerRow[]; enrollmen
   );
 }
 
+function orientationWasCollapsed(storageKey: string) {
+  try {
+    return window.localStorage.getItem(storageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function OrientationCard({
+  moduleCount,
+  storageKey,
+}: {
+  moduleCount: number;
+  storageKey: string;
+}) {
+  const [collapsed, setCollapsed] = useState(() => orientationWasCollapsed(storageKey));
+
+  const setCardCollapsed = (next: boolean) => {
+    setCollapsed(next);
+    try {
+      window.localStorage.setItem(storageKey, String(next));
+    } catch {
+      // Storage can be unavailable in privacy-restricted browsers; the in-page
+      // collapse still works for the current visit.
+    }
+  };
+
+  return (
+    <section aria-labelledby="orientation-heading" className="card border-l-[3px] border-l-dacfp-gold-text p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="eyebrow text-dacfp-gold-text">Your completion contract</p>
+          <h2 id="orientation-heading" className="mt-1.5 text-xl font-bold text-dacfp-navy">
+            How you earn the CBDA
+          </h2>
+        </div>
+        <button
+          className="button-quiet shrink-0 px-3"
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls="orientation-details"
+          onClick={() => setCardCollapsed(!collapsed)}
+        >
+          {collapsed ? <ChevronDown className="size-icon-sm" aria-hidden="true" /> : <ChevronUp className="size-icon-sm" aria-hidden="true" />}
+          {collapsed ? 'Show' : 'Collapse'}
+        </button>
+      </div>
+      {collapsed ? (
+        <p className="mt-3 text-sm text-dacfp-gray-text">
+          {moduleCount} modules · 70% per quiz · unlimited attempts · no final exam
+        </p>
+      ) : (
+        <div id="orientation-details" className="mt-5 grid gap-3 sm:grid-cols-2">
+          {[
+            `Complete all ${moduleCount} modules`,
+            'Pass each 10-question quiz at 70%',
+            'Retake any quiz — attempts are unlimited',
+            'No cumulative final exam',
+          ].map((item) => (
+            <p key={item} className="flex items-start gap-2 text-sm leading-6 text-dacfp-navy">
+              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dacfp-gold-text" aria-hidden="true" />
+              {item}
+            </p>
+          ))}
+          <p className="sm:col-span-2 border-t border-dacfp-line pt-3 text-sm leading-6 text-dacfp-gray-text">
+            Once every requirement is complete, your credential is revealed and CE follow-through begins.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function StatBand({
   ledger,
   enrollment,
@@ -287,11 +367,36 @@ function NextUpCard({ view, ledger, course }: { view: CourseView; ledger: Ledger
         <p className="mt-2 max-w-prose text-sm leading-6 text-dacfp-gray-text">
           All modules and quizzes in {course.title} are complete. Every module and lesson is open for review in any order.
         </p>
-        {view.resumeModule ? <Link className="button-secondary mt-5" to={`/course/${course.slug}/module/1`}>Review from module 1</Link> : null}
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Link className="button-primary" to={`/completion/${course.slug}`}>View completion</Link>
+          {view.resumeModule ? <Link className="button-secondary" to={`/course/${course.slug}/module/1`}>Review from module 1</Link> : null}
+        </div>
       </section>
     );
   }
   if (!next) return null;
+  const stoppedAt = view.resumeProgress?.last_position_seconds ?? 0;
+  if (view.resumeLesson && stoppedAt > 0) {
+    return (
+      <section aria-labelledby="next-up-heading" className="card border-t-[3px] border-t-dacfp-gold-text p-6 sm:p-7">
+        <p className="eyebrow text-dacfp-gold-text">Resume with memory</p>
+        <h2 id="next-up-heading" className="mt-1.5 text-2xl font-bold text-dacfp-navy">
+          Welcome back — you stopped {formatClock(stoppedAt)} into Module {next.module.position}: {view.resumeLesson.title}.
+        </h2>
+        <p className="mt-2 max-w-prose text-sm leading-6 text-dacfp-gray-text">
+          Continue from the exact saved point, or replay the prior 30 seconds to restore context.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Link className="button-primary" to={view.resumePath}>
+            Resume <ChevronRight className="size-icon-sm" aria-hidden="true" />
+          </Link>
+          <Link className="button-secondary" to={`${view.resumePath}?replay=30`}>
+            Replay last 30s
+          </Link>
+        </div>
+      </section>
+    );
+  }
   return (
     <section aria-labelledby="next-up-heading" className="card border-t-[3px] border-t-dacfp-gold-text p-6 sm:p-7">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -324,8 +429,11 @@ function CourseOfStudy({ view, ledger, course }: { view: CourseView; ledger: Led
         <p className="text-xs tabular-nums text-dacfp-gray-text">{ledger.length} modules · {view.complete ? 'open for review' : 'in order'}</p>
       </div>
       <ol>
-        {ledger.map((row) => {
+        {ledger.map((row, index) => {
           const rowState = row.passed ? 'passed' : row.current ? 'current' : row.unlocked ? 'available' : 'locked';
+          const blocker = rowState === 'locked' && view.contentAvailable
+            ? ledger.slice(0, index).find((candidate) => !candidate.passed && candidate.quiz)
+            : undefined;
           const body = (
             <>
               <span className={`w-8 shrink-0 text-xs font-bold tabular-nums ${rowState === 'locked' ? 'text-dacfp-gray-text' : 'text-dacfp-gold-text'}`}>{String(row.module.position).padStart(2, '0')}</span>
@@ -344,7 +452,19 @@ function CourseOfStudy({ view, ledger, course }: { view: CourseView; ledger: Led
               {row.unlocked ? (
                 <Link to={`/course/${course.slug}/module/${row.module.position}`} className="flex min-h-14 items-center gap-3 px-5 py-3 transition-colors hover:bg-dacfp-wash sm:px-7">{body}</Link>
               ) : (
-                <div className="flex min-h-14 items-center gap-3 px-5 py-3 opacity-80 sm:px-7" aria-label={`Module ${row.module.position} is locked until the previous quiz is passed.`}>{body}</div>
+                <div className="px-5 py-3 opacity-80 sm:px-7">
+                  <div className="flex min-h-14 items-center gap-3" aria-label={`Module ${row.module.position} is locked.`}>{body}</div>
+                  {blocker ? (
+                    <div className="mb-2 ml-11 flex flex-wrap items-center justify-between gap-3 rounded-[0.1875rem] bg-dacfp-wash px-3 py-2 text-xs">
+                      <p className="font-semibold text-dacfp-gray-text">
+                        Complete Module {blocker.module.position}&apos;s quiz to unlock.
+                      </p>
+                      <Link className="button-quiet min-h-9 px-3" to={`/quiz/${blocker.module.id}`}>
+                        Go to Module {blocker.module.position} quiz
+                      </Link>
+                    </div>
+                  ) : null}
+                </div>
               )}
             </li>
           );
@@ -410,13 +530,13 @@ function DesignationPanel({ completion, moduleCount, learnerName }: { completion
   const validThrough = addOneYear(completion.completed_at);
   return (
     <section aria-labelledby="designation-heading" className="on-navy rounded-[0.1875rem] bg-dacfp-navy p-5 text-white sm:p-6">
-      <div className="flex items-center gap-4"><CbdaSeal size="sm" decorative /><div><p className="text-[11px] font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">Designation</p><h2 id="designation-heading" className="mt-1 text-lg font-bold">Active</h2></div></div>
+      <div className="flex items-center gap-4"><CbdaSeal size="sm" decorative /><div><p className="text-[11px] font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">Designation</p><h2 id="designation-heading" className="mt-1 text-lg font-bold">{completion.designation_issued ? 'Issued' : 'Issuance processing'}</h2></div></div>
       <dl className="mt-5 space-y-3 border-t border-white/20 pt-4 text-sm">
         <div><dt className="text-white/60">Credential holder</dt><dd className="mt-0.5 font-semibold">{learnerName}</dd></div>
         <div><dt className="text-white/60">Certified on</dt><dd className="mt-0.5 font-semibold tabular-nums">{formatDate(completion.completed_at)}</dd></div>
         <div><dt className="text-white/60">Valid through</dt><dd className="mt-0.5 font-semibold tabular-nums">{formatDate(validThrough)}</dd></div>
       </dl>
-      <Link className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[0.1875rem] bg-white px-4 py-2.5 text-sm font-bold text-dacfp-navy hover:bg-dacfp-gold-hi" to="/certificate">View certificate<FileText className="size-icon-sm" aria-hidden="true" /></Link>
+      <Link className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[0.1875rem] bg-white px-4 py-2.5 text-sm font-bold text-dacfp-navy hover:bg-dacfp-gold-hi" to="/credentials">Open My Credentials<FileText className="size-icon-sm" aria-hidden="true" /></Link>
     </section>
   );
 }
@@ -492,7 +612,7 @@ export function DashboardPage() {
       {header}
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div className="min-w-0 space-y-8">
-          {flagship && flagshipView ? <><NextUpCard view={flagshipView} ledger={ledger} course={flagship.course} /><CourseOfStudy view={flagshipView} ledger={ledger} course={flagship.course} /><ResourcesSection /></> : null}
+          {flagship && flagshipView ? <>{!flagshipView.complete ? <OrientationCard moduleCount={ledger.length} storageKey={`dacfp-orientation:${snapshot.profile.auth_user_id}`} /> : null}<NextUpCard view={flagshipView} ledger={ledger} course={flagship.course} /><CourseOfStudy view={flagshipView} ledger={ledger} course={flagship.course} /><ResourcesSection /></> : null}
           {flagshipCompletion ? library.map(({ course }) => <BonusLibrary key={course.id} course={course} modules={catalog.modules.filter((module) => module.course_id === course.id).sort((a, b) => a.position - b.position)} />) : null}
           {(flagshipCompletion || !flagship) && hidden.length > 0 ? <section className="grid gap-5 sm:grid-cols-2">{hidden.map(({ enrollment }) => <HiddenCourseCard key={enrollment.id} enrollment={enrollment} />)}</section> : null}
         </div>

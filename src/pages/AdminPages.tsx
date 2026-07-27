@@ -725,9 +725,22 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
         >
           <GripVertical className="size-icon-md" aria-hidden="true" />
         </button>
-        <form className="flex flex-1 flex-col gap-3 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); const title = new FormData(event.currentTarget).get('title'); await handleMutation(mutate('update_module', { id: module.id, title })); }}>
-          <Input name="title" defaultValue={module.title} aria-label={`Module ${module.position} title`} />
-          <button className="button-secondary shrink-0" type="submit">Save module</button>
+        <form className="flex flex-1 flex-col gap-3" onSubmit={async (event) => { event.preventDefault(); const values = new FormData(event.currentTarget); await handleMutation(mutate('update_module', { id: module.id, title: values.get('title'), bridge_copy: values.get('bridge_copy') })); }}>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Input name="title" defaultValue={module.title} aria-label={`Module ${module.position} title`} />
+            <button className="button-secondary shrink-0" type="submit">Save module</button>
+          </div>
+          <Field
+            label="Transition bridge copy"
+            hint="One sentence explaining why this module matters. It appears after the preceding quiz pass."
+          >
+            <Textarea
+              className="min-h-20"
+              name="bridge_copy"
+              defaultValue={module.bridge_copy ?? ''}
+              placeholder="Why this module matters to a financial professional"
+            />
+          </Field>
         </form>
         <div className="flex shrink-0 items-center gap-1">
           <ReorderControls

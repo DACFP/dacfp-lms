@@ -29,11 +29,13 @@ export function LessonPlayer({
   lesson,
   progress,
   reviewMode,
+  initialResumeOffsetSeconds = 0,
 }: {
   course: LmsCourse;
   lesson: LmsLesson;
   progress: LmsLessonProgress | undefined;
   reviewMode: boolean;
+  initialResumeOffsetSeconds?: number;
 }) {
   const { requestPlayback, recordHeartbeat } = useLms();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -46,7 +48,9 @@ export function LessonPlayer({
   const errorRefreshAttempted = useRef(false);
   const sourceRef = useRef('');
   const furthestWatched = useRef(progress?.max_watched_seconds ?? 0);
-  const pendingResume = useRef(progress?.last_position_seconds ?? 0);
+  const pendingResume = useRef(
+    Math.max(0, (progress?.last_position_seconds ?? 0) - initialResumeOffsetSeconds),
+  );
   const resumePlaying = useRef(false);
   const [source, setSource] = useState('');
   const [loading, setLoading] = useState(true);

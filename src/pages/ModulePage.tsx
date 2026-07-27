@@ -76,6 +76,17 @@ export function ModulePage() {
   const courseModules = catalog.modules
     .filter((item) => item.course_id === course.id)
     .sort((a, b) => a.position - b.position);
+  const blockingModule = !currentModuleUnlocked && accessActive && courseIsUnlocked && termsAccepted
+    ? courseModules
+        .filter((item) => item.position < module.position)
+        .find((item) => !moduleIsPassed(catalog, snapshot, course, item)) ?? null
+    : null;
+  const blockingQuiz = blockingModule
+    ? catalog.quizzes.find((item) => item.module_id === blockingModule.id) ?? null
+    : null;
+  const lockedModuleCopy = blockingModule && blockingQuiz
+    ? `Complete Module ${blockingModule.position}'s quiz to unlock`
+    : null;
   const passed = moduleIsPassed(catalog, snapshot, course, module);
   const courseComplete = isCourseComplete(catalog, snapshot, course);
   const nextModule = courseModules.find((item) => item.position === module.position + 1);
@@ -123,7 +134,7 @@ export function ModulePage() {
           ) : contentAccessible ? (
             <StatusPill tone="neutral">Available</StatusPill>
           ) : (
-            <LockedBadge reason={`Module ${module.position} is not open yet. Pass the previous module quiz, or accept the course terms, to unlock it.`} />
+            <LockedBadge reason={lockedModuleCopy ? `${lockedModuleCopy}.` : `Module ${module.position} is not open yet.`} />
           )
         }
       />
@@ -146,8 +157,15 @@ export function ModulePage() {
                         ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
                     : !termsAccepted
                       ? 'Accept the course terms before opening content.'
-                      : 'Pass the previous module quiz to continue.'}
+                      : lockedModuleCopy
+                        ? `${lockedModuleCopy}.`
+                        : 'Complete the previous module to continue.'}
                 </p>
+                {blockingModule && blockingQuiz ? (
+                  <Link className="button-secondary mt-4" to={`/quiz/${blockingModule.id}`}>
+                    Go to Module {blockingModule.position} quiz
+                  </Link>
+                ) : null}
               </div>
             </div>
           ) : null}
