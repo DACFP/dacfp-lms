@@ -267,6 +267,8 @@ describe('completion rules', () => {
       lesson_id: survey.id,
       submitted_at: createdAt(),
       answers: {},
+      choice_free_text: {},
+      path: ['section-1'],
     };
     const allProgress = lessons.map(completeProgress);
     const allAttempts = quizzes.map((quiz) => attempt(quiz.id, 1, true));

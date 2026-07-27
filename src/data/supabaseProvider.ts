@@ -33,6 +33,7 @@ import type {
   LmsQuizAttempt,
   LmsSurveyQuestion,
   LmsSurveyResponse,
+  LmsSurveySection,
 } from './types';
 import { profileDisplayName } from '../lib/profile';
 
@@ -254,7 +255,7 @@ function progressFromPayload(value: unknown): LmsLessonProgress {
 
 const contentProvider: LmsProvider = {
   async getCatalog() {
-    const [courses, modules, lessons, resources, quizzes, surveyQuestions] = await Promise.all([
+    const [courses, modules, lessons, resources, quizzes, surveySections, surveyQuestions] = await Promise.all([
       tableRows<LmsCourse>('lms_courses', ['created_at']),
       tableRows<LmsModule>('lms_modules', ['course_id', 'position']),
       tableRows<LmsLesson>('lms_lessons', ['module_id', 'position']),
@@ -263,12 +264,16 @@ const contentProvider: LmsProvider = {
         'position',
       ]),
       tableRows<LmsModuleQuiz>('lms_module_quizzes', ['module_id']),
-      tableRows<LmsSurveyQuestion>('lms_survey_questions', [
+      tableRows<LmsSurveySection>('lms_survey_sections', [
         'lesson_id',
         'position',
       ]),
+      tableRows<LmsSurveyQuestion>('lms_survey_questions', [
+        'section_id',
+        'position',
+      ]),
     ]);
-    return { courses, modules, lessons, resources, quizzes, surveyQuestions };
+    return { courses, modules, lessons, resources, quizzes, surveySections, surveyQuestions };
   },
 
   async getLearnerSnapshot(_learnerId: LearnerStateKey) {
@@ -440,10 +445,10 @@ const contentProvider: LmsProvider = {
     return progressFromPayload(data.progress);
   },
 
-  async submitSurvey(lessonId, answers) {
+  async submitSurvey(lessonId, submission) {
     const { data, error } = await getClient().functions.invoke(
       'lms-submit-survey',
-      { body: { lesson_id: lessonId, answers } },
+      { body: { lesson_id: lessonId, ...submission } },
     );
     if (
       error ||

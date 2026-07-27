@@ -218,95 +218,226 @@ set module_id = excluded.module_id,
     body_md = excluded.body_md,
     is_required = excluded.is_required;
 
+delete from public.lms_survey_sections
+where lesson_id in (
+  md5('fpt-sandbox:survey:pre-course')::uuid,
+  md5('fpt-sandbox:survey:module-1')::uuid,
+  md5('fpt-sandbox:survey:post-course')::uuid
+);
+
+insert into public.lms_survey_sections (
+  id,
+  lesson_id,
+  position,
+  title,
+  default_next_section_id
+)
+values
+  (
+    md5('fpt-sandbox:survey:pre-course:section:spine')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    1,
+    'Starting questions',
+    md5('fpt-sandbox:survey:pre-course:section:tail')::uuid
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:section:owner')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    2,
+    'Owner path',
+    md5('fpt-sandbox:survey:pre-course:section:tail')::uuid
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:section:owner-platform')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    3,
+    'Owner platform path',
+    md5('fpt-sandbox:survey:pre-course:section:tail')::uuid
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:section:non-owner')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    4,
+    'Non-owner path',
+    md5('fpt-sandbox:survey:pre-course:section:tail')::uuid
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:section:other')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    5,
+    'Other path',
+    md5('fpt-sandbox:survey:pre-course:section:tail')::uuid
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:section:tail')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    6,
+    'Shared closing questions',
+    null
+  ),
+  (
+    md5('fpt-sandbox:survey:module-1:section:default')::uuid,
+    md5('fpt-sandbox:survey:module-1')::uuid,
+    1,
+    'Module feedback',
+    null
+  ),
+  (
+    md5('fpt-sandbox:survey:post-course:section:default')::uuid,
+    md5('fpt-sandbox:survey:post-course')::uuid,
+    1,
+    'Course feedback',
+    null
+  );
+
 insert into public.lms_survey_questions (
   id,
   lesson_id,
+  section_id,
   position,
   prompt,
   kind,
   choices,
-  required
+  required,
+  routes
 )
 values
   (
     md5('fpt-sandbox:survey:pre-course:q1')::uuid,
     md5('fpt-sandbox:survey:pre-course')::uuid,
+    md5('fpt-sandbox:survey:pre-course:section:spine')::uuid,
     1,
     'How familiar are you with digital assets today?',
     'scale_1_5',
     null,
-    true
-  ),
-  (
-    md5('fpt-sandbox:survey:pre-course:q2')::uuid,
-    md5('fpt-sandbox:survey:pre-course')::uuid,
-    2,
-    'What do you most want to learn?',
-    'text',
-    null,
-    true
+    true,
+    null
   ),
   (
     md5('fpt-sandbox:survey:pre-course:q3')::uuid,
     md5('fpt-sandbox:survey:pre-course')::uuid,
-    3,
-    'Which role best matches your work?',
+    md5('fpt-sandbox:survey:pre-course:section:spine')::uuid,
+    2,
+    'Which placeholder path should this preview follow?',
     'single_choice',
-    '[{"id":"advisor","text":"Advisor"},{"id":"planner","text":"Planner"},{"id":"other","text":"Other"}]'::jsonb,
-    true
+    '[{"id":"owner","text":"Owner path"},{"id":"non-owner","text":"Non-owner path"},{"id":"other","text":"Other path","allow_free_text":true}]'::jsonb,
+    true,
+    jsonb_build_object(
+      'owner', md5('fpt-sandbox:survey:pre-course:section:owner')::text,
+      'non-owner', md5('fpt-sandbox:survey:pre-course:section:non-owner')::text,
+      'other', md5('fpt-sandbox:survey:pre-course:section:other')::text
+    )
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:q4')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    md5('fpt-sandbox:survey:pre-course:section:owner')::uuid,
+    1,
+    'Choose a placeholder second-level owner path.',
+    'single_choice',
+    '[{"id":"platform","text":"Platform detail path"},{"id":"wallet","text":"Continue to the shared tail"}]'::jsonb,
+    true,
+    jsonb_build_object(
+      'platform', md5('fpt-sandbox:survey:pre-course:section:owner-platform')::text
+    )
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:q5')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    md5('fpt-sandbox:survey:pre-course:section:owner-platform')::uuid,
+    1,
+    'Enter a synthetic platform detail.',
+    'text',
+    null,
+    true,
+    null
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:q6')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    md5('fpt-sandbox:survey:pre-course:section:non-owner')::uuid,
+    1,
+    'Enter a synthetic non-owner reason.',
+    'text',
+    null,
+    true,
+    null
+  ),
+  (
+    md5('fpt-sandbox:survey:pre-course:q2')::uuid,
+    md5('fpt-sandbox:survey:pre-course')::uuid,
+    md5('fpt-sandbox:survey:pre-course:section:tail')::uuid,
+    1,
+    'What do you most want to learn?',
+    'text',
+    null,
+    true,
+    null
   ),
   (
     md5('fpt-sandbox:survey:module-1:q1')::uuid,
     md5('fpt-sandbox:survey:module-1')::uuid,
+    md5('fpt-sandbox:survey:module-1:section:default')::uuid,
     1,
     'How useful was this module?',
     'scale_1_5',
     null,
-    true
+    true,
+    null
   ),
   (
     md5('fpt-sandbox:survey:module-1:q2')::uuid,
     md5('fpt-sandbox:survey:module-1')::uuid,
+    md5('fpt-sandbox:survey:module-1:section:default')::uuid,
     2,
     'Which topics should receive more attention?',
     'multi_choice',
     '[{"id":"bitcoin","text":"Bitcoin"},{"id":"custody","text":"Custody"},{"id":"portfolio","text":"Portfolio use"}]'::jsonb,
-    true
+    true,
+    null
   ),
   (
     md5('fpt-sandbox:survey:post-course:q1')::uuid,
     md5('fpt-sandbox:survey:post-course')::uuid,
+    md5('fpt-sandbox:survey:post-course:section:default')::uuid,
     1,
     'How confident are you after the course?',
     'scale_1_5',
     null,
-    true
+    true,
+    null
   ),
   (
     md5('fpt-sandbox:survey:post-course:q2')::uuid,
     md5('fpt-sandbox:survey:post-course')::uuid,
+    md5('fpt-sandbox:survey:post-course:section:default')::uuid,
     2,
     'What was the most valuable topic?',
     'single_choice',
     '[{"id":"foundations","text":"Foundations"},{"id":"portfolio","text":"Portfolio construction"},{"id":"practice","text":"Practice application"}]'::jsonb,
-    true
+    true,
+    null
   ),
   (
     md5('fpt-sandbox:survey:post-course:q3')::uuid,
     md5('fpt-sandbox:survey:post-course')::uuid,
+    md5('fpt-sandbox:survey:post-course:section:default')::uuid,
     3,
     'What should we improve?',
     'text',
     null,
-    true
+    true,
+    null
   )
 on conflict (id) do update
 set lesson_id = excluded.lesson_id,
+    section_id = excluded.section_id,
     position = excluded.position,
     prompt = excluded.prompt,
     kind = excluded.kind,
     choices = excluded.choices,
-    required = excluded.required;
+    required = excluded.required,
+    routes = excluded.routes;
 
 insert into public.lms_lessons (
   id,
@@ -758,55 +889,107 @@ join public.lms_modules module
  and module.position = plan.module_position
 join public.lms_module_quizzes quiz on quiz.module_id = module.id;
 
+with response_targets as (
+  select
+    plan.email,
+    enrollment.id as enrollment_id,
+    lesson.id as lesson_id,
+    case
+      when lesson.id = md5('fpt-sandbox:survey:pre-course')::uuid
+        and plan.email in (
+          'near-expiry@example.test',
+          'almostdone@example.test',
+          'complete@example.test'
+        )
+      then array[
+        md5('fpt-sandbox:survey:pre-course:section:spine')::uuid,
+        md5('fpt-sandbox:survey:pre-course:section:owner')::uuid,
+        md5('fpt-sandbox:survey:pre-course:section:owner-platform')::uuid,
+        md5('fpt-sandbox:survey:pre-course:section:tail')::uuid
+      ]
+      when lesson.id = md5('fpt-sandbox:survey:pre-course')::uuid
+      then array[
+        md5('fpt-sandbox:survey:pre-course:section:spine')::uuid,
+        md5('fpt-sandbox:survey:pre-course:section:non-owner')::uuid,
+        md5('fpt-sandbox:survey:pre-course:section:tail')::uuid
+      ]
+      else array[section.id]
+    end as path
+  from (
+    values
+      ('near-expiry@example.test', 1),
+      ('midmodule@example.test', 1),
+      ('failedquiz@example.test', 3),
+      ('almostdone@example.test', 4),
+      ('fptcomplete@example.test', 4),
+      ('complete@example.test', 4)
+  ) plan(email, through_module)
+  join public.lms_enrollments enrollment
+    on enrollment.person_email = plan.email
+   and enrollment.course_id = '10000000-0000-4000-8000-000000000001'
+  join public.lms_modules module
+    on module.course_id = enrollment.course_id
+   and module.position <= plan.through_module
+  join public.lms_lessons lesson
+    on lesson.module_id = module.id
+   and lesson.kind = 'survey'
+  join public.lms_survey_sections section
+    on section.lesson_id = lesson.id
+   and section.position = 1
+), response_rows as (
+  select
+    target.email,
+    target.enrollment_id,
+    target.lesson_id,
+    target.path,
+    jsonb_object_agg(
+      question.id::text,
+      case
+        when question.id = md5('fpt-sandbox:survey:pre-course:q3')::uuid then
+          to_jsonb(case
+            when target.path @> array[md5('fpt-sandbox:survey:pre-course:section:owner')::uuid]
+              then 'owner'
+            else 'non-owner'
+          end::text)
+        when question.id = md5('fpt-sandbox:survey:pre-course:q4')::uuid then
+          to_jsonb('platform'::text)
+        when question.kind = 'scale_1_5' then
+          to_jsonb(case when target.email = 'complete@example.test' then 5 else 4 end)
+        when question.kind = 'text' then
+          to_jsonb(('Synthetic placeholder response from ' || target.email)::text)
+        when question.kind = 'single_choice' then
+          to_jsonb(question.choices -> 0 ->> 'id')
+        else
+          jsonb_build_array(
+            question.choices -> 0 ->> 'id',
+            question.choices -> 1 ->> 'id'
+          )
+      end
+    ) as answers
+  from response_targets target
+  join public.lms_survey_questions question
+    on question.lesson_id = target.lesson_id
+   and question.section_id = any(target.path)
+  group by target.email, target.enrollment_id, target.lesson_id, target.path
+)
 insert into public.lms_survey_responses (
   id,
   enrollment_id,
   lesson_id,
   submitted_at,
-  answers
+  answers,
+  choice_free_text,
+  path
 )
 select
-  md5(plan.email || ':survey-response:' || lesson.id::text)::uuid,
-  enrollment.id,
-  lesson.id,
+  md5(response_row.email || ':survey-response:' || response_row.lesson_id::text)::uuid,
+  response_row.enrollment_id,
+  response_row.lesson_id,
   '2026-07-16T16:32:00Z',
-  jsonb_object_agg(
-    question.id::text,
-    case
-      when question.kind = 'scale_1_5' then
-        to_jsonb(case when plan.email = 'complete@example.test' then 5 else 4 end)
-      when question.kind = 'text' then
-        to_jsonb(('Synthetic placeholder response from ' || plan.email)::text)
-      when question.kind = 'single_choice' then
-        to_jsonb(question.choices -> 0 ->> 'id')
-      else
-        jsonb_build_array(
-          question.choices -> 0 ->> 'id',
-          question.choices -> 1 ->> 'id'
-        )
-    end
-  )
-from (
-  values
-    ('near-expiry@example.test', 1),
-    ('midmodule@example.test', 1),
-    ('failedquiz@example.test', 3),
-    ('almostdone@example.test', 4),
-    ('fptcomplete@example.test', 4),
-    ('complete@example.test', 4)
-) plan(email, through_module)
-join public.lms_enrollments enrollment
-  on enrollment.person_email = plan.email
- and enrollment.course_id = '10000000-0000-4000-8000-000000000001'
-join public.lms_modules module
-  on module.course_id = enrollment.course_id
- and module.position <= plan.through_module
-join public.lms_lessons lesson
-  on lesson.module_id = module.id
- and lesson.kind = 'survey'
-join public.lms_survey_questions question
-  on question.lesson_id = lesson.id
-group by plan.email, enrollment.id, lesson.id;
+  response_row.answers,
+  '{}'::jsonb,
+  response_row.path
+from response_rows response_row;
 
 insert into public.lms_completion_events (
   id,

@@ -6,6 +6,12 @@ import {
   termsGateSatisfied,
   type ProgressionContext,
 } from './progression.ts';
+import {
+  normalizeRoutedSubmission,
+  SurveyFlowError,
+  type RoutedSurveyQuestion,
+  type RoutedSurveySection,
+} from './routing.ts';
 
 const DENIED_BODY = { error: 'Survey access is unavailable.' };
 const corsHeaders = {
@@ -50,67 +56,6 @@ async function callerId(req: Request, admin: SupabaseClient) {
 
 function assertQuery(error: { message: string } | null) {
   if (error) throw new Error(error.message);
-}
-
-type SurveyQuestion = {
-  id: string;
-  kind: 'scale_1_5' | 'text' | 'single_choice' | 'multi_choice';
-  choices: Array<{ id: string; text: string }> | null;
-  required: boolean;
-};
-
-function normalizeAnswers(
-  input: unknown,
-  questions: SurveyQuestion[],
-): Record<string, number | string | string[]> {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw new InvalidSurvey('Answers must be an object.');
-  }
-  const supplied = input as Record<string, unknown>;
-  const answers: Record<string, number | string | string[]> = {};
-
-  for (const question of questions) {
-    const value = supplied[question.id];
-    if (question.kind === 'scale_1_5') {
-      if (value === undefined && !question.required) continue;
-      if (!Number.isInteger(value) || Number(value) < 1 || Number(value) > 5) {
-        throw new InvalidSurvey('Complete every required survey question.');
-      }
-      answers[question.id] = Number(value);
-      continue;
-    }
-
-    if (question.kind === 'text') {
-      if ((value === undefined || value === '') && !question.required) continue;
-      if (typeof value !== 'string' || !value.trim()) {
-        throw new InvalidSurvey('Complete every required survey question.');
-      }
-      answers[question.id] = value.trim();
-      continue;
-    }
-
-    const allowed = new Set((question.choices ?? []).map((choice) => choice.id));
-    if (question.kind === 'single_choice') {
-      if (value === undefined && !question.required) continue;
-      if (typeof value !== 'string' || !allowed.has(value)) {
-        throw new InvalidSurvey('Choose a valid survey response.');
-      }
-      answers[question.id] = value;
-      continue;
-    }
-
-    if (value === undefined && !question.required) continue;
-    if (
-      !Array.isArray(value) ||
-      (question.required && value.length === 0) ||
-      value.some((choice) => typeof choice !== 'string' || !allowed.has(choice))
-    ) {
-      throw new InvalidSurvey('Choose a valid survey response.');
-    }
-    answers[question.id] = [...new Set(value as string[])];
-  }
-
-  return answers;
 }
 
 async function surveyAccess(
@@ -250,14 +195,39 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: questions, error: questionsError } = await admin
-      .from('lms_survey_questions')
-      .select('id,kind,choices,required')
-      .eq('lesson_id', lessonId)
-      .order('position');
-    assertQuery(questionsError);
+    const [sectionsResult, questionsResult] = await Promise.all([
+      admin
+        .from('lms_survey_sections')
+        .select('id,lesson_id,position,default_next_section_id')
+        .eq('lesson_id', lessonId)
+        .order('position'),
+      admin
+        .from('lms_survey_questions')
+        .select('id,lesson_id,section_id,position,kind,choices,required,routes')
+        .eq('lesson_id', lessonId)
+        .order('section_id')
+        .order('position'),
+    ]);
+    assertQuery(sectionsResult.error);
+    assertQuery(questionsResult.error);
+    const sections = (sectionsResult.data ?? []) as RoutedSurveySection[];
+    const questions = (questionsResult.data ?? []) as RoutedSurveyQuestion[];
     if (!questions?.length) throw new InvalidSurvey('Survey questions are unavailable.');
-    const answers = normalizeAnswers(body.answers, questions as SurveyQuestion[]);
+    const normalized = normalizeRoutedSubmission(
+      sections,
+      questions,
+      body.answers,
+      body.choice_free_text,
+    );
+    if (Array.isArray(body.path)) {
+      const suppliedPath = body.path.filter((value: unknown): value is string => typeof value === 'string');
+      if (
+        suppliedPath.length !== normalized.path.length ||
+        suppliedPath.some((value: string, index: number) => value !== normalized.path[index])
+      ) {
+        throw new InvalidSurvey('Survey path changed. Review the current section and try again.');
+      }
+    }
 
     const { data: response, error: responseError } = await admin
       .from('lms_survey_responses')
@@ -265,7 +235,9 @@ Deno.serve(async (req: Request) => {
         enrollment_id: access.enrollment.id,
         lesson_id: lessonId,
         submitted_at: new Date().toISOString(),
-        answers,
+        answers: normalized.answers,
+        choice_free_text: normalized.choice_free_text,
+        path: normalized.path,
       })
       .select('*')
       .single();
@@ -321,7 +293,9 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     if (error instanceof AccessDenied) return jsonResponse(403, DENIED_BODY);
-    if (error instanceof InvalidSurvey) return jsonResponse(400, { error: error.message });
+    if (error instanceof InvalidSurvey || error instanceof SurveyFlowError) {
+      return jsonResponse(400, { error: error.message });
+    }
     console.error('lms-submit-survey failed', error instanceof Error ? error.message : 'unknown error');
     return jsonResponse(500, { error: 'Survey submission could not be completed.' });
   }

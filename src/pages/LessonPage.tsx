@@ -146,6 +146,9 @@ export function LessonPage() {
         />
       ) : lesson.kind === 'survey' ? (
         <SurveyLesson
+          sections={catalog.surveySections
+            .filter((section) => section.lesson_id === lesson.id)
+            .sort((a, b) => a.position - b.position)}
           questions={catalog.surveyQuestions
             .filter((question) => question.lesson_id === lesson.id)
             .sort((a, b) => a.position - b.position)}
@@ -153,7 +156,7 @@ export function LessonPage() {
             (item) =>
               item.enrollment_id === enrollment.id && item.lesson_id === lesson.id,
           ) ?? null}
-          onSubmit={(answers) => submitSurvey(lesson.id, answers)}
+          onSubmit={(submission) => submitSurvey(lesson.id, submission)}
         />
       ) : (
         <article className="card p-6 sm:p-8">

@@ -33,6 +33,7 @@ import { useAdmin } from '../context/AdminContext';
 import type {
   AdminEnrollment,
   LearnerInspection,
+  SurveyFlowSaveResult,
   SurveyResults,
 } from '../data/admin';
 import type {
@@ -40,6 +41,7 @@ import type {
   LmsLesson,
   LmsModule,
   LmsSurveyQuestion,
+  LmsSurveySection,
   SurveyQuestionKind,
 } from '../data/types';
 import { parseQuestionBankCsv, parseQuestionBankJson, serializeQuestionBankCsv } from '../lib/adminCsv';
@@ -281,44 +283,75 @@ function QuestionBankPanel({ module }: { module: LmsModule }) {
   );
 }
 
+type SurveyChoiceDraft = {
+  id: string;
+  text: string;
+  allowFreeText: boolean;
+  routeSectionId: string;
+};
+
 type SurveyQuestionDraft = {
   clientId: string;
-  id?: string;
   prompt: string;
   kind: SurveyQuestionKind;
-  choicesText: string;
+  choices: SurveyChoiceDraft[];
   required: boolean;
 };
+
+type SurveySectionDraft = {
+  clientId: string;
+  title: string;
+  defaultNextSectionId: string;
+  questions: SurveyQuestionDraft[];
+};
+
+function newChoice(text = ''): SurveyChoiceDraft {
+  return {
+    id: `choice-${crypto.randomUUID().slice(0, 8)}`,
+    text,
+    allowFreeText: false,
+    routeSectionId: '',
+  };
+}
 
 function questionDraft(question?: LmsSurveyQuestion): SurveyQuestionDraft {
   return {
     clientId: question?.id ?? crypto.randomUUID(),
-    id: question?.id,
     prompt: question?.prompt ?? '',
     kind: question?.kind ?? 'text',
-    choicesText: question?.choices?.map((choice) => choice.text).join(', ') ?? '',
+    choices: question?.choices?.map((choice) => ({
+      id: choice.id,
+      text: choice.text,
+      allowFreeText: choice.allow_free_text === true,
+      routeSectionId: question.routes?.[choice.id] ?? '',
+    })) ?? [],
     required: question?.required ?? true,
   };
 }
 
-function moveSurveyQuestion(
-  questions: SurveyQuestionDraft[],
+function sectionDraft(
+  section?: LmsSurveySection,
+  questions: LmsSurveyQuestion[] = [],
+): SurveySectionDraft {
+  return {
+    clientId: section?.id ?? crypto.randomUUID(),
+    title: section?.title ?? '',
+    defaultNextSectionId: section?.default_next_section_id ?? '',
+    questions: questions.map((question) => questionDraft(question)),
+  };
+}
+
+function moveDraft<T extends { clientId: string }>(
+  items: T[],
   clientId: string,
   direction: -1 | 1,
 ) {
-  const index = questions.findIndex((question) => question.clientId === clientId);
+  const index = items.findIndex((item) => item.clientId === clientId);
   const destination = index + direction;
-  if (index < 0 || destination < 0 || destination >= questions.length) return questions;
-  const next = [...questions];
+  if (index < 0 || destination < 0 || destination >= items.length) return items;
+  const next = [...items];
   [next[index], next[destination]] = [next[destination], next[index]];
   return next;
-}
-
-function choiceId(label: string, index: number) {
-  return label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || `choice-${index + 1}`;
 }
 
 function downloadText(fileName: string, content: string, type = 'text/csv') {
@@ -382,10 +415,27 @@ function SurveyResultsPanel({ lessonId }: { lessonId: string }) {
             <div className="rounded-lg bg-white p-4"><p className="text-xs font-bold uppercase text-dacfp-gray-text">Enrolled</p><p className="mt-1 text-2xl font-bold tabular-nums text-dacfp-navy">{results.enrolled_count}</p></div>
             <div className="rounded-lg bg-white p-4"><p className="text-xs font-bold uppercase text-dacfp-gray-text">Completion</p><p className="mt-1 text-2xl font-bold tabular-nums text-dacfp-navy">{results.completion_rate}%</p></div>
           </div>
+          <div className="rounded-lg border border-dacfp-line bg-white p-4">
+            <h5 className="font-bold text-dacfp-navy">Path distribution</h5>
+            {results.path_distribution.length ? (
+              <ul className="mt-3 space-y-2 text-sm text-dacfp-gray-text">
+                {results.path_distribution.map((route) => (
+                  <li className="flex justify-between gap-4" key={route.path.join('>')}>
+                    <span>{route.path.map((sectionId) => {
+                      const section = results.sections.find((item) => item.id === sectionId);
+                      return section ? `§${section.position}` : sectionId;
+                    }).join(' → ')}</span>
+                    <strong className="tabular-nums text-dacfp-navy">{route.count}</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="mt-2 text-sm text-dacfp-gray-text">No submitted paths.</p>}
+          </div>
           <ol className="space-y-3">
-            {results.questions.map(({ question, breakdown }) => (
+            {results.questions.map(({ question, denominator, breakdown }) => (
               <li className="rounded-lg border border-dacfp-line bg-white p-4" key={question.id}>
                 <p className="font-bold text-dacfp-navy">{question.position}. {question.prompt}</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Shown to {denominator} respondent{denominator === 1 ? '' : 's'}</p>
                 {breakdown.kind === 'scale_1_5' ? (
                   <div className="mt-3 text-sm text-dacfp-gray-text">
                     <p>Average: <strong className="text-dacfp-navy">{breakdown.average ?? '—'}</strong></p>
@@ -398,8 +448,8 @@ function SurveyResultsPanel({ lessonId }: { lessonId: string }) {
                     </ul>
                   ) : <p className="mt-3 text-sm text-dacfp-gray-text">No text responses.</p>
                 ) : (
-                  <ul className="mt-3 space-y-1 text-sm text-dacfp-gray-text">
-                    {breakdown.counts.map((choice) => <li className="flex justify-between gap-3" key={choice.id}><span>{choice.text}</span><strong className="tabular-nums text-dacfp-navy">{choice.count}</strong></li>)}
+                  <ul className="mt-3 space-y-2 text-sm text-dacfp-gray-text">
+                    {breakdown.counts.map((choice) => <li key={choice.id}><div className="flex justify-between gap-3"><span>{choice.text}</span><strong className="tabular-nums text-dacfp-navy">{choice.count}</strong></div>{choice.free_text.length ? <ul className="mt-1 space-y-1 border-l-2 border-dacfp-line pl-3">{choice.free_text.map((text, index) => <li key={`${choice.id}-${index}`}>{text}</li>)}</ul> : null}</li>)}
                   </ul>
                 )}
               </li>
@@ -413,49 +463,75 @@ function SurveyResultsPanel({ lessonId }: { lessonId: string }) {
 
 function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
   const { catalog, mutate } = useAdmin();
-  const existing = catalog.surveyQuestions
-    .filter((question) => question.lesson_id === lesson.id)
-    .sort((a, b) => a.position - b.position);
-  const [questions, setQuestions] = useState<SurveyQuestionDraft[]>(
-    () => existing.map((question) => questionDraft(question)),
-  );
+  const [sections, setSections] = useState<SurveySectionDraft[]>(() => {
+    const existingSections = catalog.surveySections
+      .filter((section) => section.lesson_id === lesson.id)
+      .sort((left, right) => left.position - right.position);
+    if (!existingSections.length) return [sectionDraft()];
+    return existingSections.map((section) => sectionDraft(
+      section,
+      catalog.surveyQuestions
+        .filter((question) => question.section_id === section.id)
+        .sort((left, right) => left.position - right.position),
+    ));
+  });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [outline, setOutline] = useState('');
+  const [editing, setEditing] = useState(false);
+
+  const updateSection = (
+    sectionId: string,
+    update: (section: SurveySectionDraft) => SurveySectionDraft,
+  ) => setSections((current) => current.map((section) =>
+    section.clientId === sectionId ? update(section) : section
+  ));
 
   const save = async () => {
     setMessage('');
     setError('');
     try {
-      const payload = questions.map((question, index) => {
-        const labels = question.choicesText
-          .split(',')
-          .map((label) => label.trim())
-          .filter(Boolean);
-        if (
-          (question.kind === 'single_choice' || question.kind === 'multi_choice') &&
-          labels.length < 2
-        ) {
-          throw new Error('Choice questions require at least two comma-separated choices.');
-        }
-        return {
-          ...(question.id ? { id: question.id } : {}),
-          position: index + 1,
-          prompt: question.prompt,
-          kind: question.kind,
-          choices: question.kind === 'single_choice' || question.kind === 'multi_choice'
-            ? labels.map((label, choiceIndex) => ({
-                id: choiceId(label, choiceIndex),
-                text: label,
-              }))
-            : null,
-          required: question.required,
-        };
-      });
-      await mutate('replace_survey_questions', {
+      const payload = sections.map((section, sectionIndex) => ({
+        id: section.clientId,
+        position: sectionIndex + 1,
+        title: section.title,
+        default_next_section_id: section.defaultNextSectionId || null,
+        questions: section.questions.map((question, questionIndex) => {
+          if (!question.prompt.trim()) throw new Error('Every survey question needs a prompt.');
+          const choiceQuestion = question.kind === 'single_choice' || question.kind === 'multi_choice';
+          if (choiceQuestion && (
+            question.choices.length < 2 || question.choices.some((choice) => !choice.text.trim())
+          )) {
+            throw new Error('Choice questions require at least two named choices.');
+          }
+          const routes = question.kind === 'single_choice'
+            ? Object.fromEntries(question.choices
+              .filter((choice) => choice.routeSectionId)
+              .map((choice) => [choice.id, choice.routeSectionId]))
+            : {};
+          return {
+            id: question.clientId,
+            position: questionIndex + 1,
+            prompt: question.prompt,
+            kind: question.kind,
+            choices: choiceQuestion
+              ? question.choices.map((choice) => ({
+                  id: choice.id,
+                  text: choice.text,
+                  ...(choice.allowFreeText ? { allow_free_text: true } : {}),
+                }))
+              : null,
+            required: question.required,
+            routes: Object.keys(routes).length ? routes : null,
+          };
+        }),
+      }));
+      const result = await mutate<SurveyFlowSaveResult>('replace_survey_flow', {
         lesson_id: lesson.id,
-        questions: payload,
+        sections: payload,
       });
-      setMessage('Survey questions saved and audited.');
+      setOutline(result.outline);
+      setMessage('Survey flow saved, validated, and audited.');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Survey questions could not be saved.');
     }
@@ -464,28 +540,58 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
   return (
     <div className="mt-5 rounded-lg border border-dacfp-blue/30 bg-dacfp-wash-blue p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div><h4 className="font-bold text-dacfp-navy">Survey questions</h4><p className="text-sm text-dacfp-gray-text">Add, edit, reorder, and mark questions required.</p></div>
-        <button className="button-secondary" onClick={() => setQuestions((current) => [...current, questionDraft()])} type="button"><Plus className="size-icon-sm" aria-hidden="true" />Add question</button>
+        <div><h4 className="font-bold text-dacfp-navy">Survey routed sections</h4><p className="text-sm text-dacfp-gray-text">Edit section order, defaults, gate routes, and required questions.</p></div>
+        {editing
+          ? <button className="button-secondary" onClick={() => setSections((current) => [...current, sectionDraft()])} type="button"><Plus className="size-icon-sm" aria-hidden="true" />Add section</button>
+          : <button className="button-secondary" onClick={() => setEditing(true)} type="button">Edit survey flow</button>}
       </div>
-      <div className="mt-4 space-y-3">
-        {questions.map((question, index) => (
-          <article className="rounded-lg border border-dacfp-line bg-white p-4" key={question.clientId}>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field className="md:col-span-2" label={`Question ${index + 1}`}><Input required value={question.prompt} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, prompt: event.target.value } : item))} /></Field>
-              <Field label="Response kind"><select className={selectClass} value={question.kind} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, kind: event.target.value as SurveyQuestionKind } : item))}><option value="scale_1_5">1–5 scale</option><option value="text">Text</option><option value="single_choice">Single choice</option><option value="multi_choice">Multiple choice</option></select></Field>
-              <Field label="Choices" hint="Comma separated; used only for choice questions"><Input value={question.choicesText} disabled={!['single_choice', 'multi_choice'].includes(question.kind)} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, choicesText: event.target.value } : item))} /></Field>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <label className="flex min-h-11 items-center gap-2"><input className="size-5 accent-dacfp-maroon" checked={question.required} onChange={(event) => setQuestions((current) => current.map((item) => item.clientId === question.clientId ? { ...item, required: event.target.checked } : item))} type="checkbox" /><span className="font-bold">Required</span></label>
-              <div className="flex gap-1">
-                <ReorderControls label={question.prompt || `question ${index + 1}`} atStart={index === 0} atEnd={index === questions.length - 1} onUp={() => setQuestions((current) => moveSurveyQuestion(current, question.clientId, -1))} onDown={() => setQuestions((current) => moveSurveyQuestion(current, question.clientId, 1))} />
-                <button className="button-quiet px-3 text-status-danger" aria-label={`Delete survey question ${index + 1}`} onClick={() => setQuestions((current) => current.filter((item) => item.clientId !== question.clientId))} type="button"><Trash2 className="size-icon-sm" aria-hidden="true" /></button>
+      {editing ? <><div className="mt-4 space-y-4">
+        {sections.map((section, sectionIndex) => (
+          <article className="rounded-lg border border-dacfp-line bg-white p-4" key={section.clientId}>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="grid flex-1 gap-3 md:grid-cols-2">
+                <Field label={`Section ${sectionIndex + 1} internal title`}><Input value={section.title} onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, title: event.target.value }))} /></Field>
+                <Field label="Default next section" hint="Used when no choice route overrides it"><select className={selectClass} value={section.defaultNextSectionId} onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, defaultNextSectionId: event.target.value }))}><option value="">Submit / end</option>{sections.filter((item) => item.clientId !== section.clientId).map((item, index) => <option key={item.clientId} value={item.clientId}>§{sections.indexOf(item) + 1} {item.title || `Section ${index + 1}`}</option>)}</select></Field>
               </div>
+              <div className="flex gap-1">
+                <ReorderControls label={section.title || `section ${sectionIndex + 1}`} atStart={sectionIndex === 0} atEnd={sectionIndex === sections.length - 1} onUp={() => setSections((current) => moveDraft(current, section.clientId, -1))} onDown={() => setSections((current) => moveDraft(current, section.clientId, 1))} />
+                <button className="button-quiet px-3 text-status-danger" disabled={sections.length === 1} aria-label={`Delete survey section ${sectionIndex + 1}`} onClick={() => setSections((current) => current.filter((item) => item.clientId !== section.clientId))} type="button"><Trash2 className="size-icon-sm" aria-hidden="true" /></button>
+              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {section.questions.map((question, questionIndex) => (
+                <section className="rounded-lg border border-dacfp-line bg-dacfp-wash p-4" key={question.clientId}>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field className="md:col-span-2" label={`Question ${questionIndex + 1}`}><Input required value={question.prompt} onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, prompt: event.target.value } : item) }))} /></Field>
+                    <Field label="Response kind"><select className={selectClass} value={question.kind} onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, kind: event.target.value as SurveyQuestionKind, choices: ['single_choice', 'multi_choice'].includes(event.target.value) && item.choices.length < 2 ? [newChoice(), newChoice()] : item.choices } : item) }))}><option value="scale_1_5">1–5 scale</option><option value="text">Text</option><option value="single_choice">Single choice / gate</option><option value="multi_choice">Multiple choice</option></select></Field>
+                    <label className="flex min-h-11 items-center gap-2 self-end"><input className="size-5 accent-dacfp-maroon" checked={question.required} onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, required: event.target.checked } : item) }))} type="checkbox" /><span className="font-bold">Required on this path</span></label>
+                  </div>
+                  {['single_choice', 'multi_choice'].includes(question.kind) ? (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-sm font-bold text-dacfp-navy">Choices {question.kind === 'single_choice' ? 'and optional routes' : ''}</p>
+                      {question.choices.map((choice, choiceIndex) => (
+                        <div className="grid gap-2 rounded border border-dacfp-line bg-white p-3 md:grid-cols-[1fr_auto_1fr_auto] md:items-end" key={choice.id}>
+                          <Field label={`Choice ${choiceIndex + 1}`}><Input value={choice.text} onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, choices: item.choices.map((candidate) => candidate.id === choice.id ? { ...candidate, text: event.target.value } : candidate) } : item) }))} /></Field>
+                          <label className="flex min-h-11 items-center gap-2 text-sm font-bold"><input checked={choice.allowFreeText} className="size-5 accent-dacfp-maroon" onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, choices: item.choices.map((candidate) => candidate.id === choice.id ? { ...candidate, allowFreeText: event.target.checked } : candidate) } : item) }))} type="checkbox" />Free text</label>
+                          {question.kind === 'single_choice' ? <Field label="Route override"><select className={selectClass} value={choice.routeSectionId} onChange={(event) => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, choices: item.choices.map((candidate) => candidate.id === choice.id ? { ...candidate, routeSectionId: event.target.value } : candidate) } : item) }))}><option value="">Use section default</option>{sections.filter((item) => item.clientId !== section.clientId).map((item) => <option key={item.clientId} value={item.clientId}>§{sections.indexOf(item) + 1} {item.title}</option>)}</select></Field> : <span />}
+                          <button className="button-quiet px-3 text-status-danger" disabled={question.choices.length <= 2} aria-label={`Delete choice ${choiceIndex + 1}`} onClick={() => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, choices: item.choices.filter((candidate) => candidate.id !== choice.id) } : item) }))} type="button"><Trash2 className="size-icon-sm" aria-hidden="true" /></button>
+                        </div>
+                      ))}
+                      <button className="button-quiet" onClick={() => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.map((item) => item.clientId === question.clientId ? { ...item, choices: [...item.choices, newChoice()] } : item) }))} type="button"><Plus className="size-icon-sm" aria-hidden="true" />Add choice</button>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 flex justify-end gap-1">
+                    <ReorderControls label={question.prompt || `question ${questionIndex + 1}`} atStart={questionIndex === 0} atEnd={questionIndex === section.questions.length - 1} onUp={() => updateSection(section.clientId, (current) => ({ ...current, questions: moveDraft(current.questions, question.clientId, -1) }))} onDown={() => updateSection(section.clientId, (current) => ({ ...current, questions: moveDraft(current.questions, question.clientId, 1) }))} />
+                    <button className="button-quiet px-3 text-status-danger" aria-label={`Delete survey question ${questionIndex + 1}`} onClick={() => updateSection(section.clientId, (current) => ({ ...current, questions: current.questions.filter((item) => item.clientId !== question.clientId) }))} type="button"><Trash2 className="size-icon-sm" aria-hidden="true" /></button>
+                  </div>
+                </section>
+              ))}
+              <button className="button-secondary" onClick={() => updateSection(section.clientId, (current) => ({ ...current, questions: [...current.questions, questionDraft()] }))} type="button"><Plus className="size-icon-sm" aria-hidden="true" />Add question to section</button>
             </div>
           </article>
         ))}
       </div>
-      <div className="mt-4 space-y-3"><ErrorMessage message={error} /><SuccessMessage message={message} /><button className="button-primary" onClick={() => void save()} type="button">Save survey questions</button></div>
+      <div className="mt-4 space-y-3"><ErrorMessage message={error} /><SuccessMessage message={message} />{outline ? <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-dacfp-line bg-white p-4 text-sm text-dacfp-navy" aria-label="Survey flow outline">{outline}</pre> : null}<button className="button-primary" onClick={() => void save()} type="button">Save survey flow</button></div></> : null}
       <SurveyResultsPanel lessonId={lesson.id} />
     </div>
   );

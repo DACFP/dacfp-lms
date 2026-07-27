@@ -348,6 +348,7 @@ describe('D0 route shell', () => {
           lessons: [],
           resources: [],
           quizzes: [],
+          surveySections: [],
           surveyQuestions: [],
         };
       },

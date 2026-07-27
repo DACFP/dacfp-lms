@@ -1,5 +1,6 @@
 import type { LmsProvider } from './provider';
 import { meetsPassThreshold } from '../engine';
+import { normalizeRoutedSubmission } from '../survey/routing';
 import type {
   Catalog,
   CompletionEvidence,
@@ -16,7 +17,8 @@ import type {
   LmsQuizAttempt,
   LmsSurveyQuestion,
   LmsSurveyResponse,
-  SurveyAnswers,
+  LmsSurveySection,
+  SurveySubmission,
 } from './types';
 
 const createdAt = '2026-07-16T16:00:00.000Z';
@@ -162,50 +164,134 @@ const lessons: LmsLesson[] = [
   },
 ];
 
+const surveySections: LmsSurveySection[] = [
+  {
+    id: 'survey-pre-spine', lesson_id: 'fpt-pre-course-survey', position: 1,
+    title: 'Starting questions', default_next_section_id: 'survey-pre-tail',
+  },
+  {
+    id: 'survey-pre-owner', lesson_id: 'fpt-pre-course-survey', position: 2,
+    title: 'Owner path', default_next_section_id: 'survey-pre-tail',
+  },
+  {
+    id: 'survey-pre-owner-platform', lesson_id: 'fpt-pre-course-survey', position: 3,
+    title: 'Owner platform path', default_next_section_id: 'survey-pre-tail',
+  },
+  {
+    id: 'survey-pre-non-owner', lesson_id: 'fpt-pre-course-survey', position: 4,
+    title: 'Non-owner path', default_next_section_id: 'survey-pre-tail',
+  },
+  {
+    id: 'survey-pre-other', lesson_id: 'fpt-pre-course-survey', position: 5,
+    title: 'Other path', default_next_section_id: 'survey-pre-tail',
+  },
+  {
+    id: 'survey-pre-tail', lesson_id: 'fpt-pre-course-survey', position: 6,
+    title: 'Shared closing questions', default_next_section_id: null,
+  },
+  {
+    id: 'survey-module-default', lesson_id: 'fpt-m1-post-survey', position: 1,
+    title: 'Module feedback', default_next_section_id: null,
+  },
+  {
+    id: 'survey-post-default', lesson_id: 'fpt-post-course-survey', position: 1,
+    title: 'Course feedback', default_next_section_id: null,
+  },
+];
+
 const surveyQuestions: LmsSurveyQuestion[] = [
   {
     id: 'survey-pre-q1',
     lesson_id: 'fpt-pre-course-survey',
+    section_id: 'survey-pre-spine',
     position: 1,
     prompt: 'How familiar are you with digital assets today?',
     kind: 'scale_1_5',
     choices: null,
     required: true,
+    routes: null,
+  },
+  {
+    id: 'survey-pre-gate',
+    lesson_id: 'fpt-pre-course-survey',
+    section_id: 'survey-pre-spine',
+    position: 2,
+    prompt: 'Which placeholder path should this preview follow?',
+    kind: 'single_choice',
+    choices: [
+      { id: 'owner', text: 'Owner path' },
+      { id: 'non-owner', text: 'Non-owner path' },
+      { id: 'other', text: 'Other path', allow_free_text: true },
+    ],
+    required: true,
+    routes: {
+      owner: 'survey-pre-owner',
+      'non-owner': 'survey-pre-non-owner',
+      other: 'survey-pre-other',
+    },
+  },
+  {
+    id: 'survey-pre-owner-gate',
+    lesson_id: 'fpt-pre-course-survey',
+    section_id: 'survey-pre-owner',
+    position: 1,
+    prompt: 'Choose a placeholder second-level owner path.',
+    kind: 'single_choice',
+    choices: [
+      { id: 'platform', text: 'Platform detail path' },
+      { id: 'wallet', text: 'Continue to the shared tail' },
+    ],
+    required: true,
+    routes: { platform: 'survey-pre-owner-platform' },
+  },
+  {
+    id: 'survey-pre-platform-detail',
+    lesson_id: 'fpt-pre-course-survey',
+    section_id: 'survey-pre-owner-platform',
+    position: 1,
+    prompt: 'Enter a synthetic platform detail.',
+    kind: 'text',
+    choices: null,
+    required: true,
+    routes: null,
+  },
+  {
+    id: 'survey-pre-non-owner-reason',
+    lesson_id: 'fpt-pre-course-survey',
+    section_id: 'survey-pre-non-owner',
+    position: 1,
+    prompt: 'Enter a synthetic non-owner reason.',
+    kind: 'text',
+    choices: null,
+    required: true,
+    routes: null,
   },
   {
     id: 'survey-pre-q2',
     lesson_id: 'fpt-pre-course-survey',
-    position: 2,
+    section_id: 'survey-pre-tail',
+    position: 1,
     prompt: 'What do you most want to learn?',
     kind: 'text',
     choices: null,
     required: true,
-  },
-  {
-    id: 'survey-pre-q3',
-    lesson_id: 'fpt-pre-course-survey',
-    position: 3,
-    prompt: 'Which role best matches your work?',
-    kind: 'single_choice',
-    choices: [
-      { id: 'advisor', text: 'Advisor' },
-      { id: 'planner', text: 'Planner' },
-      { id: 'other', text: 'Other' },
-    ],
-    required: true,
+    routes: null,
   },
   {
     id: 'survey-module-q1',
     lesson_id: 'fpt-m1-post-survey',
+    section_id: 'survey-module-default',
     position: 1,
     prompt: 'How useful was this module?',
     kind: 'scale_1_5',
     choices: null,
     required: true,
+    routes: null,
   },
   {
     id: 'survey-module-q2',
     lesson_id: 'fpt-m1-post-survey',
+    section_id: 'survey-module-default',
     position: 2,
     prompt: 'Which topics should receive more attention?',
     kind: 'multi_choice',
@@ -215,19 +301,23 @@ const surveyQuestions: LmsSurveyQuestion[] = [
       { id: 'portfolio', text: 'Portfolio use' },
     ],
     required: true,
+    routes: null,
   },
   {
     id: 'survey-post-q1',
     lesson_id: 'fpt-post-course-survey',
+    section_id: 'survey-post-default',
     position: 1,
     prompt: 'How confident are you after the course?',
     kind: 'scale_1_5',
     choices: null,
     required: true,
+    routes: null,
   },
   {
     id: 'survey-post-q2',
     lesson_id: 'fpt-post-course-survey',
+    section_id: 'survey-post-default',
     position: 2,
     prompt: 'What was the most valuable topic?',
     kind: 'single_choice',
@@ -237,15 +327,18 @@ const surveyQuestions: LmsSurveyQuestion[] = [
       { id: 'practice', text: 'Practice application' },
     ],
     required: true,
+    routes: null,
   },
   {
     id: 'survey-post-q3',
     lesson_id: 'fpt-post-course-survey',
+    section_id: 'survey-post-default',
     position: 3,
     prompt: 'What should we improve?',
     kind: 'text',
     choices: null,
     required: true,
+    routes: null,
   },
 ];
 
@@ -296,6 +389,7 @@ export const mockCatalog: Catalog = {
   lessons,
   resources,
   quizzes,
+  surveySections,
   surveyQuestions,
 };
 
@@ -354,26 +448,30 @@ function completedSurveyResponses(
 ): LmsSurveyResponse[] {
   return selectedLessons
     .filter((lesson) => lesson.kind === 'survey')
-    .map((lesson) => ({
-      id: `${learnerId}-response-${lesson.id}`,
-      enrollment_id: enrollmentId,
-      lesson_id: lesson.id,
-      submitted_at: '2026-07-16T16:32:00.000Z',
-      answers: Object.fromEntries(
-        surveyQuestions
-          .filter((question) => question.lesson_id === lesson.id)
-          .map((question) => [
-            question.id,
-            question.kind === 'scale_1_5'
-              ? learnerId === 'fully-complete' ? 5 : 4
-              : question.kind === 'multi_choice'
-                ? ['bitcoin', 'custody']
-                : question.kind === 'single_choice'
-                  ? question.choices?.[0]?.id ?? 'other'
-                  : 'Synthetic placeholder response',
-          ]),
-      ),
-    }));
+    .map((lesson) => {
+      const questions = surveyQuestions.filter((question) => question.lesson_id === lesson.id);
+      const sections = surveySections.filter((section) => section.lesson_id === lesson.id);
+      const supplied = Object.fromEntries(
+        questions.map((question) => [
+          question.id,
+          question.kind === 'scale_1_5'
+            ? learnerId === 'fully-complete' ? 5 : 4
+            : question.kind === 'multi_choice'
+              ? question.choices?.slice(0, 2).map((choice) => choice.id) ?? []
+              : question.kind === 'single_choice'
+                ? question.choices?.[0]?.id ?? 'other'
+                : 'Synthetic placeholder response',
+        ]),
+      );
+      const normalized = normalizeRoutedSubmission(sections, questions, supplied, {});
+      return {
+        id: `${learnerId}-response-${lesson.id}`,
+        enrollment_id: enrollmentId,
+        lesson_id: lesson.id,
+        submitted_at: '2026-07-16T16:32:00.000Z',
+        ...normalized,
+      };
+    });
 }
 
 function attempt(
@@ -748,7 +846,7 @@ export const mockProvider: LmsProvider = {
       updated_at: now,
     }));
   },
-  async submitSurvey(lessonId, answers: SurveyAnswers, learnerId) {
+  async submitSurvey(lessonId, submission: SurveySubmission, learnerId) {
     const { snapshot, lesson, enrollment } = progressTarget(learnerId, lessonId);
     if (lesson.kind !== 'survey') {
       throw new Error('Synthetic submission target is not a survey.');
@@ -763,12 +861,20 @@ export const mockProvider: LmsProvider = {
         already_submitted: true,
       };
     }
+    const questions = surveyQuestions.filter((question) => question.lesson_id === lessonId);
+    const sections = surveySections.filter((section) => section.lesson_id === lessonId);
+    const normalized = normalizeRoutedSubmission(
+      sections,
+      questions,
+      submission.answers,
+      submission.choice_free_text,
+    );
     const response: LmsSurveyResponse = {
       id: `${learnerId}-response-${lessonId}`,
       enrollment_id: enrollment.id,
       lesson_id: lessonId,
       submitted_at: new Date().toISOString(),
-      answers: clone(answers),
+      ...clone(normalized),
     };
     snapshot.surveyResponses.push(response);
     return {

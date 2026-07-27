@@ -8,6 +8,12 @@ export type SurveyQuestionKind =
   | 'multi_choice';
 export type SurveyAnswer = number | string | string[];
 export type SurveyAnswers = Record<string, SurveyAnswer>;
+export type SurveyChoiceFreeText = Record<string, Record<string, string>>;
+export interface SurveySubmission {
+  answers: SurveyAnswers;
+  choice_free_text: SurveyChoiceFreeText;
+  path: string[];
+}
 export type EnrollmentSource =
   | 'fpt_purchase'
   | 'renewal'
@@ -59,14 +65,30 @@ export interface LmsLessonResource {
   file_ref: string;
 }
 
-export interface LmsSurveyQuestion {
+export interface LmsSurveySection {
   id: string;
   lesson_id: string;
   position: number;
+  title: string | null;
+  default_next_section_id: string | null;
+}
+
+export interface SurveyChoice {
+  id: string;
+  text: string;
+  allow_free_text?: boolean;
+}
+
+export interface LmsSurveyQuestion {
+  id: string;
+  lesson_id: string;
+  section_id: string;
+  position: number;
   prompt: string;
   kind: SurveyQuestionKind;
-  choices: QuizChoice[] | null;
+  choices: SurveyChoice[] | null;
   required: boolean;
+  routes: Record<string, string> | null;
 }
 
 export interface LmsSurveyResponse {
@@ -75,6 +97,8 @@ export interface LmsSurveyResponse {
   lesson_id: string;
   submitted_at: string;
   answers: SurveyAnswers;
+  choice_free_text: SurveyChoiceFreeText;
+  path: string[];
 }
 
 export interface LmsModuleQuiz {
@@ -187,6 +211,7 @@ export interface Catalog {
   lessons: LmsLesson[];
   resources: LmsLessonResource[];
   quizzes: LmsModuleQuiz[];
+  surveySections: LmsSurveySection[];
   surveyQuestions: LmsSurveyQuestion[];
 }
 

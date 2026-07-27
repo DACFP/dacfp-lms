@@ -33,7 +33,7 @@ import type {
   LearnerStateKey,
   LmsLearnerProfile,
   LmsLessonProgress,
-  SurveyAnswers,
+  SurveySubmission,
 } from '../data/types';
 import { runMutationLifecycle } from '../lib/mutationStatus';
 
@@ -52,7 +52,7 @@ interface LmsContextValue {
   completeReading: (lessonId: string) => Promise<LmsLessonProgress>;
   submitSurvey: (
     lessonId: string,
-    answers: SurveyAnswers,
+    submission: SurveySubmission,
   ) => Promise<LmsSurveySubmitResult>;
   loadQuiz: (quizId: string) => Promise<LmsQuizPayload>;
   submitQuiz: (
@@ -271,9 +271,9 @@ function AuthenticatedLmsProvider({
   );
 
   const submitSurvey = useCallback(
-    async (lessonId: string, answers: SurveyAnswers) => {
+    async (lessonId: string, submission: SurveySubmission) => {
       return runMutationLifecycle({
-        mutate: () => provider.submitSurvey(lessonId, answers, LEARNER_SCOPE),
+        mutate: () => provider.submitSurvey(lessonId, submission, LEARNER_SCOPE),
         refresh: () => loadSnapshot(LEARNER_SCOPE),
         onMutationSuccess: () => setMutationNotice({
           kind: 'success',
