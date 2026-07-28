@@ -178,6 +178,9 @@ export interface LmsEnrollmentCourseSummary {
   title: string;
   status: CourseStatus;
   prerequisite_course_id: string | null;
+  module_positions: number[];
+  lesson_ids: string[];
+  quiz_module_ids: string[];
 }
 
 export interface LmsLessonProgress {

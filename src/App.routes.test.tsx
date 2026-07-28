@@ -173,6 +173,11 @@ describe('D0 route shell', () => {
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
   });
 
+  it('uses the shared course module counter on quiz routes', async () => {
+    renderRoute('/quiz/fpt-m1');
+    expect(await screen.findByText('FPT Sandbox · Module 1 of 5')).toBeInTheDocument();
+  });
+
   it('renders login for an unauthenticated visitor', async () => {
     renderRoute('/login', 'fresh', testAuthProvider(null));
     expect(
@@ -315,11 +320,36 @@ describe('D0 route shell', () => {
     expect(screen.getByRole('link', { name: 'Replay last 30s' })).toHaveAttribute('href', '/lesson/fpt-m2-video?replay=30');
   });
 
+  it('derives the resume cue from a unit-only mid-lesson fixture', async () => {
+    const fixture = await mockProvider.getLearnerSnapshot('mid-module-2');
+    const midLessonProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot() {
+        return structuredClone({
+          ...fixture,
+          progress: fixture.progress.map((row) => row.lesson_id === 'fpt-m2-video'
+            ? {
+                ...row,
+                completed_at: null,
+                last_position_seconds: 91,
+                max_watched_seconds: 91,
+              }
+            : row),
+        });
+      },
+    };
+
+    renderRoute('/dashboard', 'mid-module-2', testAuthProvider(signedInSession), midLessonProvider);
+    expect(await screen.findByRole('heading', {
+      name: 'Welcome back — you stopped 1:31 into Module 2: Blockchain and DLT: Video lesson.',
+    })).toBeInTheDocument();
+  });
+
   it('keeps a collapsible module lesson checklist in the player view', async () => {
     renderRoute('/lesson/fpt-m2-video', 'mid-module-2');
-    expect(await screen.findByText('Module 2 of 4 · lesson checklist')).toBeInTheDocument();
+    expect(await screen.findByText('Module 2 of 5 · lesson checklist')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Blockchain and DLT: Reading/ })).toBeInTheDocument();
-    expect(screen.getByText('0/3 complete')).toBeInTheDocument();
+    expect(screen.getByText('0/2 complete · 1 optional')).toBeInTheDocument();
   });
 
   it('names and links the exact blocking quiz for a locked module', async () => {
@@ -462,6 +492,60 @@ describe('D0 route shell', () => {
     ).toBeGreaterThan(0);
     expect(screen.queryByText('Course access unavailable')).not.toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Contact support' }).length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['/lesson/fpt-m4-video', 'This lesson is no longer open'],
+    ['/course/fpt-sandbox/module/4', 'This module is no longer open'],
+    ['/quiz/fpt-m4', 'This quiz is no longer open'],
+  ])('keeps an expired deep route honest when content RLS hides the catalog: %s', async (route, heading) => {
+    const hiddenExpiredProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getCatalog() {
+        return {
+          courses: [],
+          modules: [],
+          lessons: [],
+          resources: [],
+          quizzes: [],
+          surveySections: [],
+          surveyQuestions: [],
+        };
+      },
+      async getLearnerSnapshot(learner) {
+        const [snapshot, catalog] = await Promise.all([
+          mockProvider.getLearnerSnapshot(learner),
+          mockProvider.getCatalog(),
+        ]);
+        return {
+          ...snapshot,
+          enrollments: snapshot.enrollments.map((enrollment) => {
+            const course = catalog.courses.find((item) => item.id === enrollment.course_id);
+            const modules = catalog.modules.filter((item) => item.course_id === enrollment.course_id);
+            const moduleIds = modules.map((item) => item.id);
+            return {
+              ...enrollment,
+              status: 'expired' as const,
+              expires_at: '2026-01-01T00:00:00.000Z',
+              course_summary: course ? {
+                course_id: course.id,
+                slug: course.slug,
+                title: course.title,
+                status: course.status,
+                prerequisite_course_id: course.prerequisite_course_id,
+                module_positions: modules.map((item) => item.position),
+                lesson_ids: catalog.lessons.filter((item) => moduleIds.includes(item.module_id)).map((item) => item.id),
+                quiz_module_ids: catalog.quizzes.filter((item) => moduleIds.includes(item.module_id)).map((item) => item.module_id),
+              } : undefined,
+            };
+          }),
+        };
+      },
+    };
+
+    renderRoute(route, 'mid-module-2', testAuthProvider(signedInSession), hiddenExpiredProvider);
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+    expect(screen.queryByText(/not found/i)).toBeNull();
   });
 
   it.each([

@@ -54,12 +54,13 @@ function validateTemplate(workbook: XLSX.WorkBook, sheet: XLSX.WorkSheet) {
   if (!workbook.SheetNames.includes(CFP_CE_SHEET_NAME)) {
     throw new Error('CFP template sheet name does not match the byte authority.');
   }
-  const headerRows = XLSX.utils.sheet_to_json<string[]>(sheet, {
-    header: 1,
-    range: 'A1:F1',
-    defval: '',
+  // Read the stored values directly. B1 intentionally carries the template's
+  // date number format; sheet_to_json applies that format to the header string
+  // and returns a blank even though the workbook cell value is authoritative.
+  const headers = CFP_CE_HEADERS.map((_, column) => {
+    const address = XLSX.utils.encode_cell({ r: 0, c: column });
+    return String(sheet[address]?.v ?? '');
   });
-  const headers = headerRows[0] ?? [];
   if (
     headers.length !== CFP_CE_HEADERS.length ||
     CFP_CE_HEADERS.some((header, index) => headers[index] !== header)

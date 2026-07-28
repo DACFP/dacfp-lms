@@ -49,6 +49,12 @@ export function expiredEnrollmentForLesson(
   lessonId: string | undefined,
 ) {
   if (!lessonId) return null;
+  const summarizedEnrollment = snapshot.enrollments.find(
+    (enrollment) =>
+      enrollmentAccessState(enrollment) === 'expired' &&
+      enrollment.course_summary?.lesson_ids.includes(lessonId),
+  );
+  if (summarizedEnrollment) return summarizedEnrollment;
   const progress = snapshot.progress.find((row) => row.lesson_id === lessonId);
   if (!progress) return null;
   const enrollment = snapshot.enrollments.find(
@@ -57,6 +63,36 @@ export function expiredEnrollmentForLesson(
   return enrollment && enrollmentAccessState(enrollment) === 'expired'
     ? enrollment
     : null;
+}
+
+export function expiredEnrollmentForModuleRoute(
+  snapshot: LearnerSnapshot,
+  slug: string | undefined,
+  position: number,
+) {
+  if (!slug || !Number.isInteger(position)) return null;
+  return (
+    snapshot.enrollments.find(
+      (enrollment) =>
+        enrollmentAccessState(enrollment) === 'expired' &&
+        enrollment.course_summary?.slug === slug &&
+        enrollment.course_summary.module_positions.includes(position),
+    ) ?? null
+  );
+}
+
+export function expiredEnrollmentForQuizModule(
+  snapshot: LearnerSnapshot,
+  moduleId: string | undefined,
+) {
+  if (!moduleId) return null;
+  return (
+    snapshot.enrollments.find(
+      (enrollment) =>
+        enrollmentAccessState(enrollment) === 'expired' &&
+        enrollment.course_summary?.quiz_module_ids.includes(moduleId),
+    ) ?? null
+  );
 }
 
 export function expiredEnrollmentForCourseSlug(

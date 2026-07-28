@@ -49,6 +49,7 @@ import {
   parseQuestionBankJson,
   serializeQuestionBankJson,
 } from '../lib/adminCsv';
+import { formatClock } from '../lib/time';
 
 /**
  * Native <select> is retained rather than moving to the shadcn Select
@@ -479,6 +480,7 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
   const [outline, setOutline] = useState('');
   const [editing, setEditing] = useState(false);
   const [orphanConfirmationCount, setOrphanConfirmationCount] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const updateSection = (
     sectionId: string,
@@ -488,6 +490,8 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
   ));
 
   const save = async (confirmOrphan = false) => {
+    if (saving) return;
+    setSaving(true);
     setMessage('');
     setError('');
     if (!confirmOrphan) setOrphanConfirmationCount(null);
@@ -547,6 +551,8 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
         return;
       }
       setError(failureMessage);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -609,7 +615,9 @@ function SurveyQuestionEditor({ lesson }: { lesson: LmsLesson }) {
         <SuccessMessage message={message} />
         {outline ? <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-dacfp-line bg-white p-4 text-sm text-dacfp-navy" aria-label="Survey flow outline">{outline}</pre> : null}
         <div className="flex flex-wrap gap-3">
-          <button className="button-primary" onClick={() => void save()} type="button">Save survey flow</button>
+          <button className="button-primary" disabled={saving} onClick={() => void save()} type="button">
+            {saving ? 'Saving survey flow…' : 'Save survey flow'}
+          </button>
           {orphanConfirmationCount !== null ? (
             <ConfirmDialog
               trigger={<button className="button-secondary text-status-danger" type="button">Review destructive survey edit</button>}
@@ -637,14 +645,18 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
   const { catalog, mutate } = useAdmin();
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setError(''); setMessage('');
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true); setError(''); setMessage('');
     const values = new FormData(event.currentTarget);
     try {
       await mutate('update_lesson', { id: lesson.id, title: values.get('title'), kind: values.get('kind'), video_ref: values.get('video_ref'), duration_seconds: values.get('duration_seconds'), body_md: values.get('body_md'), is_required: values.get('is_required') === 'on' });
       setMessage('Lesson saved.');
     } catch { setError('Lesson could not be saved.'); }
+    finally { setSaving(false); }
   };
 
   const upload = async (event: FormEvent<HTMLFormElement>) => {
@@ -676,7 +688,9 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
         <Field label="Reading body" className="md:col-span-2"><Textarea name="body_md" defaultValue={lesson.body_md ?? ''} /></Field>
         <label className="flex min-h-11 items-center gap-2"><input className="size-5 accent-dacfp-maroon" type="checkbox" name="is_required" defaultChecked={lesson.is_required} /><span className="font-bold">Required</span></label>
         <div className="flex flex-wrap gap-2 md:justify-end">
-          <button className="button-secondary" type="submit">Save lesson</button>
+          <button className="button-secondary" disabled={saving} type="submit">
+            {saving ? 'Saving lesson…' : 'Save lesson'}
+          </button>
           <ConfirmDialog
             trigger={
               <button className="button-quiet text-status-danger" type="button">
@@ -715,6 +729,7 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
   const lessons = catalog.lessons.filter((lesson) => lesson.module_id === module.id).sort((a, b) => a.position - b.position);
   const [lessonTitle, setLessonTitle] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [addingLesson, setAddingLesson] = useState(false);
 
   const reorderModules = (next: LmsModule[]) =>
     mutate('reorder', { kind: 'modules', parent_id: module.course_id, ordered_ids: next.map((item) => item.id) });
@@ -730,6 +745,26 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
     const [moved] = next.splice(source, 1);
     next.splice(target, 0, moved);
     await handleMutation(reorderModules(next));
+  };
+
+  const addLesson = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (addingLesson) return;
+    setAddingLesson(true);
+    try {
+      await mutate('create_lesson', {
+        module_id: module.id,
+        title: lessonTitle,
+        kind: 'video',
+        is_required: true,
+        duration_seconds: 4,
+      });
+      setLessonTitle('');
+    } catch {
+      // AdminContext owns the mutation failure banner.
+    } finally {
+      setAddingLesson(false);
+    }
   };
 
   return (
@@ -808,8 +843,8 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
           </div>
         ))}
       </div>
-      <form className="mt-4 flex flex-col gap-3 rounded-lg border border-dashed border-dacfp-gray-text p-4 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); await handleMutation(mutate('create_lesson', { module_id: module.id, title: lessonTitle, kind: 'video', is_required: true, duration_seconds: 4 }).then(() => setLessonTitle(''))); }}>
-        <Input value={lessonTitle} onChange={(event) => setLessonTitle(event.target.value)} required placeholder="New lesson title" aria-label="New lesson title" /><button className="button-secondary shrink-0" type="submit"><Plus className="size-icon-sm" aria-hidden="true" />Add lesson</button>
+      <form className="mt-4 flex flex-col gap-3 rounded-lg border border-dashed border-dacfp-gray-text p-4 sm:flex-row" onSubmit={(event) => void addLesson(event)}>
+        <Input value={lessonTitle} onChange={(event) => setLessonTitle(event.target.value)} required placeholder="New lesson title" aria-label="New lesson title" /><button className="button-secondary shrink-0" disabled={addingLesson} type="submit"><Plus className="size-icon-sm" aria-hidden="true" />{addingLesson ? 'Adding lesson…' : 'Add lesson'}</button>
       </form>
       <QuestionBankPanel module={module} />
     </article>
@@ -819,11 +854,48 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
 export function AdminCoursePage() {
   const { id } = useParams();
   const { catalog, mutate, exportSurveyResponses } = useAdmin();
+  const navigate = useNavigate();
   const course = catalog.courses.find((item) => item.id === id);
   const modules = catalog.modules.filter((item) => item.course_id === id).sort((a, b) => a.position - b.position);
   const [moduleTitle, setModuleTitle] = useState('');
   const [exportError, setExportError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [addingModule, setAddingModule] = useState(false);
+  const [deletingCourse, setDeletingCourse] = useState(false);
   if (!course) return <div className="card p-8 text-center"><h1 className="text-2xl font-bold text-dacfp-navy">Course unavailable</h1><Link className="button-secondary mt-5" to="/admin">Back to courses</Link></div>;
+
+  const addModule = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (addingModule) return;
+    setAddingModule(true);
+    try {
+      await mutate('create_module', { course_id: course.id, title: moduleTitle, ce_credits: null });
+      setModuleTitle('');
+    } catch {
+      // AdminContext owns the mutation failure banner.
+    } finally {
+      setAddingModule(false);
+    }
+  };
+
+  const deleteCourse = async () => {
+    if (deletingCourse) return;
+    setDeletingCourse(true);
+    setDeleteError('');
+    try {
+      await mutate('delete_course', { id: course.id });
+      navigate('/admin');
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : '';
+      setDeleteError(
+        /enrollment/i.test(message)
+          ? `Deletion refused: “${course.title}” has enrollments. Contact support before attempting any retirement workflow.`
+          : `“${course.title}” could not be deleted. No deletion was confirmed.`,
+      );
+    } finally {
+      setDeletingCourse(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -832,7 +904,7 @@ export function AdminCoursePage() {
         eyebrow={`Course editor · ${course.status}`}
         title={course.title}
         description="Manage structure, surveys, private resources, fixed-policy question banks, and publication status."
-        action={
+        action={<div className="flex flex-col gap-2 sm:flex-row">
           <button
             className="button-secondary"
             onClick={() => {
@@ -845,15 +917,28 @@ export function AdminCoursePage() {
           >
             <Download className="size-icon-sm" aria-hidden="true" />Export all survey responses
           </button>
-        }
+          <ConfirmDialog
+            trigger={<button className="button-secondary text-status-danger" disabled={deletingCourse} type="button"><Trash2 className="size-icon-sm" aria-hidden="true" />{deletingCourse ? 'Deleting course…' : 'Delete course'}</button>}
+            title={`Delete “${course.title}”?`}
+            description={`This permanently deletes “${course.title}” and cascades through its modules, lessons, quizzes, surveys, and private lesson resources. Any enrollment blocks the operation and requires support.`}
+            confirmLabel={`Delete ${course.title}`}
+            onConfirm={deleteCourse}
+          />
+        </div>}
       />
       <ErrorMessage message={exportError} />
+      <ErrorMessage message={deleteError} />
       <CourseSettings course={course} />
       <section className="space-y-4" aria-labelledby="modules-heading">
         <div><p className="eyebrow">Curriculum</p><h2 id="modules-heading" className="mt-1 text-2xl font-bold text-dacfp-navy">Modules and lessons</h2><p className="mt-2 text-sm text-dacfp-gray-text">Drag the grip handle to reorder on larger screens, or use the up/down controls on any device.</p></div>
-        {modules.map((module) => <ModuleEditor key={module.id} module={module} modules={modules} />)}
-        <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={async (event) => { event.preventDefault(); await handleMutation(mutate('create_module', { course_id: course.id, title: moduleTitle, ce_credits: null }).then(() => setModuleTitle(''))); }}>
-          <Input value={moduleTitle} onChange={(event) => setModuleTitle(event.target.value)} required placeholder="New module title" aria-label="New module title" /><button className="button-primary shrink-0" type="submit"><Plus className="size-icon-sm" aria-hidden="true" />Add module</button>
+        {modules.length === 0 ? (
+          <div className="card border-dashed p-8 text-center">
+            <h3 className="text-lg font-bold text-dacfp-navy">No curriculum yet</h3>
+            <p className="mt-2 text-sm text-dacfp-gray-text">Add the first module below to start this draft course.</p>
+          </div>
+        ) : modules.map((module) => <ModuleEditor key={module.id} module={module} modules={modules} />)}
+        <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={(event) => void addModule(event)}>
+          <Input value={moduleTitle} onChange={(event) => setModuleTitle(event.target.value)} required placeholder="New module title" aria-label="New module title" /><button className="button-primary shrink-0" disabled={addingModule} type="submit"><Plus className="size-icon-sm" aria-hidden="true" />{addingModule ? 'Adding module…' : 'Add module'}</button>
         </form>
       </section>
     </div>
@@ -868,7 +953,7 @@ function EnrollmentInspector({
 }: {
   inspection: LearnerInspection;
   enrollment: AdminEnrollment;
-  onSupport: (action: string, payload: Record<string, unknown>) => void;
+  onSupport: (action: string, payload: Record<string, unknown>) => Promise<void>;
 }) {
   const { catalog } = useAdmin();
   const summary = inspection.summaries.find((item) => item.enrollment_id === enrollment.id);
@@ -883,6 +968,23 @@ function EnrollmentInspector({
     (item) => moduleIds.includes(item.module_id) && item.kind === 'survey',
   );
   const completion = inspection.completions.find((item) => item.enrollment_id === enrollment.id);
+  const learnerName = inspection.profile?.display_name || inspection.user.email;
+  const courseModules = catalog.modules
+    .filter((item) => item.course_id === enrollment.course_id)
+    .sort((a, b) => a.position - b.position);
+  const moduleById = new Map(courseModules.map((item) => [item.id, item]));
+  const courseLessons = catalog.lessons
+    .filter((item) => moduleIds.includes(item.module_id))
+    .sort((a, b) => {
+      const moduleDifference = (moduleById.get(a.module_id)?.position ?? 0) - (moduleById.get(b.module_id)?.position ?? 0);
+      return moduleDifference || a.position - b.position;
+    });
+  const lessonById = new Map(courseLessons.map((item) => [item.id, item]));
+  const orderedProgress = progress.slice().sort((a, b) => {
+    const aIndex = courseLessons.findIndex((lesson) => lesson.id === a.lesson_id);
+    const bIndex = courseLessons.findIndex((lesson) => lesson.id === b.lesson_id);
+    return aIndex - bIndex;
+  });
 
   const facts: DetailItem[] = [
     { label: 'Status', value: enrollment.status },
@@ -916,6 +1018,24 @@ function EnrollmentInspector({
       <div className="mt-5 border-t border-dacfp-line pt-5">
         <DetailList items={facts} />
       </div>
+
+      <details className="mt-5 border-t border-dacfp-line pt-5">
+        <summary className="cursor-pointer text-sm font-bold text-dacfp-navy">Lesson progress ({progress.length})</summary>
+        {orderedProgress.length > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {orderedProgress.map((item) => {
+              const lesson = lessonById.get(item.lesson_id);
+              return (
+                <li className="grid gap-1 rounded-lg border border-dacfp-line px-3 py-2 text-sm sm:grid-cols-[1fr_auto] sm:items-center" key={item.id}>
+                  <span className="font-semibold text-dacfp-navy">{lesson?.title ?? `Lesson ${item.lesson_id}`}</span>
+                  <span className="text-dacfp-gray-text">{item.completed_at ? `Completed ${formatDate(item.completed_at)}` : `Resume at ${formatClock(item.last_position_seconds)}`}</span>
+                  <span className="text-xs text-dacfp-gray-text sm:col-span-2">Updated {formatDate(item.updated_at)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : <p className="mt-3 text-sm text-dacfp-gray-text">No lesson progress has been recorded.</p>}
+      </details>
 
       {attempts.length > 0 ? (
         <div className="mt-5 border-t border-dacfp-line pt-5">
@@ -968,16 +1088,22 @@ function EnrollmentInspector({
           confirmLabel="Mark complete"
           onConfirm={() => onSupport('manual_mark_complete', { enrollment_id: enrollment.id })}
         />
-        {quizzes.map((quiz) => (
-          <ConfirmDialog
-            key={quiz.id}
-            trigger={<button className="button-secondary" type="button">Reset quiz attempt history</button>}
-            title="Reset quiz attempt history?"
-            description="Every recorded attempt for this quiz will be permanently removed for this learner. Their pass/fail state is recomputed from an empty history. This cannot be undone."
-            confirmLabel="Reset attempts"
-            onConfirm={() => onSupport('reset_attempt_history', { enrollment_id: enrollment.id, quiz_id: quiz.id })}
-          />
-        ))}
+        {quizzes.map((quiz) => {
+          const module = moduleById.get(quiz.module_id);
+          const moduleName = module?.position === 0 ? 'Introduction' : `Module ${module?.position ?? 'unknown'}`;
+          const quizName = module?.title ?? `Quiz ${quiz.id}`;
+          const resetLabel = `Reset ${moduleName} “${quizName}” quiz attempts in ${enrollment.lms_courses.title} for ${learnerName}`;
+          return (
+            <ConfirmDialog
+              key={quiz.id}
+              trigger={<button aria-label={resetLabel} className="button-secondary" type="button">{resetLabel}</button>}
+              title={`${resetLabel}?`}
+              description={`Every recorded attempt for “${module?.title ?? moduleName}” will be permanently removed for ${learnerName}. Their pass/fail state is recomputed from an empty history. This cannot be undone.`}
+              confirmLabel={resetLabel}
+              onConfirm={() => onSupport('reset_attempt_history', { enrollment_id: enrollment.id, quiz_id: quiz.id })}
+            />
+          );
+        })}
       </div>
     </article>
   );
@@ -989,11 +1115,15 @@ export function AdminLearnersPage() {
   const [inspection, setInspection] = useState<LearnerInspection | null | undefined>(undefined);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [searching, setSearching] = useState(false);
 
   const search = async (event: FormEvent) => {
-    event.preventDefault(); setError(''); setMessage('');
+    event.preventDefault();
+    if (searching) return;
+    setSearching(true); setError(''); setMessage(''); setInspection(undefined);
     try { setInspection(await inspectLearner(email)); }
     catch { setError('Learner inspection failed.'); }
+    finally { setSearching(false); }
   };
 
   const support = async (action: string, payload: Record<string, unknown>) => {
@@ -1044,7 +1174,7 @@ export function AdminLearnersPage() {
   return (
     <div className="space-y-8">
       <PageHeader eyebrow="Learner support" title="Per-learner inspector" description="Search one person by email, review enrollment evidence, and use only the two audited support actions." />
-      <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={(event) => void search(event)}><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="learner@example.test" required aria-label="Learner email" /><button className="button-primary shrink-0" type="submit"><Search className="size-icon-sm" aria-hidden="true" />Inspect learner</button></form>
+      <form className="card flex flex-col gap-3 p-5 sm:flex-row" onSubmit={(event) => void search(event)}><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="learner@example.test" required aria-label="Learner email" /><button className="button-primary shrink-0" disabled={searching} type="submit"><Search className="size-icon-sm" aria-hidden="true" />{searching ? 'Inspecting learner…' : 'Inspect learner'}</button></form>
       <ErrorMessage message={error} /><SuccessMessage message={message} />
       {inspection === null ? <div className="card p-8 text-center"><h2 className="text-xl font-bold text-dacfp-navy">No learner found</h2><p className="mt-2 text-dacfp-gray-text">Check the exact email and try again.</p></div> : null}
       {inspection ? (

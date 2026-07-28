@@ -31,6 +31,9 @@ describe('supabaseProvider row mapping', () => {
           course_title: 'Financial Professional Track',
           course_status: 'published',
           prerequisite_course_id: null,
+          module_positions: [0, 1],
+          lesson_ids: ['lesson-intro', 'lesson-1'],
+          quiz_module_ids: ['module-1'],
         },
       ])[0].course_summary,
     ).toEqual({
@@ -39,6 +42,9 @@ describe('supabaseProvider row mapping', () => {
       title: 'Financial Professional Track',
       status: 'published',
       prerequisite_course_id: null,
+      module_positions: [0, 1],
+      lesson_ids: ['lesson-intro', 'lesson-1'],
+      quiz_module_ids: ['module-1'],
     });
   });
 

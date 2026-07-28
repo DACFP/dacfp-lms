@@ -367,9 +367,9 @@ values
     '[{"id":"owner","text":"Owner path"},{"id":"non-owner","text":"Non-owner path"},{"id":"other","text":"Other path","allow_free_text":true}]'::jsonb,
     true,
     jsonb_build_object(
-      'owner', md5('fpt-sandbox:survey:pre-course:section:owner')::text,
-      'non-owner', md5('fpt-sandbox:survey:pre-course:section:non-owner')::text,
-      'other', md5('fpt-sandbox:survey:pre-course:section:other')::text
+      'owner', md5('fpt-sandbox:survey:pre-course:section:owner')::uuid::text,
+      'non-owner', md5('fpt-sandbox:survey:pre-course:section:non-owner')::uuid::text,
+      'other', md5('fpt-sandbox:survey:pre-course:section:other')::uuid::text
     )
   ),
   (
@@ -382,7 +382,7 @@ values
     '[{"id":"platform","text":"Platform detail path"},{"id":"wallet","text":"Continue to the shared tail"}]'::jsonb,
     true,
     jsonb_build_object(
-      'platform', md5('fpt-sandbox:survey:pre-course:section:owner-platform')::text
+      'platform', md5('fpt-sandbox:survey:pre-course:section:owner-platform')::uuid::text
     )
   ),
   (

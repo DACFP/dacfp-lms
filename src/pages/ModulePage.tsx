@@ -28,15 +28,20 @@ import {
   quizIsAttemptable,
 } from '../lib/progress';
 import { QUIZ_POLICY_COPY } from '../lib/quizPolicy';
+import { moduleCounterLabel } from '../lib/moduleLabel';
 import {
   courseForEnrollment,
-  expiredEnrollmentForCourseSlug,
+  expiredEnrollmentForModuleRoute,
 } from '../lib/enrollmentCourse';
 
 export function ModulePage() {
   const { slug, n } = useParams();
   const { catalog, snapshot } = useLms();
-  const hiddenExpiredEnrollment = expiredEnrollmentForCourseSlug(snapshot, slug);
+  const hiddenExpiredEnrollment = expiredEnrollmentForModuleRoute(
+    snapshot,
+    slug,
+    Number(n),
+  );
   const course =
     catalog.courses.find((item) => item.slug === slug) ??
     (hiddenExpiredEnrollment
@@ -111,10 +116,7 @@ export function ModulePage() {
   const contentAccessible = accessActive && courseIsUnlocked && termsAccepted && currentModuleUnlocked;
   const moduleLessons = catalog.lessons
     .filter((item) => item.module_id === module.id)
-    .sort((a, b) => {
-      if (a.kind === b.kind) return a.position - b.position;
-      return a.kind === 'video' ? -1 : 1;
-    });
+    .sort((a, b) => a.position - b.position);
   const quiz = catalog.quizzes.find((item) => item.module_id === module.id);
   const canAttemptQuiz = quiz ? quizIsAttemptable(catalog, snapshot, course, module) : false;
   const enrollmentProgress = snapshot.progress.filter((item) => item.enrollment_id === enrollment.id);
@@ -142,7 +144,7 @@ export function ModulePage() {
     moduleLessons.reduce((total, lesson) => total + (lesson.duration_seconds ?? 0), 0) / 60,
   );
   const eyebrowMeta = [
-    `Module ${String(module.position).padStart(2, '0')} of ${courseModules.length}`,
+    moduleCounterLabel(module, courseModules),
     totalMinutes > 0 ? `${totalMinutes} min` : null,
   ]
     .filter(Boolean)
@@ -288,7 +290,9 @@ export function ModulePage() {
                               ? `${formatClock(lesson.duration_seconds)} compliance video · 1×`
                               : lesson.kind === 'survey'
                                 ? lesson.is_required
-                                  ? 'Does not gate the quiz · Required for course completion'
+                                  ? quiz
+                                    ? 'Does not gate the quiz · Required to finish the course'
+                                    : 'Required to finish the course'
                                   : 'Optional feedback · Does not gate the quiz'
                                 : 'Reading'}
                             {complete ? ' · Complete' : ''}
@@ -432,7 +436,7 @@ export function ModulePage() {
                       className={`w-6 shrink-0 text-xs font-bold tabular-nums ${active ? 'text-dacfp-gold-text' : 'text-dacfp-gray-text'}`}
                       aria-hidden="true"
                     >
-                      {String(item.position).padStart(2, '0')}
+                      {item.position}
                     </span>
                     <span className="min-w-0 flex-1 text-sm">{item.title}</span>
                     <span className="shrink-0" aria-hidden="true">

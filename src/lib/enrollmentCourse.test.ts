@@ -3,6 +3,8 @@ import type { Catalog, LearnerSnapshot, LmsEnrollment } from '../data/types';
 import {
   courseForEnrollment,
   expiredEnrollmentForLesson,
+  expiredEnrollmentForModuleRoute,
+  expiredEnrollmentForQuizModule,
 } from './enrollmentCourse';
 
 const emptyCatalog: Catalog = {
@@ -32,6 +34,9 @@ const expiredEnrollment: LmsEnrollment = {
     title: 'Financial Professional Track',
     status: 'published',
     prerequisite_course_id: null,
+    module_positions: [0, 1],
+    lesson_ids: ['lesson-1', 'lesson-never-visited'],
+    quiz_module_ids: ['module-1'],
   },
 };
 
@@ -48,7 +53,7 @@ it('resolves only expired enrollment identity when content RLS hides catalog row
   ).toBeNull();
 });
 
-it('maps a hidden previously visited lesson back to its expired enrollment', () => {
+it('maps hidden route identities back to an expired enrollment without live catalog rows', () => {
   const snapshot = {
     enrollments: [expiredEnrollment],
     progress: [
@@ -67,5 +72,10 @@ it('maps a hidden previously visited lesson back to its expired enrollment', () 
   } as LearnerSnapshot;
 
   expect(expiredEnrollmentForLesson(snapshot, 'lesson-1')).toBe(expiredEnrollment);
-  expect(expiredEnrollmentForLesson(snapshot, 'lesson-never-visited')).toBeNull();
+  expect(expiredEnrollmentForLesson(snapshot, 'lesson-never-visited')).toBe(expiredEnrollment);
+  expect(expiredEnrollmentForLesson(snapshot, 'lesson-missing')).toBeNull();
+  expect(expiredEnrollmentForModuleRoute(snapshot, 'fpt-sandbox', 1)).toBe(expiredEnrollment);
+  expect(expiredEnrollmentForModuleRoute(snapshot, 'fpt-sandbox', 7)).toBeNull();
+  expect(expiredEnrollmentForQuizModule(snapshot, 'module-1')).toBe(expiredEnrollment);
+  expect(expiredEnrollmentForQuizModule(snapshot, 'module-missing')).toBeNull();
 });

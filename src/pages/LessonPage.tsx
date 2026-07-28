@@ -26,6 +26,7 @@ import {
   moduleIsUnlocked,
 } from '../lib/progress';
 import { expiredEnrollmentForLesson } from '../lib/enrollmentCourse';
+import { moduleCounterLabel } from '../lib/moduleLabel';
 
 /**
  * react-markdown brings the whole unified/remark/rehype pipeline (~190 kB raw)
@@ -137,7 +138,6 @@ export function LessonPage() {
   const courseModules = catalog.modules
     .filter((item) => item.course_id === course.id)
     .sort((a, b) => a.position - b.position);
-  const numberedModules = courseModules.filter((item) => item.position > 0);
   const moduleLessons = catalog.lessons
     .filter((item) => item.module_id === module.id)
     .sort((a, b) => a.position - b.position);
@@ -151,9 +151,13 @@ export function LessonPage() {
   const enrollmentSurveyResponses = snapshot.surveyResponses.filter(
     (item) => item.enrollment_id === enrollment.id,
   );
-  const moduleLabel = module.position === 0
-    ? 'Introduction'
-    : `Module ${module.position} of ${numberedModules.length}`;
+  const moduleLabel = moduleCounterLabel(module, courseModules);
+  const requiredModuleLessons = moduleLessons.filter((item) => item.is_required);
+  const optionalLessonCount = moduleLessons.length - requiredModuleLessons.length;
+  const requiredCompleteCount = requiredModuleLessons.filter((item) =>
+    lessonComplete(item, enrollmentProgress, enrollmentSurveyResponses)
+  ).length;
+  const moduleQuiz = catalog.quizzes.find((item) => item.module_id === module.id);
   const replaySeconds = searchParams.get('replay') === '30' ? 30 : 0;
   return (
     <div className="space-y-8">
@@ -164,7 +168,11 @@ export function LessonPage() {
           lesson.kind === 'video'
             ? 'Required video progress completes when your furthest watched point reaches 95%.'
             : lesson.kind === 'survey'
-              ? 'Submit once. Surveys never gate the module quiz, but required surveys count toward course completion.'
+              ? lesson.is_required
+                ? moduleQuiz
+                  ? 'Submit once. This survey does not gate the quiz and is required to finish the course.'
+                  : 'Submit once. Required to finish the course.'
+                : 'Submit once. This optional survey does not gate the quiz.'
               : 'Read the material, then mark the lesson complete.'
         }
         action={
@@ -178,7 +186,8 @@ export function LessonPage() {
         <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 font-bold text-dacfp-navy sm:px-6">
           <span>{moduleLabel} · lesson checklist</span>
           <span className="text-xs font-semibold tabular-nums text-dacfp-gray-text">
-            {moduleLessons.filter((item) => lessonComplete(item, enrollmentProgress, enrollmentSurveyResponses)).length}/{moduleLessons.length} complete
+            {requiredCompleteCount}/{requiredModuleLessons.length} complete
+            {optionalLessonCount > 0 ? ` · ${optionalLessonCount} optional` : ''}
           </span>
         </summary>
         <ol className="border-t border-dacfp-line">

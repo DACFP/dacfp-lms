@@ -327,6 +327,49 @@ export function LessonPlayer({
     ? Math.min(100, Math.round((savedMax / lesson.duration_seconds) * 100))
     : 0;
 
+  if (!source) {
+    return (
+      <section aria-labelledby="player-heading" className="card overflow-hidden">
+        <div className="grid aspect-video max-h-[34rem] w-full place-items-center bg-dacfp-navy px-6 text-center text-white">
+          <div role="status" aria-live="polite">
+            <Gauge className="mx-auto size-icon-lg" aria-hidden="true" />
+            <p className="mt-3 font-bold">
+              {loading ? 'Resolving secure playback…' : 'Secure playback unavailable'}
+            </p>
+            <p className="mt-1 text-sm text-white/75">
+              Playback controls appear after your entitlement is confirmed.
+            </p>
+          </div>
+        </div>
+        <div className="p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="player-heading" className="font-bold text-dacfp-navy">
+                Secure placeholder player
+              </h2>
+              <p className="mt-1 text-sm text-dacfp-gray-text">
+                {loading ? 'Loading signed video…' : message}
+              </p>
+            </div>
+            {!loading && error ? (
+              <button
+                className="button-secondary"
+                onClick={() => {
+                  errorRefreshAttempted.current = false;
+                  void fetchPlayback();
+                }}
+                type="button"
+              >
+                <RefreshCw className="size-icon-sm" aria-hidden="true" /> Retry
+              </button>
+            ) : null}
+          </div>
+          {error ? <Alert tone="danger" className="mt-3">{error}</Alert> : null}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section aria-labelledby="player-heading" className="card overflow-hidden">
       <div className="relative bg-dacfp-navy">

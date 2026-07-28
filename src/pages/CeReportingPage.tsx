@@ -100,6 +100,7 @@ export function CeReportingPage() {
   const [preview, setPreview] = useState<CfpCePreview | null>(null);
   const [runs, setRuns] = useState<CfpCeReportRun[]>([]);
   const [loading, setLoading] = useState(false);
+  const [downloadingRunId, setDownloadingRunId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -170,6 +171,21 @@ export function CeReportingPage() {
     });
   };
 
+  const downloadRetainedRun = async (run: CfpCeReportRun) => {
+    if (downloadingRunId) return;
+    setDownloadingRunId(run.id);
+    setError('');
+    try {
+      await downloadCfpCeWorkbook(run.rows, run.filename);
+    } catch (failure) {
+      setError(failure instanceof Error
+        ? `The retained report could not be downloaded: ${failure.message}`
+        : 'The retained report could not be downloaded.');
+    } finally {
+      setDownloadingRunId(null);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <PageHeader eyebrow="Compliance operations" title="CFP CE reporting" description="Preview completion eligibility, surface missing CFP Board IDs, and create retained report runs from frozen export rows." />
@@ -215,7 +231,7 @@ export function CeReportingPage() {
 
       <section className="space-y-4" aria-labelledby="run-history-heading">
         <div className="flex items-center gap-3"><History className="size-icon-lg text-dacfp-blue" aria-hidden="true" /><div><p className="eyebrow">Retention record</p><h2 id="run-history-heading" className="text-xl font-bold text-dacfp-navy">Run history</h2></div></div>
-        {runs.length ? <div className="card overflow-hidden"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Created</TableHead><TableHead>Period</TableHead><TableHead>Rows</TableHead><TableHead>Filename</TableHead><TableHead>Download</TableHead></TableRow></TableHeader><TableBody>{runs.map((run) => <TableRow key={run.id}><TableCell>{new Date(run.created_at).toLocaleString()}</TableCell><TableCell>{run.period_start} – {run.period_end}</TableCell><TableCell>{run.row_count}</TableCell><TableCell className="font-mono text-xs">{run.filename}</TableCell><TableCell><button className="button-quiet" type="button" onClick={() => void downloadCfpCeWorkbook(run.rows, run.filename).catch(() => setError('The retained report could not be downloaded.'))}><Download className="size-icon-sm" aria-hidden="true" />Download again</button></TableCell></TableRow>)}</TableBody></Table></div></div> : <p className="card p-6 text-sm text-dacfp-gray-text">No CFP CE report runs have been recorded.</p>}
+        {runs.length ? <div className="card overflow-hidden"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Created</TableHead><TableHead>Period</TableHead><TableHead>Rows</TableHead><TableHead>Filename</TableHead><TableHead>Download</TableHead></TableRow></TableHeader><TableBody>{runs.map((run) => <TableRow key={run.id}><TableCell>{new Date(run.created_at).toLocaleString()}</TableCell><TableCell>{run.period_start} – {run.period_end}</TableCell><TableCell>{run.row_count}</TableCell><TableCell className="font-mono text-xs">{run.filename}</TableCell><TableCell><button className="button-quiet" disabled={downloadingRunId !== null} type="button" onClick={() => void downloadRetainedRun(run)}><Download className="size-icon-sm" aria-hidden="true" />{downloadingRunId === run.id ? 'Downloading…' : 'Download again'}</button></TableCell></TableRow>)}</TableBody></Table></div></div> : <p className="card p-6 text-sm text-dacfp-gray-text">No CFP CE report runs have been recorded.</p>}
       </section>
     </div>
   );

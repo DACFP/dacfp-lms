@@ -45,6 +45,7 @@ import {
 import { QUIZ_POLICY_COPY } from '../lib/quizPolicy';
 import { isRenewalWindowOpen, renewalWindowForEnrollment } from '../lib/renewal';
 import { formatClock } from '../lib/time';
+import { moduleCounterLabel } from '../lib/moduleLabel';
 
 function addOneYear(value: string) {
   const date = new Date(value);
@@ -404,7 +405,7 @@ function NextUpCard({
     <section aria-labelledby="next-up-heading" className="card border-t-[3px] border-t-dacfp-gold-text p-6 sm:p-7">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 max-w-xl">
-          <p className="eyebrow text-dacfp-gold-text">Next up · Module {String(next.module.position).padStart(2, '0')} of {ledger.length}</p>
+          <p className="eyebrow text-dacfp-gold-text">Next up · {moduleCounterLabel(next.module, view.courseModules)}</p>
           <h2 id="next-up-heading" className="mt-1.5 text-2xl font-bold text-dacfp-navy">{next.module.title}</h2>
           <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
             {next.lessons.length} lesson{next.lessons.length === 1 ? '' : 's'}{next.quiz ? ', followed by a short quiz.' : '.'}
@@ -453,7 +454,7 @@ function CourseOfStudy({
           const rowState = row.passed ? 'passed' : row.current ? 'current' : row.unlocked ? 'available' : 'locked';
           const body = (
             <>
-              <span className={`w-8 shrink-0 text-xs font-bold tabular-nums ${rowState === 'locked' ? 'text-dacfp-gray-text' : 'text-dacfp-gold-text'}`}>{String(row.module.position).padStart(2, '0')}</span>
+              <span className={`w-8 shrink-0 text-xs font-bold tabular-nums ${rowState === 'locked' ? 'text-dacfp-gray-text' : 'text-dacfp-gold-text'}`}>{row.module.position}</span>
               <span className="min-w-0 flex-1">
                 <span className={`block text-sm font-semibold ${rowState === 'locked' ? 'text-dacfp-gray-text' : 'text-dacfp-navy'}`}>{row.module.title}</span>
                 <span className="mt-0.5 block text-xs text-dacfp-gray-text">{row.lessons.length} lessons{row.minutes > 0 ? ` · ${row.minutes} min` : ''}{row.quiz ? ' · quiz' : ''}</span>

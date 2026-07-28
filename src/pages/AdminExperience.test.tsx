@@ -80,7 +80,30 @@ const inspection: LearnerInspection = {
       lms_courses: { id: 'course-fpt', slug: 'fpt-sandbox', title: 'FPT Sandbox', ce_credits: 18, cfp_program_id: '312442' },
     },
   ],
-  progress: [],
+  progress: [
+    {
+      id: 'progress-completed',
+      enrollment_id: 'enr-1',
+      lesson_id: 'fpt-m1-video',
+      started_at: '2026-07-18T10:00:00.000Z',
+      completed_at: '2026-07-18T10:10:00.000Z',
+      last_position_seconds: 600,
+      max_watched_seconds: 600,
+      max_watched_updated_at: '2026-07-18T10:10:00.000Z',
+      updated_at: '2026-07-18T10:10:00.000Z',
+    },
+    {
+      id: 'progress-resume',
+      enrollment_id: 'enr-1',
+      lesson_id: 'fpt-m2-video',
+      started_at: '2026-07-20T12:00:00.000Z',
+      completed_at: null,
+      last_position_seconds: 91,
+      max_watched_seconds: 91,
+      max_watched_updated_at: '2026-07-20T12:01:31.000Z',
+      updated_at: '2026-07-20T12:01:31.000Z',
+    },
+  ],
   attempts: [],
   surveyResponses: [],
   completions: [],
@@ -90,11 +113,11 @@ const inspection: LearnerInspection = {
 function baseAdmin(overrides: Partial<Record<string, unknown>> = {}): LmsAdminProvider {
   return {
     async adminRequest<T>(action: string, payload: Record<string, unknown> = {}) {
+      const handler = overrides[action] as ((p: Record<string, unknown>) => unknown) | undefined;
+      if (handler) return handler(payload) as T;
       if (action === 'list_catalog') return (await mockProvider.getCatalog()) as T;
       if (action === 'list_audit') return [] as T;
       if (action === 'inspect_learner') return inspection as T;
-      const handler = overrides[action] as ((p: Record<string, unknown>) => unknown) | undefined;
-      if (handler) return handler(payload) as T;
       return {} as T;
     },
   };
@@ -129,6 +152,71 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
     expect(await screen.findByRole('heading', { name: 'FPT Sandbox' })).toBeInTheDocument();
     expect(screen.getByText('Access expiry')).toBeInTheDocument();
     expect(screen.getByText('Terms accepted')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Lesson progress (2)'));
+    expect(screen.getByText('Bitcoin Foundations: Video lesson')).toBeInTheDocument();
+    expect(screen.getByText('Completed Jul 18, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Blockchain and DLT: Video lesson')).toBeInTheDocument();
+    expect(screen.getByText('Resume at 1:31')).toBeInTheDocument();
+    expect(screen.getAllByText(/Updated/)).toHaveLength(2);
+  });
+
+  it('names every quiz reset for its module and learner', async () => {
+    renderAdmin('/admin/learners', baseAdmin());
+    fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
+
+    const reset = await screen.findByRole('button', {
+      name: 'Reset Module 3 “Digital Assets and Currencies” quiz attempts in FPT Sandbox for Jordan Rivers',
+    });
+    fireEvent.click(reset);
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByRole('heading', {
+      name: 'Reset Module 3 “Digital Assets and Currencies” quiz attempts in FPT Sandbox for Jordan Rivers?',
+    })).toBeInTheDocument();
+    expect(within(dialog).getByText(/^Every recorded attempt for “Digital Assets and Currencies”/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', {
+      name: 'Reset Module 3 “Digital Assets and Currencies” quiz attempts in FPT Sandbox for Jordan Rivers',
+    })).toBeInTheDocument();
+  });
+
+  it('keeps same-position quiz reset names unique across enrolled courses', async () => {
+    const renewalEnrollment: LearnerInspection['enrollments'][number] = {
+      id: 'enr-renewal',
+      person_email: 'jordan@example.test',
+      auth_user_id: 'learner-1',
+      course_id: 'course-renewal-2026',
+      source: 'synthetic',
+      enrolled_at: '2026-01-01T00:00:00.000Z',
+      expires_at: '2027-07-16T00:00:00.000Z',
+      status: 'active',
+      terms_accepted_at: null,
+      order_id: null,
+      lms_courses: {
+        id: 'course-renewal-2026',
+        slug: 'renewal-2026-sandbox',
+        title: 'Renewal 2026 Sandbox',
+        ce_credits: 1,
+        cfp_program_id: null,
+      },
+    };
+    const twoCourseInspection: LearnerInspection = {
+      ...inspection,
+      enrollments: [...inspection.enrollments, renewalEnrollment],
+      summaries: [
+        ...inspection.summaries,
+        { enrollment_id: renewalEnrollment.id, percent_complete: 0 },
+      ],
+    };
+    renderAdmin('/admin/learners', baseAdmin({ inspect_learner: () => twoCourseInspection }));
+    fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
+
+    expect(await screen.findByRole('button', {
+      name: 'Reset Module 1 “Bitcoin Foundations” quiz attempts in FPT Sandbox for Jordan Rivers',
+    })).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'Reset Module 1 “2026 Annual Update” quiz attempts in Renewal 2026 Sandbox for Jordan Rivers',
+    })).toBeInTheDocument();
   });
 });
 
@@ -163,6 +251,100 @@ describe('Admin destructive confirm — brief #21 (alert-dialog, not window.conf
 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(deleteModule).not.toHaveBeenCalled();
+  });
+
+  it('names a course delete and surfaces enrollment refusal with support copy', async () => {
+    const deleteCourse = vi.fn(() => {
+      throw new Error('Course has enrollments and cannot be deleted.');
+    });
+    renderAdmin('/admin/course/course-fpt', baseAdmin({ delete_course: deleteCourse }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete course' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByRole('heading', { name: 'Delete “FPT Sandbox”?' })).toBeInTheDocument();
+    expect(within(dialog).getByText(/modules, lessons, quizzes, surveys/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete FPT Sandbox' }));
+
+    expect(await screen.findByText(/Deletion refused.*FPT Sandbox.*has enrollments.*Contact support/)).toBeInTheDocument();
+    expect(deleteCourse).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Admin pending and empty states — F6', () => {
+  it('shows an empty curriculum state and guards repeated Add module submits', async () => {
+    let resolveCreate: ((value: unknown) => void) | undefined;
+    const createModule = vi.fn(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    const catalog = await mockProvider.getCatalog();
+    renderAdmin('/admin/course/course-fpt', baseAdmin({
+      list_catalog: () => ({
+        ...catalog,
+        modules: catalog.modules.filter((module) => module.course_id !== 'course-fpt'),
+        lessons: catalog.lessons.filter((lesson) => !lesson.module_id.startsWith('fpt-')),
+        quizzes: catalog.quizzes.filter((quiz) => !quiz.module_id.startsWith('fpt-')),
+      }),
+      create_module: createModule,
+    }));
+
+    expect(await screen.findByRole('heading', { name: 'No curriculum yet' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('New module title'), { target: { value: 'First module' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add module' }));
+    const pending = await screen.findByRole('button', { name: 'Adding module…' });
+    expect(pending).toBeDisabled();
+    fireEvent.click(pending);
+    expect(createModule).toHaveBeenCalledTimes(1);
+    resolveCreate?.({ id: 'new-module' });
+  });
+
+  it('guards repeated Add lesson, Save lesson, and Save survey submits', async () => {
+    const never = () => new Promise(() => undefined);
+    const createLesson = vi.fn(never);
+    const updateLesson = vi.fn(never);
+    const saveSurvey = vi.fn(never);
+    renderAdmin('/admin/course/course-fpt', baseAdmin({
+      create_lesson: createLesson,
+      update_lesson: updateLesson,
+      replace_survey_flow: saveSurvey,
+    }));
+
+    const lessonTitle = (await screen.findAllByLabelText('New lesson title'))[0];
+    fireEvent.change(lessonTitle, { target: { value: 'Synthetic lesson' } });
+    fireEvent.click(within(lessonTitle.closest('form')!).getByRole('button', { name: 'Add lesson' }));
+    expect(await within(lessonTitle.closest('form')!).findByRole('button', { name: 'Adding lesson…' })).toBeDisabled();
+    expect(createLesson).toHaveBeenCalledTimes(1);
+
+    const lessonInput = screen.getByDisplayValue('Welcome to the Financial Professional Track');
+    const lessonForm = lessonInput.closest('form')!;
+    fireEvent.submit(lessonForm);
+    expect(await within(lessonForm).findByRole('button', { name: 'Saving lesson…' })).toBeDisabled();
+    fireEvent.submit(lessonForm);
+    expect(updateLesson).toHaveBeenCalledTimes(1);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Edit survey flow' }))[0]);
+    const surveySave = (await screen.findAllByRole('button', { name: 'Save survey flow' }))[0];
+    fireEvent.click(surveySave);
+    expect(await screen.findByRole('button', { name: 'Saving survey flow…' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Saving survey flow…' }));
+    expect(saveSurvey).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  it('clears stale learner results while a guarded lookup is pending', async () => {
+    let resolveSecond: ((value: LearnerInspection | null) => void) | undefined;
+    const inspect = vi.fn((payload: Record<string, unknown>) => payload.email === 'second@example.test'
+      ? new Promise<LearnerInspection | null>((resolve) => { resolveSecond = resolve; })
+      : inspection);
+    renderAdmin('/admin/learners', baseAdmin({ inspect_learner: inspect }));
+
+    const input = await screen.findByLabelText('Learner email');
+    fireEvent.change(input, { target: { value: 'jordan@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
+    expect(await screen.findByRole('heading', { name: 'Jordan Rivers' })).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: 'second@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
+    expect(await screen.findByRole('button', { name: 'Inspecting learner…' })).toBeDisabled();
+    expect(screen.queryByRole('heading', { name: 'Jordan Rivers' })).toBeNull();
+    expect(inspect).toHaveBeenCalledTimes(2);
+    resolveSecond?.(null);
   });
 });
 
@@ -448,7 +630,40 @@ describe('Admin CFP CE reporting — R1', () => {
         filename: `cfp-ce-${today}-through-${today}.xlsx`,
       }],
     }));
-    expect(await screen.findByLabelText('Period start')).toHaveValue(today);
+    await waitFor(() => expect(screen.getByLabelText('Period start')).toHaveValue(today));
     expect(screen.getByLabelText('Period end')).toHaveValue(today);
+  });
+
+  it('downloads a retained run again from its frozen rows and filename', async () => {
+    const frozenRow = {
+      completion_id: '30000000-0000-4000-8000-000000000009',
+      course_id: 'course-fpt',
+      person_email: 'retained@example.test',
+      trigger: 'all_requirements_met' as const,
+      cfp_program_id: '312442',
+      date_individual_completed: '2026-07-16',
+      attendee_cfp_board_id: '654321',
+      attendee_last_name: 'Retained',
+      attendee_first_name: 'Row',
+      attendee_middle_name: '',
+    };
+    const filename = 'cfp-ce-retained-sandbox.xlsx';
+    workbookDownload.mockClear();
+    renderAdmin('/admin/ce-reporting', baseAdmin({
+      list_ce_report_runs: () => [{
+        id: '40000000-0000-4000-8000-000000000009',
+        created_at: '2026-07-27T18:00:00.000Z',
+        actor_auth_user_id: 'auth-operator',
+        course_ids: ['course-fpt'],
+        period_start: '2026-07-01',
+        period_end: '2026-07-27',
+        row_count: 1,
+        rows: [frozenRow],
+        filename,
+      }],
+    }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Download again' }));
+    await waitFor(() => expect(workbookDownload).toHaveBeenCalledWith([frozenRow], filename));
   });
 });

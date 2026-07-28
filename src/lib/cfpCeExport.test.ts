@@ -51,6 +51,18 @@ const rows: CfpCeExportRow[] = [
 ];
 
 describe('CFP CE workbook export', () => {
+  it('accepts and preserves the committed template header', async () => {
+    const nodeFsModule = 'node:fs';
+    const { readFileSync } = await import(nodeFsModule);
+    const committedTemplate = readFileSync('docs/cfp-ce-template.xlsx');
+    const bytes = writeCfpCeWorkbook(committedTemplate, rows);
+    const workbook = XLSX.read(bytes, { type: 'array', cellDates: false, cellStyles: true });
+    const sheet = workbook.Sheets[CFP_CE_SHEET_NAME];
+    expect(CFP_CE_HEADERS.map((_, column) => sheet[XLSX.utils.encode_cell({ r: 0, c: column })]?.v)).toEqual([
+      ...CFP_CE_HEADERS,
+    ]);
+  });
+
   it('writes only the six authorized columns into the committed template shape', () => {
     const workbook = buildCfpCeWorkbook(template, rows);
     expect(workbook.SheetNames).toContain(CFP_CE_SHEET_NAME);

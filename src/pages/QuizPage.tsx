@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Progress } from '@/components/ui/progress';
 import { Alert } from '../components/Alert';
+import { ExpiredAccessPanel } from '../components/ExpiredAccessPanel';
 import { LockedBadge } from '../components/LockedBadge';
 import { QuizSkeleton } from '../components/Skeletons';
 import { StatusAnnouncer, useStatusAnnouncer } from '../components/StatusAnnouncer';
@@ -31,6 +32,11 @@ import {
   moduleIsUnlocked,
   quizIsAttemptable,
 } from '../lib/progress';
+import {
+  courseForEnrollment,
+  expiredEnrollmentForQuizModule,
+} from '../lib/enrollmentCourse';
+import { moduleCounterLabel } from '../lib/moduleLabel';
 
 export function QuizPage() {
   const { moduleId } = useParams();
@@ -45,6 +51,7 @@ export function QuizPage() {
   const [step, setStep] = useState(0);
   const verdict = useStatusAnnouncer<HTMLHeadingElement>();
 
+  const hiddenExpiredEnrollment = expiredEnrollmentForQuizModule(snapshot, moduleId);
   const module = catalog.modules.find((item) => item.id === moduleId);
   const course = catalog.courses.find((item) => item.id === module?.course_id);
   const quiz = catalog.quizzes.find((item) => item.module_id === module?.id);
@@ -100,6 +107,24 @@ export function QuizPage() {
   }, [accessible, error, loading, payload, quiz, startAttempt]);
 
   if (!module || !course || !quiz) {
+    if (hiddenExpiredEnrollment) {
+      const hiddenCourse = courseForEnrollment(catalog, hiddenExpiredEnrollment);
+      return (
+        <div className="space-y-8">
+          <PageHeader
+            eyebrow={hiddenCourse?.title ?? 'Course quiz'}
+            title="This quiz is no longer open"
+            description="This quiz remains in your learning record, but attempts cannot be opened after course access expires."
+            action={<StatusPill tone="warning">Access expired</StatusPill>}
+          />
+          <ExpiredAccessPanel
+            enrollment={hiddenExpiredEnrollment}
+            headingId="quiz-expired-access-heading"
+          />
+          <Link className="button-secondary" to="/dashboard">Back to dashboard</Link>
+        </div>
+      );
+    }
     return (
       <EmptyState
         title="Quiz not found"
@@ -119,7 +144,26 @@ export function QuizPage() {
     );
   }
 
+  const courseModules = catalog.modules
+    .filter((item) => item.course_id === course.id)
+    .sort((a, b) => a.position - b.position);
+  const moduleLabel = moduleCounterLabel(module, courseModules);
   const accessState = enrollmentAccessState(enrollment);
+
+  if (accessState === 'expired') {
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          eyebrow={`${course.title} · ${moduleLabel}`}
+          title={`Module ${module.position} quiz`}
+          description="This quiz remains in your learning record, but attempts cannot be opened after course access expires."
+          action={<StatusPill tone="warning">Access expired</StatusPill>}
+        />
+        <ExpiredAccessPanel enrollment={enrollment} headingId="quiz-expired-access-heading" />
+        <Link className="button-secondary" to="/dashboard">Back to dashboard</Link>
+      </div>
+    );
+  }
 
   const selectChoice = (
     questionId: string,
@@ -164,9 +208,6 @@ export function QuizPage() {
   const nextModule = catalog.modules.find(
     (item) => item.course_id === course.id && item.position === module.position + 1,
   );
-  const courseModules = catalog.modules
-    .filter((item) => item.course_id === course.id)
-    .sort((a, b) => a.position - b.position);
   const nextModuleLessons = nextModule
     ? catalog.lessons.filter((item) => item.module_id === nextModule.id)
     : [];
@@ -202,14 +243,12 @@ export function QuizPage() {
       <StatusAnnouncer message={verdict.message} />
 
       <PageHeader
-        eyebrow={`${course.title} · Module ${module.position}`}
+        eyebrow={`${course.title} · ${moduleLabel}`}
         title={`Module ${module.position} quiz`}
         description="A short check of understanding — not an exam. 10 questions, 70% or higher, unlimited attempts, no final exam."
         action={
           latest?.passed ? (
             <StatusPill tone="positive">Passed</StatusPill>
-          ) : accessState === 'expired' ? (
-            <StatusPill tone="warning">Access expired</StatusPill>
           ) : accessible ? (
             <StatusPill tone="neutral">Ready</StatusPill>
           ) : (
@@ -229,11 +268,9 @@ export function QuizPage() {
                 <LockKeyhole className="size-icon-sm" aria-hidden="true" /> Quiz unavailable
               </p>
               <p className="mt-3 text-sm leading-6 text-dacfp-gray-text">
-                {accessState === 'expired'
-                  ? 'Course access has expired. Designation standing is governed separately.'
-                  : accessState === 'revoked'
-                    ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
-                    : 'Complete all required lessons and any prior module before starting this quiz.'}
+                {accessState === 'revoked'
+                  ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
+                  : 'Complete all required lessons and any prior module before starting this quiz.'}
               </p>
               <Link className="button-quiet mt-3" to={`/course/${course.slug}/module/${module.position}`}>
                 Back to module

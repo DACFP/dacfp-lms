@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SurveyLesson } from './SurveyLesson';
-import type { LmsSurveyQuestion, LmsSurveySection } from '../data/types';
+import type { LmsSurveyQuestion, LmsSurveyResponse, LmsSurveySection } from '../data/types';
 
 const sections: LmsSurveySection[] = [
   {
@@ -36,6 +37,29 @@ const questions: LmsSurveyQuestion[] = [
 ];
 
 describe('SurveyLesson', () => {
+  it('keeps the routed form mounted when stored UUID targets omit hyphens', () => {
+    const startId = '2c479c9a-de56-a2f8-aba8-517ea7e43f1d';
+    const branchId = 'de549f74-ea5a-d97f-0231-980998e779c2';
+    const routedSections: LmsSurveySection[] = [
+      { id: startId, lesson_id: 'survey-uuid', position: 1, title: 'Start', default_next_section_id: null },
+      { id: branchId, lesson_id: 'survey-uuid', position: 2, title: 'Owner branch', default_next_section_id: null },
+    ];
+    const routedQuestions: LmsSurveyQuestion[] = [{
+      id: 'gate', lesson_id: 'survey-uuid', section_id: startId, position: 1,
+      prompt: 'Choose a path', kind: 'single_choice', required: true,
+      choices: [{ id: 'owner', text: 'Owner' }, { id: 'other', text: 'Other' }],
+      routes: { owner: branchId.replaceAll('-', '') },
+    }];
+
+    render(<SurveyLesson sections={routedSections} questions={routedQuestions} response={null} onSubmit={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('Owner'));
+
+    expect(screen.queryByText('Survey sections are unavailable.')).toBeNull();
+    expect(screen.getByLabelText('Owner')).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('heading', { name: 'Owner branch' })).toBeInTheDocument();
+  });
+
   it('renders one routed section at a time and converges on the shared tail', async () => {
     const routedSections: LmsSurveySection[] = [
       { id: 'start', lesson_id: 'survey-2', position: 1, title: 'Start', default_next_section_id: 'tail' },
@@ -98,6 +122,36 @@ describe('SurveyLesson', () => {
       choice_free_text: {},
       path: ['section-1'],
     }));
+  });
+
+  it('transitions from the form to submitted responses without changing hook order', async () => {
+    function SubmittedTransition() {
+      const [response, setResponse] = useState<LmsSurveyResponse | null>(null);
+      return (
+        <SurveyLesson
+          sections={sections}
+          questions={questions}
+          response={response}
+          onSubmit={async (submission) => setResponse({
+            id: 'response-transition',
+            enrollment_id: 'enrollment-1',
+            lesson_id: 'survey-1',
+            submitted_at: '2026-07-28T00:00:00.000Z',
+            ...submission,
+          })}
+        />
+      );
+    }
+
+    render(<SubmittedTransition />);
+    fireEvent.click(screen.getByLabelText('4'));
+    fireEvent.change(screen.getByLabelText('2. What should we improve?'), { target: { value: 'Synthetic' } });
+    fireEvent.click(screen.getByLabelText('Advisor'));
+    fireEvent.click(screen.getByLabelText('Bitcoin'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit survey' }));
+
+    expect(await screen.findByRole('heading', { name: 'Your responses' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit survey' })).toBeNull();
   });
 
   it('renders selected-option free text and submits it under that option', async () => {

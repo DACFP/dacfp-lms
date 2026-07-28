@@ -45,6 +45,17 @@ function selectedChoiceIds(value: unknown): string[] {
     : [];
 }
 
+function canonicalRouteTarget(value: string | null) {
+  if (!value || !/^[0-9a-f]{32}$/i.test(value)) return value;
+  return [
+    value.slice(0, 8),
+    value.slice(8, 12),
+    value.slice(12, 16),
+    value.slice(16, 20),
+    value.slice(20),
+  ].join('-');
+}
+
 export function nextSurveySectionId(
   section: RoutedSurveySection,
   questions: RoutedSurveyQuestion[],
@@ -62,7 +73,9 @@ export function nextSurveySectionId(
   const gate = gates[0];
   if (!gate) return section.default_next_section_id;
   const selected = selectedChoiceIds(answers[gate.id])[0];
-  return (selected && gate.routes?.[selected]) || section.default_next_section_id;
+  return canonicalRouteTarget(
+    (selected && gate.routes?.[selected]) || section.default_next_section_id,
+  );
 }
 
 export function buildSurveyPath(

@@ -81,6 +81,25 @@ function resumeValue() {
 }
 
 describe('LessonPlayer lifecycle', () => {
+  it('holds first-pass and review chrome until entitlement resolves', async () => {
+    let resolveToken: ((value: LmsPlaybackToken) => void) | undefined;
+    lms.requestPlayback.mockImplementation(() => new Promise<LmsPlaybackToken>((resolve) => {
+      resolveToken = resolve;
+    }));
+    lms.recordHeartbeat.mockImplementation(async (lessonId: string, position: number) =>
+      progress(lessonId, position));
+
+    render(<LessonPlayer course={course} lesson={lesson('lesson-a')} progress={progress('lesson-a', 30)} />);
+
+    expect(screen.getByText('Resolving secure playback…')).toBeInTheDocument();
+    expect(screen.queryByText('First pass · 1×')).toBeNull();
+    expect(screen.queryByText('Review mode · up to 2×')).toBeNull();
+
+    await act(async () => resolveToken?.(token('lesson-a', 30, true)));
+    expect(await screen.findByText('Review mode · up to 2×')).toBeInTheDocument();
+    expect(screen.queryByText('First pass · 1×')).toBeNull();
+  });
+
   it('starts a different keyed lesson with its own resume and watermark', async () => {
     lms.requestPlayback.mockImplementation(async (lessonId: string) =>
       token(lessonId, lessonId === 'lesson-a' ? 120 : 5));

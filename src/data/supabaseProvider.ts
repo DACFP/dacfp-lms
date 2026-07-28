@@ -210,6 +210,9 @@ interface EnrollmentCourseSummaryRow {
   course_title: string;
   course_status: string;
   prerequisite_course_id: string | null;
+  module_positions: number[];
+  lesson_ids: string[];
+  quiz_module_ids: string[];
 }
 
 function toCourseStatus(value: string): LmsEnrollmentCourseSummary['status'] {
@@ -236,6 +239,9 @@ export function attachEnrollmentCourseSummaries(
         title: row.course_title,
         status: toCourseStatus(row.course_status),
         prerequisite_course_id: row.prerequisite_course_id,
+        module_positions: row.module_positions,
+        lesson_ids: row.lesson_ids,
+        quiz_module_ids: row.quiz_module_ids,
       },
     };
   });

@@ -76,6 +76,24 @@ export function SurveyLesson({
   const [sectionIndex, setSectionIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const routeState = useMemo(() => {
+    try {
+      return {
+        path: buildSurveyPath(orderedSections, questions, answers),
+        error: '',
+      };
+    } catch {
+      return {
+        // Keep the current form mounted when a route target is malformed.
+        // Before F6 the catch replaced the entire form with the empty-sections
+        // state, discarding the visible choice as soon as it was selected.
+        path: orderedSections[0] ? [orderedSections[0].id] : [],
+        error: orderedSections.length
+          ? 'This survey route could not be continued. Your current answers are still shown.'
+          : 'Survey sections are unavailable.',
+      };
+    }
+  }, [answers, orderedSections, questions]);
 
   if (response) {
     const sectionById = new Map(orderedSections.map((section) => [section.id, section]));
@@ -123,12 +141,7 @@ export function SurveyLesson({
     );
   }
 
-  let path: string[] = [];
-  try {
-    path = buildSurveyPath(orderedSections, questions, answers);
-  } catch {
-    path = [];
-  }
+  const { path } = routeState;
   const boundedIndex = Math.min(sectionIndex, Math.max(path.length - 1, 0));
   const sectionId = path[boundedIndex];
   const section = orderedSections.find((item) => item.id === sectionId);
@@ -302,6 +315,7 @@ export function SurveyLesson({
             })}
           </div>
 
+          {routeState.error ? <div className="mt-5"><Alert tone="danger">{routeState.error}</Alert></div> : null}
           {error ? <div className="mt-5"><Alert tone="danger">{error}</Alert></div> : null}
           <div className="mt-7 flex flex-wrap justify-between gap-3">
             <button
@@ -312,7 +326,7 @@ export function SurveyLesson({
             >
               <ArrowLeft className="size-icon-sm" aria-hidden="true" />Back
             </button>
-            <button className="button-primary" disabled={submitting} type="submit">
+            <button className="button-primary" disabled={submitting || Boolean(routeState.error)} type="submit">
               {finalSection ? <CheckCircle2 className="size-icon-sm" aria-hidden="true" /> : <ArrowRight className="size-icon-sm" aria-hidden="true" />}
               {submitting ? 'Submitting…' : finalSection ? 'Submit survey' : 'Continue'}
             </button>
