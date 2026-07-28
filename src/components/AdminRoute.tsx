@@ -9,7 +9,13 @@ export function AdminRoute({ children }: { children: ReactNode }) {
     return <main className="grid min-h-dvh place-items-center bg-dacfp-wash" role="status">Checking operator access…</main>;
   }
   if (!session) {
-    return <Navigate replace to="/login" state={{ from: location.pathname }} />;
+    return (
+      <Navigate
+        replace
+        to="/login"
+        state={{ from: `${location.pathname}${location.search}`, actor: 'operator' }}
+      />
+    );
   }
   if (session.user.role !== 'operator') return <Navigate replace to="/dashboard" />;
   return children;

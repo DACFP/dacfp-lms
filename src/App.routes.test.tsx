@@ -66,6 +66,15 @@ function testAuthProvider(session: LmsAuthSession | null): LmsAuthProvider {
   };
 }
 
+function loginAuthProvider(session: LmsAuthSession): LmsAuthProvider {
+  return {
+    ...testAuthProvider(null),
+    async login() {
+      return { ok: true, message: 'Signed in.', session };
+    },
+  };
+}
+
 /**
  * M-10 removed ?learner= from the learner app, so a test can no longer pick a
  * synthetic state through the URL. It binds the state to the provider instead,
@@ -110,6 +119,23 @@ function renderRoute(
   );
 }
 
+function renderLoginState(
+  state: { from: string; actor: 'learner' | 'operator' },
+  authProvider: LmsAuthProvider,
+  adminProvider?: LmsAdminProvider,
+) {
+  window.history.replaceState({}, '', '/login');
+  render(
+    <MemoryRouter initialEntries={[{ pathname: '/login', state }]}>
+      <AuthSessionProvider provider={authProvider}>
+        <LmsProvider provider={scopedProvider(mockProvider, 'mid-module-2')}>
+          <App adminProvider={adminProvider} />
+        </LmsProvider>
+      </AuthSessionProvider>
+    </MemoryRouter>,
+  );
+}
+
 /**
  * The O2 quiz is a stepper (brief #1-#4): one question per screen, then a
  * review screen that owns the only Submit control. Reaching Submit therefore
@@ -131,7 +157,6 @@ async function walkToReview() {
 
 describe('D0 route shell', () => {
   it.each<[string, string | RegExp]>([
-    ['/login', 'Sign in to continue'],
     ['/reset', 'Reset your password'],
     // T1: the dashboard greets by first name in the mockup's register, and the
     // greeting tracks time of day — hence the regex.
@@ -146,6 +171,13 @@ describe('D0 route shell', () => {
   ])('renders %s on mock data', async (path, heading) => {
     renderRoute(path);
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
+  });
+
+  it('renders login for an unauthenticated visitor', async () => {
+    renderRoute('/login', 'fresh', testAuthProvider(null));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Sign in to continue' }),
+    ).toBeInTheDocument();
   });
 
   it('shows session loading without issuing LMS data requests', async () => {
@@ -292,7 +324,9 @@ describe('D0 route shell', () => {
 
   it('names and links the exact blocking quiz for a locked module', async () => {
     renderRoute('/course/fpt-sandbox/module/4', 'quiz-failed-on-3');
-    expect((await screen.findAllByText("Complete Module 3's quiz to unlock.")).length).toBeGreaterThanOrEqual(2);
+    expect(
+      await screen.findByText("Pass Module 3's quiz to unlock Module 4."),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Go to Module 3 quiz' })).toHaveAttribute('href', '/quiz/fpt-m3');
   });
 
@@ -386,8 +420,11 @@ describe('D0 route shell', () => {
       },
     };
     renderRoute('/dashboard', 'fully-complete', testAuthProvider(signedInSession), expiredProvider);
-    expect((await screen.findAllByText('Access expired')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/does not itself change designation standing/i).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Access expired/)).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('Learning access and designation status are governed separately.')
+        .length,
+    ).toBeGreaterThan(0);
   });
 
   it('keeps an expired enrollment visible when RLS hides its course metadata', async () => {
@@ -418,9 +455,13 @@ describe('D0 route shell', () => {
     };
 
     renderRoute('/dashboard', 'fresh', testAuthProvider(signedInSession), hiddenExpiredProvider);
-    expect((await screen.findAllByRole('heading', { name: 'Expired course access' })).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/This does not itself change designation standing/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: 'Review account' }).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByRole('heading', {
+        name: 'This course is no longer available — contact support',
+      })).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('Course access unavailable')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Contact support' }).length).toBeGreaterThan(0);
   });
 
   it.each([
@@ -745,7 +786,9 @@ describe('D0 route shell', () => {
       },
     };
     renderRoute('/course/fpt-sandbox/module/1', 'fully-complete', testAuthProvider(signedInSession), nullExpiryProvider);
-    expect(await screen.findByText(/marked expired without an expiry date/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Access expired' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/1970/)).not.toBeInTheDocument();
   });
 
@@ -794,6 +837,278 @@ describe('D0 route shell', () => {
     ).toBeInTheDocument();
     expect(getCatalog).not.toHaveBeenCalled();
     expect(getLearnerSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+describe('F5 journey-defect remediation', () => {
+  it('uses only the expired FPT enrollment for dashboard dates and removes Resume', async () => {
+    const expiredFptProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        return {
+          ...snapshot,
+          enrollments: snapshot.enrollments.map((enrollment) =>
+            enrollment.course_id === 'course-fpt'
+              ? {
+                  ...enrollment,
+                  status: 'expired' as const,
+                  expires_at: '2026-01-01T12:00:00.000Z',
+                }
+              : {
+                  ...enrollment,
+                  status: 'active' as const,
+                  expires_at: '2028-07-16T23:59:59.000Z',
+                },
+          ),
+        };
+      },
+    };
+
+    renderRoute(
+      '/dashboard',
+      'mid-module-2',
+      testAuthProvider(signedInSession),
+      expiredFptProvider,
+    );
+
+    expect(
+      (await screen.findAllByText('Access expired Jan 1, 2026')).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'What you keep' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Restore course access' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Resume/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/2028/)).not.toBeInTheDocument();
+  });
+
+  it('renders the same designed expired state on a lesson route', async () => {
+    const expiredLessonProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        return {
+          ...snapshot,
+          enrollments: snapshot.enrollments.map((enrollment) =>
+            enrollment.course_id === 'course-fpt'
+              ? {
+                  ...enrollment,
+                  status: 'expired' as const,
+                  expires_at: '2026-01-01T12:00:00.000Z',
+                }
+              : enrollment,
+          ),
+        };
+      },
+    };
+
+    renderRoute(
+      '/lesson/fpt-m2-video',
+      'mid-module-2',
+      testAuthProvider(signedInSession),
+      expiredLessonProvider,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Access expired Jan 1, 2026' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What you keep' })).toBeInTheDocument();
+    expect(screen.queryByText('Resume at')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /play/i })).not.toBeInTheDocument();
+  });
+
+  it('collapses locked module guidance to the Introduction survey once', async () => {
+    const introductionBlockerProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        const fpt = snapshot.enrollments.find(
+          (enrollment) => enrollment.course_id === 'course-fpt',
+        )!;
+        return {
+          ...snapshot,
+          enrollments: snapshot.enrollments.map((enrollment) =>
+            enrollment.id === fpt.id
+              ? {
+                  ...enrollment,
+                  terms_accepted_at: '2026-07-16T16:05:00.000Z',
+                }
+              : enrollment,
+          ),
+          progress: [
+            ...snapshot.progress,
+            {
+              id: 'fresh-intro-video-complete',
+              enrollment_id: fpt.id,
+              lesson_id: 'fpt-intro-video',
+              started_at: '2026-07-16T16:10:00.000Z',
+              completed_at: '2026-07-16T16:12:00.000Z',
+              last_position_seconds: 120,
+              max_watched_seconds: 120,
+              max_watched_updated_at: '2026-07-16T16:12:00.000Z',
+              updated_at: '2026-07-16T16:12:00.000Z',
+            },
+          ],
+        };
+      },
+    };
+
+    renderRoute(
+      '/dashboard',
+      'fresh',
+      testAuthProvider(signedInSession),
+      introductionBlockerProvider,
+    );
+
+    const message =
+      'Complete the Introduction survey “Pre-course survey” to unlock Module 1.';
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getAllByText(message)).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Open Introduction survey' })).toHaveAttribute(
+      'href',
+      '/lesson/fpt-pre-course-survey',
+    );
+    expect(screen.queryByText(/Introduction.+quiz/i)).not.toBeInTheDocument();
+  });
+
+  it('redirects authenticated learner and operator visits away from login', async () => {
+    renderRoute('/login', 'mid-module-2', testAuthProvider(signedInSession));
+    expect(
+      await screen.findByRole('heading', {
+        name: /^Good (morning|afternoon|evening), Mid-module\.$/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('redirects an authenticated operator visit from login to the operator home', async () => {
+    renderLoginState(
+      { from: '/admin', actor: 'operator' },
+      testAuthProvider(operatorSession),
+      mockAdminProvider,
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Course catalog' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in to continue' })).not.toBeInTheDocument();
+  });
+
+  it('drops inherited operator routes when a learner signs in', async () => {
+    renderLoginState(
+      { from: '/admin/learners', actor: 'operator' },
+      loginAuthProvider(signedInSession),
+    );
+    fireEvent.change(await screen.findByLabelText('Email'), {
+      target: { value: 'complete@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.click(
+      screen
+        .getAllByRole('button', { name: 'Sign in' })
+        .find((button) => button.getAttribute('type') === 'submit')!,
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: /^Good (morning|afternoon|evening), Mid-module\.$/,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Learners')).not.toBeInTheDocument();
+  });
+
+  it('drops inherited learner routes when an operator signs in', async () => {
+    renderLoginState(
+      { from: '/lesson/fpt-m2-video', actor: 'learner' },
+      loginAuthProvider(operatorSession),
+      mockAdminProvider,
+    );
+    fireEvent.change(await screen.findByLabelText('Email'), {
+      target: { value: 'operator@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.click(
+      screen
+        .getAllByRole('button', { name: 'Sign in' })
+        .find((button) => button.getAttribute('type') === 'submit')!,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Course catalog' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Blockchain and DLT: Video lesson' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders one precise orphan-course state on fptcomplete', async () => {
+    const orphanProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        const fpt = snapshot.enrollments.find(
+          (enrollment) => enrollment.course_id === 'course-fpt',
+        )!;
+        return {
+          ...snapshot,
+          enrollments: [
+            ...snapshot.enrollments,
+            {
+              ...fpt,
+              id: 'fpt-completed-orphan-enrollment',
+              course_id: 'course-retired-fpt',
+            },
+          ],
+        };
+      },
+    };
+
+    renderRoute(
+      '/dashboard',
+      'fpt-completed',
+      testAuthProvider(signedInSession),
+      orphanProvider,
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'This course is no longer available — contact support',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Course access unavailable')).not.toBeInTheDocument();
+  });
+
+  it('uses a day-granularity headline inside 31 days', async () => {
+    const expiry = new Date(Date.now() + 12 * 86_400_000).toISOString();
+    const nearExpiryProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        return {
+          ...snapshot,
+          enrollments: snapshot.enrollments.map((enrollment) =>
+            enrollment.course_id === 'course-fpt'
+              ? { ...enrollment, status: 'active' as const, expires_at: expiry }
+              : enrollment,
+          ),
+        };
+      },
+    };
+
+    renderRoute(
+      '/dashboard',
+      'near-expiry',
+      testAuthProvider(signedInSession),
+      nearExpiryProvider,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: '12 days remaining' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('0 months remaining')).not.toBeInTheDocument();
   });
 });
 

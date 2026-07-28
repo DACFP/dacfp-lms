@@ -25,6 +25,7 @@ import type {
   LmsCeReportingStatus,
   LmsCourse,
   LmsEnrollment,
+  LmsEnrollmentCourseSummary,
   LmsLearnerProfile,
   LmsLesson,
   LmsLessonProgress,
@@ -202,6 +203,44 @@ interface SnapshotRows {
   ceReportingStatuses?: LmsCeReportingStatus[];
 }
 
+interface EnrollmentCourseSummaryRow {
+  enrollment_id: string;
+  course_id: string;
+  course_slug: string;
+  course_title: string;
+  course_status: string;
+  prerequisite_course_id: string | null;
+}
+
+function toCourseStatus(value: string): LmsEnrollmentCourseSummary['status'] {
+  return value === 'draft' || value === 'published' || value === 'archived'
+    ? value
+    : 'archived';
+}
+
+export function attachEnrollmentCourseSummaries(
+  enrollments: LmsEnrollment[],
+  rows: EnrollmentCourseSummaryRow[],
+): LmsEnrollment[] {
+  const summaryByEnrollment = new Map(
+    rows.map((row) => [row.enrollment_id, row]),
+  );
+  return enrollments.map((enrollment) => {
+    const row = summaryByEnrollment.get(enrollment.id);
+    if (!row || row.course_id !== enrollment.course_id) return enrollment;
+    return {
+      ...enrollment,
+      course_summary: {
+        course_id: row.course_id,
+        slug: row.course_slug,
+        title: row.course_title,
+        status: toCourseStatus(row.course_status),
+        prerequisite_course_id: row.prerequisite_course_id,
+      },
+    };
+  });
+}
+
 export function buildLearnerSnapshot(rows: SnapshotRows): LearnerSnapshot {
   const learner = learnerSummaryForEmail(rows.email, rows.profile.display_name);
   const courseByEnrollment = new Map(
@@ -294,7 +333,12 @@ const contentProvider: LmsProvider = {
 
   async getLearnerSnapshot(_learnerId: LearnerStateKey) {
     const user = await currentUser();
-    const [profileResult, enrollmentResult, ceReportingStatus] = await Promise.all([
+    const [
+      profileResult,
+      enrollmentResult,
+      ceReportingStatus,
+      enrollmentCourseSummaryResult,
+    ] = await Promise.all([
       getClient()
         .from('lms_learner_profiles')
         .select('*')
@@ -306,6 +350,7 @@ const contentProvider: LmsProvider = {
         .eq('auth_user_id', user.id)
         .order('enrolled_at'),
       getClient().rpc('lms_ce_reporting_status'),
+      getClient().rpc('lms_enrollment_course_summaries'),
     ]);
     if (profileResult.error || !profileResult.data) {
       throw dataError(profileResult.error, 'Learner profile not found.');
@@ -316,7 +361,16 @@ const contentProvider: LmsProvider = {
     if (ceReportingStatus.error) {
       throw dataError(ceReportingStatus.error, 'Unable to load CE reporting status.');
     }
-    const enrollments = (enrollmentResult.data ?? []) as LmsEnrollment[];
+    if (enrollmentCourseSummaryResult.error) {
+      throw dataError(
+        enrollmentCourseSummaryResult.error,
+        'Unable to load expired enrollment course identity.',
+      );
+    }
+    const enrollments = attachEnrollmentCourseSummaries(
+      (enrollmentResult.data ?? []) as LmsEnrollment[],
+      (enrollmentCourseSummaryResult.data ?? []) as EnrollmentCourseSummaryRow[],
+    );
     const enrollmentIds = enrollments.map((enrollment) => enrollment.id);
     const [progressResult, attemptsResult, surveyResponsesResult, completionsResult] =
       enrollmentIds.length

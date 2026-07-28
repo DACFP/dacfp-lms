@@ -56,7 +56,7 @@ export function AppShell() {
 
   const signOut = async () => {
     await logout();
-    navigate('/login', { replace: true });
+    navigate('/login', { replace: true, state: null });
   };
 
   return (

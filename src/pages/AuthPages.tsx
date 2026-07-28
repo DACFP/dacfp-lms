@@ -6,7 +6,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Alert } from '../components/Alert';
 import { DarkBuildOnly, darkBuildCopy } from '../components/DarkBuild';
@@ -14,6 +14,11 @@ import { BrandLockup } from '../components/BrandLockup';
 import { Field } from '../components/Field';
 import { IconTile } from '../components/IconTile';
 import { useAuth } from '../context/AuthContext';
+import {
+  destinationAfterAuth,
+  roleHome,
+  type AuthRedirectState,
+} from '../lib/authRouting';
 import { JOB_TITLE_OPTIONS } from '../lib/profile';
 
 function AuthShell({
@@ -71,7 +76,7 @@ function AuthShell({
 }
 
 export function LoginPage() {
-  const { login, signUp } = useAuth();
+  const { login, signUp, session, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -106,17 +111,16 @@ export function LoginPage() {
     setMessage(response.message);
 
     if (response.ok && response.session) {
-      const requested = (location.state as { from?: string } | null)?.from;
-      const defaultDestination = response.session.user.role === 'operator' ? '/admin' : '/dashboard';
-      const destination =
-        requested?.startsWith('/admin') && response.session.user.role !== 'operator'
-          ? '/dashboard'
-          : requested?.startsWith('/')
-            ? requested
-            : defaultDestination;
-      navigate(destination, {
+      navigate(
+        destinationAfterAuth(
+          response.session.user.role,
+          location.state as AuthRedirectState | null,
+        ),
+        {
         replace: true,
-      });
+        state: null,
+      },
+      );
     }
   };
 
@@ -125,6 +129,20 @@ export function LoginPage() {
     setMessage('');
     setSuccessful(false);
   };
+
+  if (loading) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-dacfp-wash px-6">
+        <p className="text-sm font-bold text-dacfp-navy" role="status">
+          Checking your secure session…
+        </p>
+      </main>
+    );
+  }
+
+  if (session) {
+    return <Navigate replace to={roleHome(session.user.role)} state={null} />;
+  }
 
   return (
     <AuthShell

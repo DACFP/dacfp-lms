@@ -24,7 +24,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
       <Navigate
         replace
         to="/login"
-        state={{ from: `${location.pathname}${location.search}` }}
+        state={{ from: `${location.pathname}${location.search}`, actor: 'learner' }}
       />
     );
   }

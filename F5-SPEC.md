@@ -23,6 +23,13 @@ b. A designed expired state: when the primary (FPT) enrollment is
    "unavailable" (server denials already correct — this is honest
    presentation of them).
 c. The load-bearing separation sentence remains verbatim.
+d. Playback reference resolution: in `lms-playback-token`, resolve
+   `video_ref` before asset handling. Any ref beginning
+   `placeholder://` resolves to `PLACEHOLDER_PATH`, then follows the
+   existing placeholder ensure-and-sign flow. Refs without that scheme
+   pass through unchanged as literal storage paths. Apply the same
+   resolution anywhere else `video_ref` is treated as a storage path,
+   with unit coverage for both forms.
 
 ## 2. LOCK-COPY BLOCKER DERIVATION (A4-010)
 The "what unlocks this" derivation walks the ACTUAL blocking chain:
@@ -55,9 +62,11 @@ Renewal-card copy unchanged.
 ## 6. GATE (F5)
 Numbered evidence, wet where visual: expired actor's dashboard +
 lesson route showing the designed state and correct dates (midmodule
-after re-stage); fresh actor's locked cards showing the single
-correct blocker (Introduction survey) with link; /login redirect
-proofs both roles; cross-actor route-inheritance repro now landing
-on role home; orphan-card resolution on fptcomplete; "12 days
-remaining" on near-expiry; suite green with justified changes;
-branch + hash.
+after re-stage); fresh actor's locked cards showing one linked blocker:
+the nearest incomplete required step (for the live fresh fixture,
+Introduction position 1, the welcome lesson), then a natural journey
+write completing position 1 and advancing that single blocker to
+Introduction position 2, the survey; /login redirect proofs both roles;
+cross-actor route-inheritance repro now landing on role home; orphan-card
+resolution on fptcomplete; "12 days remaining" on near-expiry; suite
+green with justified changes; branch + hash.

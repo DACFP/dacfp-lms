@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { AlertTriangle, LogOut, RefreshCw } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { IconTile } from '../components/IconTile';
 import {
   MutationStatusBanner,
@@ -107,12 +107,17 @@ function AuthenticatedLmsProvider({
   provider: LmsDataProvider;
 }) {
   const { logout } = useAuth();
+  const navigate = useNavigate();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [snapshot, setSnapshot] = useState<LearnerSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<'denied' | 'unavailable' | null>(null);
   const [mutationNotice, setMutationNotice] = useState<MutationNotice | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const signOut = useCallback(async () => {
+    await logout();
+    navigate('/login', { replace: true, state: null });
+  }, [logout, navigate]);
 
   const loadSnapshot = useCallback(async (learner: LearnerStateKey) => {
     setLoading(true);
@@ -389,7 +394,7 @@ function AuthenticatedLmsProvider({
               </button>
               <button
                 className="button-secondary"
-                onClick={() => void logout()}
+                onClick={() => void signOut()}
                 type="button"
               >
                 <LogOut className="size-icon-sm" aria-hidden="true" />

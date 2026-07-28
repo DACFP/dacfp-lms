@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  attachEnrollmentCourseSummaries,
   buildLearnerSnapshot,
   learnerSummaryForEmail,
   quizQuestionsContainCorrectKey,
@@ -7,6 +8,40 @@ import {
 } from './supabaseProvider';
 
 describe('supabaseProvider row mapping', () => {
+  it('attaches only a matching learner-safe expired course summary', () => {
+    const enrollment = {
+      id: 'enrollment-fpt',
+      person_email: 'midmodule@example.test',
+      auth_user_id: 'auth-midmodule',
+      course_id: 'course-fpt',
+      source: 'synthetic' as const,
+      enrolled_at: '2025-06-28T00:00:00.000Z',
+      expires_at: '2026-06-28T00:00:00.000Z',
+      status: 'expired' as const,
+      terms_accepted_at: '2025-06-28T00:00:00.000Z',
+      order_id: null,
+    };
+
+    expect(
+      attachEnrollmentCourseSummaries([enrollment], [
+        {
+          enrollment_id: enrollment.id,
+          course_id: enrollment.course_id,
+          course_slug: 'fpt-sandbox',
+          course_title: 'Financial Professional Track',
+          course_status: 'published',
+          prerequisite_course_id: null,
+        },
+      ])[0].course_summary,
+    ).toEqual({
+      course_id: 'course-fpt',
+      slug: 'fpt-sandbox',
+      title: 'Financial Professional Track',
+      status: 'published',
+      prerequisite_course_id: null,
+    });
+  });
+
   it.each([
     ['fresh@example.test', 'fresh'],
     ['near-expiry@example.test', 'near-expiry'],

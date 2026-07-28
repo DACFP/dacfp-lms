@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { LockedBadge } from '../components/LockedBadge';
+import { ExpiredAccessPanel } from '../components/ExpiredAccessPanel';
 import { SecureResourceLink } from '../components/SecureResourceLink';
 import { EmptyState, PageHeader, StatusPill } from '../components/common';
 import { darkBuildCopy } from '../components/DarkBuild';
@@ -17,6 +18,8 @@ import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import { facultyForModule, facultyInitials } from '../lib/faculty';
 import { formatClock } from '../lib/time';
 import {
+  blockerGuidance,
+  courseProgressionBlocker,
   enrollmentAccessState,
   enrollmentForCourse,
   isCourseComplete,
@@ -25,16 +28,44 @@ import {
   quizIsAttemptable,
 } from '../lib/progress';
 import { QUIZ_POLICY_COPY } from '../lib/quizPolicy';
+import {
+  courseForEnrollment,
+  expiredEnrollmentForCourseSlug,
+} from '../lib/enrollmentCourse';
 
 export function ModulePage() {
   const { slug, n } = useParams();
   const { catalog, snapshot } = useLms();
-  const course = catalog.courses.find((item) => item.slug === slug);
+  const hiddenExpiredEnrollment = expiredEnrollmentForCourseSlug(snapshot, slug);
+  const course =
+    catalog.courses.find((item) => item.slug === slug) ??
+    (hiddenExpiredEnrollment
+      ? courseForEnrollment(catalog, hiddenExpiredEnrollment)
+      : null);
   const module = catalog.modules.find(
     (item) => item.course_id === course?.id && item.position === Number(n),
   );
 
   if (!course || !module) {
+    if (course && hiddenExpiredEnrollment) {
+      return (
+        <div className="space-y-8">
+          <Link className="text-sm font-semibold text-dacfp-gray-text hover:text-dacfp-navy" to="/dashboard">
+            ← Dashboard
+          </Link>
+          <PageHeader
+            eyebrow={course.title}
+            title="This module is no longer open"
+            description="This module remains in your learning record, but its lessons cannot be opened after course access expires."
+            action={<StatusPill tone="warning">Access expired</StatusPill>}
+          />
+          <ExpiredAccessPanel
+            enrollment={hiddenExpiredEnrollment}
+            headingId="module-expired-access-heading"
+          />
+        </div>
+      );
+    }
     return (
       <EmptyState
         title="Module not found"
@@ -56,6 +87,23 @@ export function ModulePage() {
   }
 
   const accessState = enrollmentAccessState(enrollment);
+  if (accessState === 'expired') {
+    return (
+      <div className="space-y-8">
+        <Link className="text-sm font-semibold text-dacfp-gray-text hover:text-dacfp-navy" to="/dashboard">
+          ← Dashboard
+        </Link>
+        <PageHeader
+          eyebrow={`${course.title} · Module ${module.position}`}
+          title={module.title}
+          description="This module remains in your learning record, but its lessons cannot be opened after course access expires."
+          action={<StatusPill tone="warning">Access expired</StatusPill>}
+        />
+        <ExpiredAccessPanel enrollment={enrollment} headingId="module-expired-access-heading" />
+      </div>
+    );
+  }
+
   const accessActive = accessState === 'active';
   const courseIsUnlocked = courseUnlocked(course, snapshot.completions);
   const termsAccepted = termsGateSatisfied(course, enrollment);
@@ -76,17 +124,10 @@ export function ModulePage() {
   const courseModules = catalog.modules
     .filter((item) => item.course_id === course.id)
     .sort((a, b) => a.position - b.position);
-  const blockingModule = !currentModuleUnlocked && accessActive && courseIsUnlocked && termsAccepted
-    ? courseModules
-        .filter((item) => item.position < module.position)
-        .find((item) => !moduleIsPassed(catalog, snapshot, course, item)) ?? null
+  const blocker = !currentModuleUnlocked && accessActive && courseIsUnlocked && termsAccepted
+    ? courseProgressionBlocker(catalog, snapshot, course)
     : null;
-  const blockingQuiz = blockingModule
-    ? catalog.quizzes.find((item) => item.module_id === blockingModule.id) ?? null
-    : null;
-  const lockedModuleCopy = blockingModule && blockingQuiz
-    ? `Complete Module ${blockingModule.position}'s quiz to unlock`
-    : null;
+  const blockerCopy = blocker ? blockerGuidance(blocker, module) : null;
   const passed = moduleIsPassed(catalog, snapshot, course, module);
   const courseComplete = isCourseComplete(catalog, snapshot, course);
   const nextModule = courseModules.find((item) => item.position === module.position + 1);
@@ -129,12 +170,10 @@ export function ModulePage() {
         action={
           passed ? (
             <StatusPill tone="positive">Passed</StatusPill>
-          ) : accessState === 'expired' ? (
-            <StatusPill tone="warning">Access expired</StatusPill>
           ) : contentAccessible ? (
             <StatusPill tone="neutral">Available</StatusPill>
           ) : (
-            <LockedBadge reason={lockedModuleCopy ? `${lockedModuleCopy}.` : `Module ${module.position} is not open yet.`} />
+            <StatusPill tone="muted">Locked</StatusPill>
           )
         }
       />
@@ -149,21 +188,17 @@ export function ModulePage() {
                 <p className="mt-1 text-sm leading-6 text-dacfp-gray-text">
                   {!courseIsUnlocked
                     ? 'Complete FPT to unlock this bonus curriculum.'
-                    : accessState === 'expired'
-                      ? enrollment.expires_at
-                        ? `Course access expired on ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(enrollment.expires_at))}. Designation standing is governed separately.`
-                        : 'Course access is marked expired without an expiry date. Designation standing is governed separately.'
-                      : accessState === 'revoked'
-                        ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
+                    : accessState === 'revoked'
+                      ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
                     : !termsAccepted
                       ? 'Accept the course terms before opening content.'
-                      : lockedModuleCopy
-                        ? `${lockedModuleCopy}.`
+                      : blockerCopy
+                        ? blockerCopy.message
                         : 'Complete the previous module to continue.'}
                 </p>
-                {blockingModule && blockingQuiz ? (
-                  <Link className="button-secondary mt-4" to={`/quiz/${blockingModule.id}`}>
-                    Go to Module {blockingModule.position} quiz
+                {blocker && blockerCopy ? (
+                  <Link className="button-secondary mt-4" to={blocker.path}>
+                    {blockerCopy.action}
                   </Link>
                 ) : null}
               </div>

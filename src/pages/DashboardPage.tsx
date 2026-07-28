@@ -14,6 +14,7 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CbdaSeal } from '../components/CbdaSeal';
+import { ExpiredAccessPanel } from '../components/ExpiredAccessPanel';
 import { IconTile } from '../components/IconTile';
 import { LockedBadge } from '../components/LockedBadge';
 import { RenewalEvent } from '../components/RenewalEvent';
@@ -29,8 +30,12 @@ import type {
 } from '../data/types';
 import { courseUnlocked, lessonComplete, termsGateSatisfied } from '../engine';
 import { courseKind } from '../lib/courseKind';
+import { courseForEnrollment } from '../lib/enrollmentCourse';
+import { remainingEnrollmentTerm } from '../lib/enrollmentTerm';
 import {
+  blockerGuidance,
   courseProgressPercent,
+  courseProgressionBlocker,
   enrollmentAccessState,
   isCourseComplete,
   moduleIsPassed,
@@ -300,18 +305,12 @@ function StatBand({
   enrollment: LmsEnrollment;
   completion: CompletionEvidence | null;
 }) {
-  const monthsRemaining = enrollment.expires_at
-    ? Math.max(
-        0,
-        Math.round(
-          (new Date(enrollment.expires_at).getTime() - Date.now()) / (30.44 * 86_400_000),
-        ),
-      )
-    : null;
+  const accessState = enrollmentAccessState(enrollment);
+  const remaining = remainingEnrollmentTerm(enrollment);
   const stats = [
     { value: `${ledger.filter((row) => row.passed).length}/${ledger.length}`, label: 'Modules' },
     {
-      value: monthsRemaining === null ? '—' : `${monthsRemaining} mo`,
+      value: accessState === 'expired' ? 'Expired' : remaining?.compact ?? '—',
       label: 'Enrollment remaining',
     },
     {
@@ -335,16 +334,20 @@ function StatBand({
   );
 }
 
-function NextUpCard({ view, ledger, course }: { view: CourseView; ledger: LedgerRow[]; course: LmsCourse }) {
+function NextUpCard({
+  view,
+  ledger,
+  course,
+  enrollment,
+}: {
+  view: CourseView;
+  ledger: LedgerRow[];
+  course: LmsCourse;
+  enrollment: LmsEnrollment;
+}) {
   const next = ledger.find((row) => row.current) ?? ledger.find((row) => !row.passed);
   if (view.accessState === 'expired') {
-    return (
-      <section aria-labelledby="next-up-heading" className="card border-t-[3px] border-t-dacfp-gold-text p-6 sm:p-7">
-        <p className="eyebrow text-dacfp-gold-text">Course access</p>
-        <h2 id="next-up-heading" className="mt-1.5 text-xl font-bold text-dacfp-navy">This course can no longer be opened</h2>
-        <p className="mt-2 max-w-prose text-sm leading-6 text-dacfp-gray-text">Course access expiry does not itself change designation standing. Your record is preserved below.</p>
-      </section>
-    );
+    return <ExpiredAccessPanel enrollment={enrollment} headingId="next-up-heading" />;
   }
   if (!view.termsAccepted || !view.unlocked) {
     return (
@@ -420,8 +423,25 @@ function NextUpCard({ view, ledger, course }: { view: CourseView; ledger: Ledger
   );
 }
 
-function CourseOfStudy({ view, ledger, course }: { view: CourseView; ledger: LedgerRow[]; course: LmsCourse }) {
+function CourseOfStudy({
+  catalog,
+  snapshot,
+  view,
+  ledger,
+  course,
+}: {
+  catalog: Catalog;
+  snapshot: LearnerSnapshot;
+  view: CourseView;
+  ledger: LedgerRow[];
+  course: LmsCourse;
+}) {
   if (ledger.length === 0) return null;
+  const firstLocked = ledger.find((row) => !row.unlocked && !row.passed)?.module ?? null;
+  const blocker = view.contentAvailable
+    ? courseProgressionBlocker(catalog, snapshot, course)
+    : null;
+  const guidance = blocker ? blockerGuidance(blocker, firstLocked) : null;
   return (
     <section aria-labelledby="course-of-study-heading" className="card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-3 pt-5 sm:px-7">
@@ -429,11 +449,8 @@ function CourseOfStudy({ view, ledger, course }: { view: CourseView; ledger: Led
         <p className="text-xs tabular-nums text-dacfp-gray-text">{ledger.length} modules · {view.complete ? 'open for review' : 'in order'}</p>
       </div>
       <ol>
-        {ledger.map((row, index) => {
+        {ledger.map((row) => {
           const rowState = row.passed ? 'passed' : row.current ? 'current' : row.unlocked ? 'available' : 'locked';
-          const blocker = rowState === 'locked' && view.contentAvailable
-            ? ledger.slice(0, index).find((candidate) => !candidate.passed && candidate.quiz)
-            : undefined;
           const body = (
             <>
               <span className={`w-8 shrink-0 text-xs font-bold tabular-nums ${rowState === 'locked' ? 'text-dacfp-gray-text' : 'text-dacfp-gold-text'}`}>{String(row.module.position).padStart(2, '0')}</span>
@@ -454,22 +471,22 @@ function CourseOfStudy({ view, ledger, course }: { view: CourseView; ledger: Led
               ) : (
                 <div className="px-5 py-3 opacity-80 sm:px-7">
                   <div className="flex min-h-14 items-center gap-3" aria-label={`Module ${row.module.position} is locked.`}>{body}</div>
-                  {blocker ? (
-                    <div className="mb-2 ml-11 flex flex-wrap items-center justify-between gap-3 rounded-[0.1875rem] bg-dacfp-wash px-3 py-2 text-xs">
-                      <p className="font-semibold text-dacfp-gray-text">
-                        Complete Module {blocker.module.position}&apos;s quiz to unlock.
-                      </p>
-                      <Link className="button-quiet min-h-9 px-3" to={`/quiz/${blocker.module.id}`}>
-                        Go to Module {blocker.module.position} quiz
-                      </Link>
-                    </div>
-                  ) : null}
                 </div>
               )}
             </li>
           );
         })}
       </ol>
+      {blocker && guidance && firstLocked ? (
+        <div className="flex flex-col gap-3 border-t border-dacfp-line bg-dacfp-wash px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <p className="text-sm font-semibold leading-6 text-dacfp-navy">
+            {guidance.message}
+          </p>
+          <Link className="button-secondary shrink-0" to={blocker.path}>
+            {guidance.action}
+          </Link>
+        </div>
+      ) : null}
       {view.complete ? <p className="border-t border-dacfp-line/60 px-5 py-3 text-xs leading-5 text-dacfp-gray-text sm:px-7">Course complete — revisit any module or lesson in any order.</p> : null}
     </section>
   );
@@ -507,11 +524,11 @@ function EnrollmentTermCard({ view, enrollment, moduleCount }: { view: CourseVie
   const start = new Date(enrollment.enrolled_at).getTime();
   const end = enrollment.expires_at ? new Date(enrollment.expires_at).getTime() : null;
   const elapsedPct = end !== null && end > start ? Math.min(100, Math.max(0, Math.round(((Date.now() - start) / (end - start)) * 100))) : 0;
-  const monthsRemaining = end !== null ? Math.max(0, Math.round((end - Date.now()) / (30.44 * 86_400_000))) : null;
+  const remaining = remainingEnrollmentTerm(enrollment);
   return (
     <section aria-labelledby="enrollment-term-heading" className="card p-5 sm:p-6">
       <p className="eyebrow">Enrollment term</p>
-      <h2 id="enrollment-term-heading" className="mt-2 text-lg font-bold text-dacfp-navy">{view.accessState === 'expired' ? 'Access expired' : monthsRemaining !== null ? `${monthsRemaining} month${monthsRemaining === 1 ? '' : 's'} remaining` : 'No access expiry'}</h2>
+      <h2 id="enrollment-term-heading" className="mt-2 text-lg font-bold text-dacfp-navy">{view.accessState === 'expired' ? enrollment.expires_at ? `Access expired ${formatDate(enrollment.expires_at)}` : 'Access expired' : remaining?.headline ?? 'No access expiry'}</h2>
       {end !== null ? <><div aria-hidden="true" className="mt-3 h-1.5 overflow-hidden rounded-[1px] bg-dacfp-wash-blue"><div className="h-full bg-dacfp-navy" style={{ width: `${elapsedPct}%` }} /></div><p className="mt-2 flex justify-between text-xs tabular-nums text-dacfp-gray-text"><span>{formatDate(enrollment.enrolled_at)}</span><span>{formatDate(enrollment.expires_at)}</span></p></> : null}
       <p className="mt-3 text-xs leading-5 text-dacfp-gray-text">{view.accessState === 'expired' ? 'Course access expiry does not itself change designation standing.' : end !== null ? `Access to all ${moduleCount} modules continues through your enrollment date.` : 'This enrollment has no stated access expiry.'}</p>
     </section>
@@ -523,7 +540,7 @@ function DesignationPanel({ completion, moduleCount, learnerName }: { completion
     return (
       <section aria-labelledby="designation-heading" className="card p-5 sm:p-6">
         <div className="flex items-center gap-4"><CbdaSeal size="sm" decorative /><div><p className="eyebrow">Designation</p><h2 id="designation-heading" className="mt-1 font-bold text-dacfp-navy">On certification</h2></div></div>
-        <p className="mt-4 text-sm leading-6 text-dacfp-gray-text">Complete all {moduleCount} modules to earn the CBDA designation.</p>
+        <p className="mt-4 text-sm leading-6 text-dacfp-gray-text">{moduleCount > 0 ? `Complete all ${moduleCount} modules to earn the CBDA designation.` : 'Your designation status is tracked separately from course access.'}</p>
       </section>
     );
   }
@@ -570,23 +587,33 @@ function BonusLibrary({ entries }: {
   );
 }
 
-function HiddenCourseCard({ enrollment }: { enrollment: LmsEnrollment }) {
-  const state = enrollmentAccessState(enrollment);
+function HiddenCourseCard() {
   return (
     <article className="card p-5 sm:p-6">
       <IconTile icon={ShieldAlert} size="md" tone="gold" />
-      <h2 className="mt-4 text-lg font-bold text-dacfp-navy">{state === 'expired' ? 'Expired course access' : 'Course access unavailable'}</h2>
-      <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">This enrollment remains visible because its course details are no longer available.</p>
-      <p className="mt-4 rounded-[0.1875rem] border border-dacfp-gold/40 bg-dacfp-gold/10 p-4 text-sm leading-6 text-dacfp-navy">{state === 'expired' ? 'Course access has expired. This does not itself change designation standing.' : 'Course access is unavailable. Contact DACFP support if you expected it to remain active.'}</p>
-      <Link className="button-secondary mt-5" to="/account">Review account</Link>
+      <h2 className="mt-4 text-lg font-bold text-dacfp-navy">
+        This course is no longer available — contact support
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-dacfp-gray-text">
+        The enrollment remains in your account record, but its course details cannot be
+        resolved.
+      </p>
+      <a className="button-secondary mt-5" href="mailto:info@dacfp.com">
+        Contact support
+      </a>
     </article>
   );
 }
 
 export function DashboardPage() {
   const { catalog, snapshot } = useLms();
-  const rows = snapshot.enrollments.map((enrollment) => ({ enrollment, course: catalog.courses.find((item) => item.id === enrollment.course_id) ?? null }));
-  const hidden = rows.filter((row) => !row.course);
+  const rows = snapshot.enrollments.map((enrollment) => ({
+    enrollment,
+    course: courseForEnrollment(catalog, enrollment),
+  }));
+  const hidden = rows.filter(
+    (row) => !row.course || row.course.status === 'archived',
+  );
   const visible = rows.filter((row): row is { enrollment: LmsEnrollment; course: LmsCourse } => row.course !== null && row.course.status !== 'archived');
   const flagship = visible.find((row) => courseKind(row.course) === 'flagship') ?? null;
   const renewals = visible.filter((row) => courseKind(row.course) === 'renewal');
@@ -599,7 +626,7 @@ export function DashboardPage() {
   const header = (
     <header className="border-b border-dacfp-line pb-6">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-2xl"><p className="eyebrow text-dacfp-gold-text">{flagship ? flagship.course.title : 'Learner dashboard'}</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-dacfp-navy md:text-4xl">{greetingForNow()}, {firstName}.</h1><p className="mt-3 max-w-xl text-base leading-7 text-dacfp-gray-text">{flagship && flagshipView ? flagshipSummary(flagshipView, ledger) : 'Continue your course of study and keep your learning record in view.'}</p></div>
+        <div className="max-w-2xl"><p className="eyebrow text-dacfp-gold-text">{flagship ? flagship.course.title : 'Learner dashboard'}</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-dacfp-navy md:text-4xl">{greetingForNow()}, {firstName}.</h1>{flagship && flagshipView?.accessState === 'expired' ? <p className="mt-3 text-sm font-bold text-dacfp-gold-text">{flagship.enrollment.expires_at ? `Access expired ${formatDate(flagship.enrollment.expires_at)}` : 'Access expired'}</p> : null}<p className="mt-3 max-w-xl text-base leading-7 text-dacfp-gray-text">{flagship && flagshipView ? flagshipSummary(flagshipView, ledger) : 'Continue your course of study and keep your learning record in view.'}</p></div>
         {flagship && ledger.length > 0 ? <StatBand ledger={ledger} enrollment={flagship.enrollment} completion={flagshipCompletion} /> : null}
       </div>
       {flagship && ledger.length > 0 ? <div className="mt-6"><ProgressTicker ledger={ledger} enrollment={flagship.enrollment} /></div> : null}
@@ -614,9 +641,9 @@ export function DashboardPage() {
       {header}
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div className="min-w-0 space-y-8">
-          {flagship && flagshipView ? <>{!flagshipView.complete ? <OrientationCard moduleCount={ledger.length} storageKey={`dacfp-orientation:${snapshot.profile.auth_user_id}`} /> : null}<NextUpCard view={flagshipView} ledger={ledger} course={flagship.course} /><CourseOfStudy view={flagshipView} ledger={ledger} course={flagship.course} /><ResourcesSection /></> : null}
+          {flagship && flagshipView ? <>{!flagshipView.complete && flagshipView.accessState === 'active' ? <OrientationCard moduleCount={ledger.length} storageKey={`dacfp-orientation:${snapshot.profile.auth_user_id}`} /> : null}<NextUpCard view={flagshipView} ledger={ledger} course={flagship.course} enrollment={flagship.enrollment} /><CourseOfStudy catalog={catalog} snapshot={snapshot} view={flagshipView} ledger={ledger} course={flagship.course} />{flagshipView.accessState === 'active' ? <ResourcesSection /> : null}</> : null}
           {flagshipCompletion && library.length > 0 ? <BonusLibrary entries={library.map(({ course }) => ({ course, modules: catalog.modules.filter((module) => module.course_id === course.id).sort((a, b) => a.position - b.position) }))} /> : null}
-          {(flagshipCompletion || !flagship) && hidden.length > 0 ? <section className="grid gap-5 sm:grid-cols-2">{hidden.map(({ enrollment }) => <HiddenCourseCard key={enrollment.id} enrollment={enrollment} />)}</section> : null}
+          {(flagshipCompletion || !flagship) && hidden.length > 0 ? <section className="grid gap-5 sm:grid-cols-2">{hidden.map(({ enrollment }) => <HiddenCourseCard key={enrollment.id} />)}</section> : null}
         </div>
         {flagship && flagshipView ? <aside aria-label="Enrollment and designation" className="space-y-6"><EnrollmentTermCard view={flagshipView} enrollment={flagship.enrollment} moduleCount={ledger.length} /><DesignationPanel completion={flagshipCompletion} moduleCount={ledger.length} learnerName={learnerName} /></aside> : null}
       </div>

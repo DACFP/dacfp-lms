@@ -10,6 +10,7 @@ import {
 import { Suspense, lazy, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Alert } from '../components/Alert';
+import { ExpiredAccessPanel } from '../components/ExpiredAccessPanel';
 import { LockedBadge } from '../components/LockedBadge';
 import { EmptyState, PageHeader, StatusPill } from '../components/common';
 import { LessonPlayer } from '../components/LessonPlayer';
@@ -24,6 +25,7 @@ import {
   enrollmentForCourse,
   moduleIsUnlocked,
 } from '../lib/progress';
+import { expiredEnrollmentForLesson } from '../lib/enrollmentCourse';
 
 /**
  * react-markdown brings the whole unified/remark/rehype pipeline (~190 kB raw)
@@ -57,8 +59,29 @@ export function LessonPage() {
   const lesson = catalog.lessons.find((item) => item.id === id);
   const module = catalog.modules.find((item) => item.id === lesson?.module_id);
   const course = catalog.courses.find((item) => item.id === module?.course_id);
+  const hiddenExpiredEnrollment = expiredEnrollmentForLesson(snapshot, id);
 
   if (!lesson || !module || !course) {
+    if (hiddenExpiredEnrollment) {
+      return (
+        <div className="space-y-8">
+          <PageHeader
+            eyebrow="Course lesson"
+            title="This lesson is no longer open"
+            description="This lesson remains in your learning record, but the player and lesson content cannot be opened after course access expires."
+            action={<StatusPill tone="warning">Access expired</StatusPill>}
+          />
+          <ExpiredAccessPanel
+            enrollment={hiddenExpiredEnrollment}
+            headingId="lesson-expired-access-heading"
+          />
+          <Link className="button-secondary" to="/dashboard">
+            <ArrowLeft className="size-icon-sm" aria-hidden="true" />
+            Back to dashboard
+          </Link>
+        </div>
+      );
+    }
     return (
       <EmptyState
         title="Lesson not found"
@@ -80,6 +103,24 @@ export function LessonPage() {
   }
 
   const accessState = enrollmentAccessState(enrollment);
+  if (accessState === 'expired') {
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          eyebrow={`${course.title} · Module ${module.position} · Lesson ${lesson.position}`}
+          title={lesson.title}
+          description="This lesson remains in your learning record, but the player and lesson content cannot be opened after course access expires."
+          action={<StatusPill tone="warning">Access expired</StatusPill>}
+        />
+        <ExpiredAccessPanel enrollment={enrollment} headingId="lesson-expired-access-heading" />
+        <Link className="button-secondary" to="/dashboard">
+          <ArrowLeft className="size-icon-sm" aria-hidden="true" />
+          Back to dashboard
+        </Link>
+      </div>
+    );
+  }
+
   const accessible =
     accessState === 'active' &&
     courseUnlocked(course, snapshot.completions) &&
@@ -128,7 +169,7 @@ export function LessonPage() {
         }
         action={
           <StatusPill tone={complete ? 'positive' : accessible ? 'neutral' : 'warning'}>
-            {complete ? 'Complete' : accessState === 'expired' ? 'Access expired' : accessible ? 'In progress' : 'Locked'}
+            {complete ? 'Complete' : accessible ? 'In progress' : 'Locked'}
           </StatusPill>
         }
       />
@@ -176,9 +217,7 @@ export function LessonPage() {
           <div>
             <h2 className="font-bold text-dacfp-navy">This lesson is locked</h2>
             <p className="mt-1 text-sm leading-6 text-dacfp-gray-text">
-              {accessState === 'expired'
-                ? 'Course access has expired. This does not itself change designation standing.'
-                : accessState === 'revoked'
+              {accessState === 'revoked'
                   ? 'Course access is unavailable. Return to the dashboard or contact DACFP support.'
                   : 'Complete the prerequisite course, terms acknowledgment, or previous module before opening this content.'}
             </p>

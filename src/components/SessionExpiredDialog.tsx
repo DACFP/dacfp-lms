@@ -29,7 +29,7 @@ export function SessionExpiredDialog() {
 
   const reauthenticate = async () => {
     await logout();
-    navigate('/login', { replace: true });
+    navigate('/login', { replace: true, state: null });
   };
 
   return (

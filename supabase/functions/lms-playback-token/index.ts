@@ -7,7 +7,8 @@ import {
   termsGateSatisfied,
   type ProgressionContext,
 } from './progression.ts';
-import { PLACEHOLDER_MP4_BASE64, PLACEHOLDER_PATH } from './placeholder.ts';
+import { PLACEHOLDER_MP4_BASE64 } from './placeholder.ts';
+import { PLACEHOLDER_PATH, resolveVideoStoragePath } from './video-ref.ts';
 
 const BUCKET = 'lms-video';
 const SIGNED_URL_TTL_SECONDS = 6 * 60 * 60;
@@ -219,10 +220,11 @@ Deno.serve(async (req: Request) => {
       throw new AccessDenied();
     }
 
-    await ensurePlaceholderAsset(admin, access.lesson.video_ref);
+    const storagePath = resolveVideoStoragePath(access.lesson.video_ref);
+    await ensurePlaceholderAsset(admin, storagePath);
     const { data: signed, error: signedError } = await admin.storage
       .from(BUCKET)
-      .createSignedUrl(access.lesson.video_ref, SIGNED_URL_TTL_SECONDS);
+      .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
     assertQuery(signedError);
     if (!signed?.signedUrl) throw new Error('Unable to sign the video asset.');
 

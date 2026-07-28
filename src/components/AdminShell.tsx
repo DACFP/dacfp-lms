@@ -21,7 +21,8 @@ const links = [
 export function AdminShell() {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
-  const signOut = () => void logout().then(() => navigate('/login', { replace: true }));
+  const signOut = () =>
+    void logout().then(() => navigate('/login', { replace: true, state: null }));
 
   return (
     <div className="min-h-dvh bg-dacfp-wash">

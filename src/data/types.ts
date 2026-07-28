@@ -169,6 +169,15 @@ export interface LmsEnrollment {
   status: EnrollmentStatus;
   terms_accepted_at: string | null;
   order_id: string | null;
+  course_summary?: LmsEnrollmentCourseSummary;
+}
+
+export interface LmsEnrollmentCourseSummary {
+  course_id: string;
+  slug: string;
+  title: string;
+  status: CourseStatus;
+  prerequisite_course_id: string | null;
 }
 
 export interface LmsLessonProgress {
