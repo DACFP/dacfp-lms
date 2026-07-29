@@ -10,7 +10,7 @@ Hard Rules govern. RENEWAL certificates are explicitly OUT OF SCOPE
 Replace the interim certificate view with the real design: the
 committed template PNG rendered full-bleed as the certificate
 background, with live text overlaid in three zones (positions as
-fractions of the 792x610 canvas so scaling stays true):
+fractions of the 3300x2550 canvas so scaling stays true):
 - NAME zone (center, ~y 39–48%): "First [Middle] Last" from the
   learner profile (middle included when present), in a large italic
   serif closely matching the design's script feel (a bundled/system
@@ -31,9 +31,9 @@ fractions of the 792x610 canvas so scaling stays true):
   the artwork).
 
 ## 3. NOTES
-- The template source is 72dpi (792x610) — crisp on screen,
-  acceptable in print; when the original high-res template arrives
-  from the designer it is a drop-in file swap, zero code.
+- The template source is print resolution (3300x2550, 300dpi,
+  derived from the blank certificate PDF); supersedes the interim
+  72dpi file.
 - Verification page, issuance records, and renewal certificates
   belong to the later certificate-engine spec — do not build here.
 
