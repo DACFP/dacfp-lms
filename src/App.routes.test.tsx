@@ -307,6 +307,61 @@ describe('D0 route shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
     expect(screen.getByText('5 modules · 70% per quiz · unlimited attempts · no final exam')).toBeInTheDocument();
     expect(screen.queryByText('Pass each 10-question quiz at 70%')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
+  });
+
+  it('uses zero-quiz wording and the full next-module unlock rule', async () => {
+    const fixture = await mockProvider.getLearnerSnapshot('mid-module-2');
+    const zeroQuizProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot() {
+        return structuredClone({
+          ...fixture,
+          attempts: [],
+          progress: fixture.progress.filter((row) => row.lesson_id.startsWith('fpt-intro')),
+        });
+      },
+    };
+    renderRoute('/dashboard', 'mid-module-2', testAuthProvider(signedInSession), zeroQuizProvider);
+    expect(await screen.findByText('You’re 1 module in. Module 1 is queued and ready.')).toBeInTheDocument();
+    expect(screen.queryByText(/every quiz passed/)).not.toBeInTheDocument();
+    expect(screen.getByText('Complete all required lessons in Module 1, then pass its quiz to unlock Module 2. Start with “Bitcoin Foundations: Video lesson”.')).toBeInTheDocument();
+  });
+
+  it('renders an untouched optional video with optional copy and a neutral not-started state', async () => {
+    const catalog = await mockProvider.getCatalog();
+    const learnerSnapshot = await mockProvider.getLearnerSnapshot('mid-module-2');
+    const optionalVideoProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getCatalog() {
+        return {
+          ...catalog,
+          lessons: catalog.lessons.map((lesson) => lesson.id === 'fpt-m2-reference'
+            ? { ...lesson, kind: 'video' as const, video_ref: 'placeholder://fpt-m2-reference', duration_seconds: 600 }
+            : lesson),
+        };
+      },
+      async getLearnerSnapshot() {
+        return {
+          ...learnerSnapshot,
+          progress: [...learnerSnapshot.progress, {
+            id: 'zero-second-optional-progress',
+            enrollment_id: 'mid-module-2-enroll-fpt',
+            lesson_id: 'fpt-m2-reference',
+            started_at: '2026-07-28T00:00:00.000Z',
+            completed_at: null,
+            last_position_seconds: 0,
+            max_watched_seconds: 0,
+            max_watched_updated_at: '2026-07-28T00:00:00.000Z',
+            updated_at: '2026-07-28T00:00:00.000Z',
+          }],
+        };
+      },
+    };
+    renderRoute('/lesson/fpt-m2-reference', 'mid-module-2', testAuthProvider(signedInSession), optionalVideoProvider);
+    expect(await screen.findByText('Optional reference video. Watch it whenever it is useful; it does not gate the quiz or course completion.')).toBeInTheDocument();
+    expect(screen.getByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText(/Required video progress/)).not.toBeInTheDocument();
   });
 
   it('gives a returner an exact memory cue plus resume and replay actions', async () => {
@@ -526,7 +581,7 @@ describe('D0 route shell', () => {
             return {
               ...enrollment,
               status: 'expired' as const,
-              expires_at: '2026-01-01T00:00:00.000Z',
+              expires_at: '2026-01-01T12:00:00.000Z',
               course_summary: course ? {
                 course_id: course.id,
                 slug: course.slug,
@@ -545,6 +600,7 @@ describe('D0 route shell', () => {
 
     renderRoute(route, 'mid-module-2', testAuthProvider(signedInSession), hiddenExpiredProvider);
     expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+    expect(screen.getAllByText('Access expired Jan 1, 2026').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/not found/i)).toBeNull();
   });
 
@@ -1065,6 +1121,37 @@ describe('F5 journey-defect remediation', () => {
     ).toBeInTheDocument();
   });
 
+  it('clears both shared-machine fields after a learner signs in and signs out', async () => {
+    renderLoginState(
+      { from: '/dashboard', actor: 'learner' },
+      loginAuthProvider(signedInSession),
+    );
+    fireEvent.change(await screen.findByLabelText('Email'), {
+      target: { value: 'complete@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'password123' },
+    });
+    const submit = screen.getAllByRole('button', { name: 'Sign in' })
+      .find((button) => button.getAttribute('type') === 'submit');
+    expect(submit).toBeDefined();
+    fireEvent.click(submit!);
+
+    expect(await screen.findByRole('heading', {
+      name: /^Good (morning|afternoon|evening), Mid-module\.$/,
+    })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Sign out complete@example.test',
+    }));
+
+    const email = await screen.findByLabelText('Email');
+    const password = screen.getByLabelText('Password');
+    expect(email).toHaveValue('');
+    expect(password).toHaveValue('');
+    expect(email).toHaveAttribute('autocomplete', 'off');
+    expect(password).toHaveAttribute('autocomplete', 'off');
+  });
+
   it('redirects an authenticated operator visit from login to the operator home', async () => {
     renderLoginState(
       { from: '/admin', actor: 'operator' },
@@ -1223,6 +1310,23 @@ describe('D6 operator routes', () => {
     // lockup plus the "Operator" role badge; the property under test — that the
     // operator console rendered — is asserted through the badge.
     expect(screen.getByText('Operator')).toBeInTheDocument();
+  });
+
+  it('keeps the admin shell around an unknown nested route', async () => {
+    const route = '/admin/does-not-exist';
+    window.history.replaceState({}, '', route);
+    render(
+      <MemoryRouter initialEntries={[route]}>
+        <AuthSessionProvider provider={testAuthProvider(operatorSession)}>
+          <LmsProvider provider={mockProvider}>
+            <App adminProvider={mockAdminProvider} />
+          </LmsProvider>
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('heading', { name: 'Admin page not found' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Return to course catalog' })).toHaveAttribute('href', '/admin');
+    expect(screen.getByRole('navigation', { name: 'Admin' })).toBeInTheDocument();
   });
 
   it('shows pass_pct as read-only published policy', async () => {

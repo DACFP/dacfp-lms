@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mockCatalog, mockProvider } from '../data/mockProvider';
-import { courseProgressionBlocker } from './progress';
+import { blockerGuidance, courseProgressionBlocker } from './progress';
 
 describe('course progression blocker guidance', () => {
   it('finds an incomplete required survey in a quiz-less Introduction', async () => {
@@ -37,6 +37,19 @@ describe('course progression blocker guidance', () => {
       module: { id: 'fpt-m3', position: 3 },
       quiz: { id: 'quiz-fpt-m3' },
       path: '/quiz/fpt-m3',
+    });
+  });
+
+  it('names the full required-lessons-plus-quiz unlock rule', async () => {
+    const snapshot = await mockProvider.getLearnerSnapshot('mid-module-2');
+    snapshot.attempts = [];
+    snapshot.progress = snapshot.progress.filter((row) => row.lesson_id.startsWith('fpt-intro'));
+    const course = mockCatalog.courses.find((item) => item.id === 'course-fpt')!;
+    const blocker = courseProgressionBlocker(mockCatalog, snapshot, course)!;
+    const target = mockCatalog.modules.find((module) => module.id === 'fpt-m2')!;
+    expect(blockerGuidance(blocker, target)).toEqual({
+      message: 'Complete all required lessons in Module 1, then pass its quiz to unlock Module 2. Start with “Bitcoin Foundations: Video lesson”.',
+      action: 'Open Bitcoin Foundations: Video lesson',
     });
   });
 });

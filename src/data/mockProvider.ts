@@ -39,7 +39,7 @@ const courses: LmsCourse[] = [
     id: 'course-fpt',
     slug: 'fpt-sandbox',
     title: 'FPT Sandbox',
-    description: 'A four-module preview of the Financial Professional Track.',
+    description: 'A sandbox edition of the Financial Professional Track with Introduction and Modules 1-4.',
     status: 'published',
     progression: 'sequential',
     prerequisite_course_id: null,

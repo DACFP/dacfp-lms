@@ -45,32 +45,49 @@ describe('admin question-bank policy', () => {
     });
   });
 
+  it('accepts the canonical questions-object shape used by the browser audit', () => {
+    const questions = bank().modules.module_01.questions;
+    expect(parseQuestionBankJson(JSON.stringify({ questions }), 'module_07')).toEqual({
+      module_selector: 'module_07',
+      questions,
+    });
+  });
+
   it.each([
     [
       'duplicate choice ids',
       (questions: QuestionBankRow[]) => {
         questions[0].choices[1].id = questions[0].choices[0].id;
       },
-      /choice ids must be unique/,
+      /Question 1 field "choices" contains duplicate ids/,
     ],
     [
       'empty correct array',
       (questions: QuestionBankRow[]) => {
         questions[0].correct = [];
       },
-      /correct must contain at least one choice id/,
+      /Question 1 field "correct" must contain at least one choice id/,
     ],
     [
       'unknown correct id',
       (questions: QuestionBankRow[]) => {
         questions[0].correct = ['not-a-choice'];
       },
-      /correct contains unknown choice id "not-a-choice"/,
+      /Question 1 field "correct" contains unknown choice id "not-a-choice"/,
     ],
   ])('loudly rejects %s', (_label, mutate, message) => {
     const questions = structuredClone(bank().modules.module_01.questions);
     mutate(questions);
     expect(() => parseQuestionBankJson(JSON.stringify(questions), 'module_01')).toThrow(message);
+  });
+
+  it('names the field and question position for a broken canonical bank', () => {
+    const questions = structuredClone(bank().modules.module_01.questions);
+    questions[4].prompt = '';
+    expect(() => parseQuestionBankJson(
+      JSON.stringify({ questions }),
+      'module_01',
+    )).toThrow('Question 5 field "prompt" must be a non-empty string.');
   });
 
   it('derives the confidential-artifact module selector', () => {

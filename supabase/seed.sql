@@ -33,7 +33,7 @@ values
     '10000000-0000-4000-8000-000000000001',
     'fpt-sandbox',
     'FPT Sandbox',
-    'A four-module preview of the Financial Professional Track.',
+  'A sandbox edition of the Financial Professional Track with Introduction and Modules 1-4.',
     'published',
     'sequential',
     null,

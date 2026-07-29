@@ -25,7 +25,9 @@ export type CourseKind = 'flagship' | 'renewal' | 'library';
  */
 const RENEWAL_SLUG = /(?:^|-)renewal(?:-|$)/i;
 
-export function courseKind(course: LmsCourse): CourseKind {
+export function courseKind(
+  course: Pick<LmsCourse, 'slug' | 'prerequisite_course_id'>,
+): CourseKind {
   if (course.prerequisite_course_id !== null) return 'library';
   if (RENEWAL_SLUG.test(course.slug)) return 'renewal';
   return 'flagship';

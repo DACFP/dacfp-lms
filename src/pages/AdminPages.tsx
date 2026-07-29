@@ -646,6 +646,7 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [kind, setKind] = useState<LmsLesson['kind']>(lesson.kind);
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -682,10 +683,12 @@ function LessonEditor({ lesson }: { lesson: LmsLesson }) {
     <article className="rounded-lg border border-dacfp-line bg-white p-4">
       <form className="grid gap-3 md:grid-cols-2" onSubmit={(event) => void save(event)}>
         <Field label="Lesson title"><Input name="title" defaultValue={lesson.title} required /></Field>
-        <Field label="Kind"><select className={selectClass} name="kind" defaultValue={lesson.kind}><option value="video">Video</option><option value="reading">Reading</option><option value="survey">Survey</option></select></Field>
-        <Field label="video_ref path"><Input name="video_ref" defaultValue={lesson.video_ref ?? ''} placeholder="placeholder/dacfp-d3-placeholder.mp4" /></Field>
-        <Field label="Duration seconds"><Input name="duration_seconds" type="number" min="1" defaultValue={lesson.duration_seconds ?? ''} /></Field>
-        <Field label="Reading body" className="md:col-span-2"><Textarea name="body_md" defaultValue={lesson.body_md ?? ''} /></Field>
+        <Field label="Kind"><select className={selectClass} name="kind" value={kind} onChange={(event) => setKind(event.target.value as LmsLesson['kind'])}><option value="video">Video</option><option value="reading">Reading</option><option value="survey">Survey</option></select></Field>
+        {kind === 'video' ? <>
+          <Field label="video_ref path"><Input name="video_ref" defaultValue={lesson.video_ref ?? ''} placeholder="placeholder/dacfp-d3-placeholder.mp4" /></Field>
+          <Field label="Duration seconds"><Input name="duration_seconds" type="number" min="1" defaultValue={lesson.duration_seconds ?? ''} /></Field>
+        </> : null}
+        {kind === 'reading' ? <Field label="Reading body" className="md:col-span-2"><Textarea name="body_md" defaultValue={lesson.body_md ?? ''} /></Field> : null}
         <label className="flex min-h-11 items-center gap-2"><input className="size-5 accent-dacfp-maroon" type="checkbox" name="is_required" defaultChecked={lesson.is_required} /><span className="font-bold">Required</span></label>
         <div className="flex flex-wrap gap-2 md:justify-end">
           <button className="button-secondary" disabled={saving} type="submit">
@@ -809,8 +812,8 @@ function ModuleEditor({ module, modules }: { module: LmsModule; modules: LmsModu
         <div className="flex shrink-0 items-center gap-1">
           <ReorderControls
             label={module.title}
-            atStart={module.position === 1}
-            atEnd={module.position === modules.length}
+            atStart={modules[0]?.id === module.id}
+            atEnd={modules.at(-1)?.id === module.id}
             onUp={() => void handleMutation(reorderModules(orderMove(modules, module.id, -1)))}
             onDown={() => void handleMutation(reorderModules(orderMove(modules, module.id, 1)))}
           />
@@ -969,6 +972,7 @@ function EnrollmentInspector({
   );
   const completion = inspection.completions.find((item) => item.enrollment_id === enrollment.id);
   const learnerName = inspection.profile?.display_name || inspection.user.email;
+  const manualCompleteLabel = `Manual mark complete ${enrollment.lms_courses.title} for ${learnerName}`;
   const courseModules = catalog.modules
     .filter((item) => item.course_id === enrollment.course_id)
     .sort((a, b) => a.position - b.position);
@@ -1082,7 +1086,7 @@ function EnrollmentInspector({
 
       <div className="mt-5 flex flex-col gap-3 border-t border-dacfp-line pt-5 sm:flex-row sm:flex-wrap">
         <ConfirmDialog
-          trigger={<button className="button-secondary" type="button"><CheckCircle2 className="size-icon-sm" aria-hidden="true" />Manual mark complete</button>}
+          trigger={<button aria-label={manualCompleteLabel} className="button-secondary" type="button"><CheckCircle2 className="size-icon-sm" aria-hidden="true" />{manualCompleteLabel}</button>}
           title="Mark this enrollment complete?"
           description={`This records a manual completion event for "${enrollment.lms_courses.title}" against this learner. It is written to the audit trail.`}
           confirmLabel="Mark complete"
@@ -1106,6 +1110,19 @@ function EnrollmentInspector({
         })}
       </div>
     </article>
+  );
+}
+
+export function AdminNotFoundPage() {
+  return (
+    <section className="card p-6 sm:p-8" role="status">
+      <PageHeader
+        eyebrow="Operator console"
+        title="Admin page not found"
+        description="This admin destination does not exist. The operator workspace remains available."
+      />
+      <Link className="button-primary mt-6" to="/admin">Return to course catalog</Link>
+    </section>
   );
 }
 

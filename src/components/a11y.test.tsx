@@ -237,6 +237,17 @@ describe('Login mode switcher — brief #12', () => {
     expect(createAccount).toBeInTheDocument();
   });
 
+  it('keeps shared-machine sign-in fields out of browser autocomplete', async () => {
+    renderLogin();
+    const email = await screen.findByLabelText('Email');
+    const password = screen.getByLabelText('Password');
+    expect(email.closest('form')).toHaveAttribute('autocomplete', 'off');
+    expect(email).toHaveAttribute('autocomplete', 'off');
+    expect(password).toHaveAttribute('autocomplete', 'off');
+    expect(email).toHaveValue('');
+    expect(password).toHaveValue('');
+  });
+
   it('moves the pressed state when the mode changes', async () => {
     renderLogin();
     fireEvent.click(await screen.findByRole('button', { name: 'Create account', pressed: false }));

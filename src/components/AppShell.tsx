@@ -46,7 +46,8 @@ export function AppShell() {
      dashboard already renders. */
   const flagshipEnrollment = snapshot.enrollments.find((enrollment) => {
     const course = catalog.courses.find((item) => item.id === enrollment.course_id);
-    return course ? courseKind(course) === 'flagship' : false;
+    const courseIdentity = course ?? enrollment.course_summary;
+    return courseIdentity ? courseKind(courseIdentity) === 'flagship' : false;
   });
   const accessLine = flagshipEnrollment
     ? flagshipEnrollment.expires_at

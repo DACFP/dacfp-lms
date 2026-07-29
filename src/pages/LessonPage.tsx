@@ -135,6 +135,9 @@ export function LessonPage() {
     snapshot.progress.filter((item) => item.enrollment_id === enrollment.id),
     snapshot.surveyResponses.filter((item) => item.enrollment_id === enrollment.id),
   );
+  const started = complete || Boolean(
+    progress && (progress.last_position_seconds > 0 || progress.max_watched_seconds > 0),
+  );
   const courseModules = catalog.modules
     .filter((item) => item.course_id === course.id)
     .sort((a, b) => a.position - b.position);
@@ -164,20 +167,22 @@ export function LessonPage() {
       <PageHeader
         eyebrow={`${course.title} · Module ${module.position} · Lesson ${lesson.position}`}
         title={lesson.title}
-        description={
-          lesson.kind === 'video'
+        description={lesson.is_required
+          ? lesson.kind === 'video'
             ? 'Required video progress completes when your furthest watched point reaches 95%.'
             : lesson.kind === 'survey'
-              ? lesson.is_required
-                ? moduleQuiz
-                  ? 'Submit once. This survey does not gate the quiz and is required to finish the course.'
-                  : 'Submit once. Required to finish the course.'
-                : 'Submit once. This optional survey does not gate the quiz.'
+              ? moduleQuiz
+                ? 'Submit once. This survey does not gate the quiz and is required to finish the course.'
+                : 'Submit once. Required to finish the course.'
               : 'Read the material, then mark the lesson complete.'
-        }
+          : lesson.kind === 'video'
+            ? 'Optional reference video. Watch it whenever it is useful; it does not gate the quiz or course completion.'
+            : lesson.kind === 'survey'
+              ? 'Submit once if you choose. This optional survey does not gate the quiz or course completion.'
+              : 'Optional reading. Mark it complete if you choose; it does not gate the quiz or course completion.'}
         action={
           <StatusPill tone={complete ? 'positive' : accessible ? 'neutral' : 'warning'}>
-            {complete ? 'Complete' : accessible ? 'In progress' : 'Locked'}
+            {complete ? 'Complete' : !accessible ? 'Locked' : started ? 'In progress' : 'Not started'}
           </StatusPill>
         }
       />
@@ -261,7 +266,7 @@ export function LessonPage() {
         <article className="card p-6 sm:p-8">
           <div className="flex items-center gap-3 text-dacfp-blue">
             <FileText className="size-icon-lg" aria-hidden="true" />
-            <p className="eyebrow">Required reading</p>
+            <p className="eyebrow">{lesson.is_required ? 'Required reading' : 'Optional reading'}</p>
           </div>
           <h2 className="mt-5 text-2xl font-bold text-dacfp-navy">Lesson reading</h2>
           {/* brief #16: authored markdown, rendered and sanitised. This was

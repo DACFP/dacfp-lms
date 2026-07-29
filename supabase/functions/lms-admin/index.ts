@@ -224,7 +224,13 @@ async function createModule(admin: SupabaseClient, actorId: string, input: Recor
     ce_credits: asNumber(input.ce_credits, 'ce_credits', true),
     bridge_copy: optionalString(input.bridge_copy),
   };
-  return adminCrud(admin, actorId, 'create_module', row);
+  const { data, error } = await admin.rpc('lms_admin_save_module', {
+    p_actor_auth_user_id: actorId,
+    p_action: 'create_module',
+    p_payload: row,
+  });
+  assertQuery(error);
+  return data;
 }
 
 async function updateModule(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {
@@ -233,7 +239,13 @@ async function updateModule(admin: SupabaseClient, actorId: string, input: Recor
   if (input.title !== undefined) patch.title = requiredString(input.title, 'title');
   if (input.ce_credits !== undefined) patch.ce_credits = asNumber(input.ce_credits, 'ce_credits', true);
   if (input.bridge_copy !== undefined) patch.bridge_copy = optionalString(input.bridge_copy);
-  return adminCrud(admin, actorId, 'update_module', { id, ...patch });
+  const { data, error } = await admin.rpc('lms_admin_save_module', {
+    p_actor_auth_user_id: actorId,
+    p_action: 'update_module',
+    p_payload: { id, ...patch },
+  });
+  assertQuery(error);
+  return data;
 }
 
 async function createLesson(admin: SupabaseClient, actorId: string, input: Record<string, unknown>) {

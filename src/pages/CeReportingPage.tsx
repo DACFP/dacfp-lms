@@ -17,7 +17,11 @@ import type {
   CfpCePreview,
   CfpCeReportRun,
 } from '../data/admin';
-import { downloadCfpCeWorkbook } from '../lib/cfpCeExport';
+
+async function downloadCfpCeWorkbook(rows: CfpCeExportRow[], filename: string) {
+  const workbook = await import('../lib/cfpCeExport');
+  return workbook.downloadCfpCeWorkbook(rows, filename);
+}
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);

@@ -1,6 +1,7 @@
 import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
+  courseComplete,
   courseUnlocked,
   moduleUnlocked,
   termsGateSatisfied,

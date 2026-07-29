@@ -1,5 +1,7 @@
+import { Suspense, lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { AdminShell } from '../components/AdminShell';
+import { PageSkeleton } from '../components/Skeletons';
 import { AdminProvider } from '../context/AdminContext';
 import type { LmsAdminProvider } from '../data/provider';
 import {
@@ -7,8 +9,12 @@ import {
   AdminCoursePage,
   AdminCoursesPage,
   AdminLearnersPage,
+  AdminNotFoundPage,
 } from './AdminPages';
-import { CeReportingPage } from './CeReportingPage';
+
+const CeReportingPage = lazy(() => import('./CeReportingPage').then((module) => ({
+  default: module.CeReportingPage,
+})));
 
 /**
  * The whole operator console as one lazy-loadable module (M-12).
@@ -29,8 +35,9 @@ export default function AdminApp({ adminProvider }: { adminProvider?: LmsAdminPr
           <Route index element={<AdminCoursesPage />} />
           <Route path="course/:id" element={<AdminCoursePage />} />
           <Route path="learners" element={<AdminLearnersPage />} />
-          <Route path="ce-reporting" element={<CeReportingPage />} />
+          <Route path="ce-reporting" element={<Suspense fallback={<PageSkeleton />}><CeReportingPage /></Suspense>} />
           <Route path="audit" element={<AdminAuditPage />} />
+          <Route path="*" element={<AdminNotFoundPage />} />
         </Route>
       </Routes>
     </AdminProvider>

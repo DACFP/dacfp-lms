@@ -253,6 +253,13 @@ export function blockerGuidance(
     };
   }
 
+  if (blocker.module.position !== 0) {
+    return {
+      message: `Complete all required lessons in Module ${blocker.module.position}, then pass its quiz${unlockTarget}. Start with “${blocker.lesson.title}”.`,
+      action: `Open ${blocker.lesson.title}`,
+    };
+  }
+
   if (blocker.module.position === 0 && blocker.lesson.kind === 'survey') {
     return {
       message: `Complete the Introduction survey “${blocker.lesson.title}”${unlockTarget}.`,

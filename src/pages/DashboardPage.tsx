@@ -163,6 +163,7 @@ function greetingForNow() {
 
 function flagshipSummary(view: CourseView, ledger: LedgerRow[]) {
   const passedCount = ledger.filter((row) => row.passed).length;
+  const passedQuizRows = ledger.filter((row) => row.passedAttempt);
   const next = ledger.find((row) => row.current);
   if (view.accessState !== 'active') {
     return 'Course access has expired. Your record below is preserved, and designation standing is governed separately.';
@@ -174,8 +175,7 @@ function flagshipSummary(view: CourseView, ledger: LedgerRow[]) {
   if (passedCount === 0) {
     return `Your course of study is ready. Module 1 opens the program${next ? ` with ${next.module.title}` : ''}.`;
   }
-  const cleanRecord = ledger
-    .filter((row) => row.passed && row.passedAttempt)
+  const cleanRecord = passedQuizRows.length > 0 && passedQuizRows
     .every((row) => row.passedAttempt!.attempt_number <= 2);
   const recordClause = cleanRecord
     ? ', with every quiz passed on the first or second attempt'
@@ -268,7 +268,7 @@ function OrientationCard({
           onClick={() => setCardCollapsed(!collapsed)}
         >
           {collapsed ? <ChevronDown className="size-icon-sm" aria-hidden="true" /> : <ChevronUp className="size-icon-sm" aria-hidden="true" />}
-          {collapsed ? 'Show' : 'Collapse'}
+          {collapsed ? 'Expand' : 'Collapse'}
         </button>
       </div>
       {collapsed ? (

@@ -180,7 +180,11 @@ export function LoginPage() {
         </button>
       </div>
 
-      <form onSubmit={(event) => void submit(event)} className="space-y-5">
+      <form
+        autoComplete="off"
+        onSubmit={(event) => void submit(event)}
+        className="space-y-5"
+      >
         {mode === 'signup' ? (
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="First name">
@@ -196,7 +200,7 @@ export function LoginPage() {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
+            autoComplete={mode === 'login' ? 'off' : 'email'}
             required
             placeholder="you@example.test"
           />
@@ -213,7 +217,7 @@ export function LoginPage() {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            autoComplete={mode === 'login' ? 'off' : 'new-password'}
             minLength={8}
             required
           />

@@ -160,6 +160,16 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
     expect(screen.getAllByText(/Updated/)).toHaveLength(2);
   });
 
+  it('names manual completion for both the course and learner', async () => {
+    renderAdmin('/admin/learners', baseAdmin());
+    fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
+
+    expect(await screen.findByRole('button', {
+      name: 'Manual mark complete FPT Sandbox for Jordan Rivers',
+    })).toBeInTheDocument();
+  });
+
   it('names every quiz reset for its module and learner', async () => {
     renderAdmin('/admin/learners', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
@@ -370,6 +380,27 @@ describe('Admin module bridge copy — X2 P39', () => {
       id: 'fpt-m2',
       bridge_copy: 'Understand why distributed settlement matters in client portfolios.',
     })));
+  });
+
+  it('disables move-up on the first ordered row, including position zero', async () => {
+    renderAdmin('/admin/course/course-fpt', baseAdmin({ reorder: () => ({}) }));
+    expect(await screen.findByRole('button', { name: 'Move Introduction up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Bitcoin Foundations up' })).toBeEnabled();
+  });
+
+  it('hides video-only fields from reading and survey editors', async () => {
+    renderAdmin('/admin/course/course-fpt', baseAdmin());
+
+    const readingTitle = await screen.findByDisplayValue('Bitcoin Foundations: Reading');
+    const readingForm = readingTitle.closest('form')!;
+    expect(within(readingForm).queryByLabelText('video_ref path')).toBeNull();
+    expect(within(readingForm).queryByLabelText('Duration seconds')).toBeNull();
+    expect(within(readingForm).getByLabelText('Reading body')).toBeInTheDocument();
+
+    const surveyTitle = screen.getByDisplayValue('Pre-course survey');
+    const surveyForm = surveyTitle.closest('form')!;
+    expect(within(surveyForm).queryByLabelText('video_ref path')).toBeNull();
+    expect(within(surveyForm).queryByLabelText('Duration seconds')).toBeNull();
   });
 });
 
