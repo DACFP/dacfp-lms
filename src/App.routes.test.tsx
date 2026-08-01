@@ -1498,3 +1498,27 @@ describe('D6 operator routes', () => {
     expect(screen.getByText('upload resource succeeded.')).toBeInTheDocument();
   }, 10_000);
 });
+
+describe('M1 ratified certificate scope — FPT only', () => {
+  it('shows the credential reveal for the flagship completion', async () => {
+    renderRoute('/completion/fpt-sandbox', 'fully-complete');
+    expect(
+      await screen.findByRole('heading', { name: 'Your CBDA certificate is ready' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open My Credentials' })).toBeInTheDocument();
+  });
+
+  it('renders no certificate affordance for a non-FPT completion', async () => {
+    renderRoute('/completion/renewal-2026-sandbox', 'fully-complete');
+    expect(
+      await screen.findByRole('heading', { name: 'You completed the course' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Your CBDA certificate is ready' }),
+    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open My Credentials' })).toBeNull();
+    expect(
+      screen.getByText(/does not issue a separate certificate/),
+    ).toBeInTheDocument();
+  });
+});

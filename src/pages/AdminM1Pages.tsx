@@ -58,6 +58,7 @@ import {
   inspectionToSnapshot,
   remainingRequirements,
 } from '../lib/adminLearnerFile';
+import { courseKind } from '../lib/courseKind';
 import { parseLearnerImportCsv, LEARNER_IMPORT_HEADERS } from '../lib/learnerImportCsv';
 import { blockerGuidance, courseProgressionBlocker } from '../lib/progress';
 import { AuditTarget, EnrollmentInspector } from './AdminPages';
@@ -683,37 +684,51 @@ export function AdminLearnerFilePage() {
       {/* §3 completion & certificate panel */}
       <section className="card p-5 sm:p-6" aria-labelledby="completion-heading">
         <h2 id="completion-heading" className="text-xl font-bold text-dacfp-navy">Completion &amp; certificate</h2>
-        <p className="mt-1 text-sm text-dacfp-gray-text">Certificates derive from completion records only. No completion record — no certificate, anywhere.</p>
+        <p className="mt-1 text-sm text-dacfp-gray-text">Certificates derive from completion records only, and only the FPT completion issues one. No completion record — no certificate, anywhere.</p>
         <div className="mt-4 space-y-4">
           {inspection.enrollments.map((enrollment) => {
             const completion = completionByEnrollment.get(enrollment.id);
             const course = catalog.courses.find((item) => item.id === enrollment.course_id);
             if (completion) {
+              // Ratified M1 decision: only the FPT (flagship) completion has a
+              // certificate. Renewal completions extend the FPT certificate
+              // dates per C1-SPEC (renewal certificates are out of C1 scope);
+              // bonus completions carry no certificate affordance at all.
+              const isFlagship = course ? courseKind(course) === 'flagship' : false;
               return (
                 <article key={enrollment.id} className="rounded-lg border border-dacfp-line p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="font-bold text-dacfp-navy">{enrollment.lms_courses.title}</h3>
                       <p className="mt-1 text-sm text-dacfp-gray-text">
-                        Completed {formatDate(completion.completed_at)} ({completion.trigger === 'manual_admin' ? 'manual admin action' : 'all requirements met'}) · valid through {formatDate(addOneYear(completion.completed_at))}
+                        Completed {formatDate(completion.completed_at)} ({completion.trigger === 'manual_admin' ? 'manual admin action' : 'all requirements met'})
+                        {isFlagship ? ` · certificate valid through ${formatDate(addOneYear(completion.completed_at))}` : ''}
                       </p>
+                      {!isFlagship ? (
+                        <p className="mt-1 text-sm text-dacfp-gray-text">
+                          Completion recorded — this course does not issue its own certificate.
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusPill tone={reported.has(completion.id) ? 'positive' : 'neutral'}>
                         {reported.has(completion.id) ? 'Included in a CE report' : 'Not yet CE reported'}
                       </StatusPill>
-                      <CertificateDialog
-                        profile={profileForCertificate}
-                        courseTitle={enrollment.lms_courses.title}
-                        completionDate={formatDate(completion.completed_at)}
-                        expirationDate={formatDate(addOneYear(completion.completed_at))}
-                      />
+                      {isFlagship ? (
+                        <CertificateDialog
+                          profile={profileForCertificate}
+                          courseTitle={enrollment.lms_courses.title}
+                          completionDate={formatDate(completion.completed_at)}
+                          expirationDate={formatDate(addOneYear(completion.completed_at))}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 </article>
               );
             }
             if (!course) return null;
+            const incompleteFlagship = courseKind(course) === 'flagship';
             const blocker = courseProgressionBlocker(catalog, snapshot, course);
             const remaining = remainingRequirements(catalog, snapshot, course);
             const guidance = blocker ? blockerGuidance(blocker, null) : null;
@@ -722,14 +737,20 @@ export function AdminLearnerFilePage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="font-bold text-dacfp-navy">{enrollment.lms_courses.title}</h3>
-                    <p className="mt-1 text-sm text-dacfp-gray-text">No completion record — no certificate exists for this course.</p>
+                    <p className="mt-1 text-sm text-dacfp-gray-text">
+                      {incompleteFlagship
+                        ? 'No completion record — no certificate exists for this course.'
+                        : 'No completion record. This course does not issue its own certificate.'}
+                    </p>
                   </div>
                   <ConfirmDialog
                     trigger={<button className="button-secondary" type="button">Manual mark complete</button>}
                     title={`Mark ${enrollment.lms_courses.title} complete?`}
-                    description="This records an audited manual completion event. The certificate derives from it and becomes live immediately. Course access only — this does not issue or alter any designation."
+                    description={incompleteFlagship
+                      ? 'This records an audited manual completion event. The certificate derives from it and becomes live immediately. Course access only — this does not issue or alter any designation.'
+                      : 'This records an audited manual completion event. This course does not issue its own certificate. Course access only — this does not issue or alter any designation.'}
                     confirmLabel="Mark complete"
-                    onConfirm={() => void act('manual_mark_complete', { enrollment_id: enrollment.id }, 'Completion recorded. The certificate is now live.')}
+                    onConfirm={() => void act('manual_mark_complete', { enrollment_id: enrollment.id }, incompleteFlagship ? 'Completion recorded. The certificate is now live.' : 'Completion recorded.')}
                   />
                 </div>
                 {guidance ? (

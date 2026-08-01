@@ -96,8 +96,9 @@ answer to who this person is, where they stand, and what to do)
   introspects before writing the RPC.
 
 ## §5 ENROLLMENT ACTIONS (all audited)
-- Reference design: match the command-center enrollment page's
-  layout and flow. This is a DESIGN reference only — zero code,
+- Reference design: LMS design language as built (ratified); any
+  restyle routes through the owner/leadership visual pass.
+  [Amendment 1] This is a DESIGN reference only — zero code,
   identifiers, endpoints, or configuration may be copied from the
   command-center repo, and Hard Rule 1 applies in full. The session
   builds against LMS objects exclusively, from screenshots or
@@ -189,3 +190,11 @@ answer to who this person is, where they stand, and what to do)
     cite).
 13. Suite green; lint, build, forbidden-ref scan clean; branch and
     commit hash.
+
+## AMENDMENTS
+- Amendment 1 (2026-08-01, ratified by the spec owner): §5's
+  reference-design sentence originally read "match the
+  command-center enrollment page's layout and flow." It now reads
+  "LMS design language as built (ratified); any restyle routes
+  through the owner/leadership visual pass." The Hard Rule 1 fence
+  sentence in that bullet is unchanged.

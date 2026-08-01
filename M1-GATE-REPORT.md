@@ -31,30 +31,47 @@ Merge happens only on Jack's explicit "merge approved."
   `/admin/audit`. New `NamedConfirmDialog` implements the type-the-email
   destructive confirm.
 
-## Design decisions needing ratification (no improvisation intended — flagged)
+## Ratified design decisions (spec owner, 2026-08-01)
 
-1. **Directory grain = one row per learner** (not per enrollment). §2 says
+1. **Directory grain = one row per learner** — RATIFIED. §2 says
    "list of all learners" with a status value of `none`, which only exists at
    learner grain, and §0's tile-equals-filter-by-construction rule needs one
    grain. Consequence: the §1 "active enrollments" tile is labeled **"With
    active enrollment"** and counts *learners* holding ≥1 active enrollment
    (every tile is a learner population; each tile names its source object per
    the Absorb reporting lessons doc, rule 1).
-2. **Extending a revoked enrollment past now restores access.** §5 defines
-   set/extend and revoke; it defines no un-revoke. The extension path
-   naturally restores (`status='active'` when the new date is future), the UI
-   says so, and the audit row records old/new status. Ratify or I remove it.
-3. **Certificate artifact for non-FPT completions.** §3 says every completion
-   gets "the same C1 artifact the learner sees." The C1 artwork is the CBDA
-   FPT template; the learner side only surfaces it for the flagship course.
-   The admin panel renders that same template for any completion (e.g. a
-   renewal). Ratify or scope the button to flagship completions.
-4. **Which reads are audited**: dashboard views (`view_dashboard`), learner
-   file opens (`inspect_learner`, pre-existing pattern), and CSV exports are
-   audited reads. Plain directory list pagination is not (matches the
-   existing unaudited `list_catalog`/`list_audit` reads). The dashboard's
-   recent-actions strip excludes the two read-audit actions so it shows
-   operations; they remain in the ledger.
+2. **Extending a revoked enrollment past now restores access** — RATIFIED.
+   The extension path restores (`status='active'` when the new date is
+   future), the UI says so, and the audit row records old/new status.
+3. **Certificate scope: FPT only** — RATIFIED BY DIRECTIVE and implemented
+   pre-merge (commit noted below). Bonus courses do not award a certificate;
+   renewal extends the FPT certificate dates per C1-SPEC (renewal
+   certificates remain out of C1 scope — no separate certificate exists).
+   The certificate panel and the /credentials artifact render ONLY for FPT
+   completions. Non-FPT completions show completion state with no
+   certificate affordance on both surfaces: the admin learner file renders
+   "Completion recorded — this course does not issue its own certificate"
+   with no View-certificate button or valid-through date, and the learner
+   /completion page for a non-FPT course renders no credential reveal and no
+   /credentials link (the learner /credentials page was already
+   flagship-only). Coverage added asserting a non-FPT completion renders no
+   certificate: `src/pages/AdminExperience.test.tsx` ("M1 ratified
+   certificate scope — admin learner file", positive FPT case + negative
+   renewal case) and `src/App.routes.test.tsx` ("M1 ratified certificate
+   scope — FPT only", positive `/completion/fpt-sandbox` + negative
+   `/completion/renewal-2026-sandbox`). Affected suites re-run green
+   (107/107 across the two files); full suite re-run below.
+4. **Which reads are audited** — RATIFIED as implemented: dashboard views
+   (`view_dashboard`), learner file opens (`inspect_learner`), and CSV
+   exports are audited reads; routine list pagination is not. The
+   dashboard's recent-actions strip excludes the two read-audit actions so
+   it shows operations; they remain in the ledger.
+5. **§5 enrollment surface in LMS design language** — RATIFIED, recorded as
+   M1-SPEC Amendment 1 (applied to `M1-SPEC.md` §5 on this branch): the
+   reference-design sentence now reads "LMS design language as built
+   (ratified); any restyle routes through the owner/leadership visual pass."
+   The Hard Rule 1 fence sentence is unchanged. The command-center
+   screenshot request is closed.
 
 ## §10 Gate evidence
 
@@ -324,13 +341,7 @@ Its findings, verbatim headlines, with dispositions:
    any operation this session (one `projects list` during tool discovery
    revealed this); all sandbox work went through the MCP, which is scoped to
    the sandbox only. No production ref appears in any artifact.
-3. **§5 reference design**: per the session prompt I should ask for the
-   command-center enrollment page screenshot as a DESIGN reference (zero
-   code/identifiers from that system). §5 is functionally complete in LMS
-   design language; supply the screenshot and I'll restyle the enrollment
-   panels to match its layout/flow in a follow-up commit before merge if
-   desired.
-4. **Harness steps disclosed**: scratch learner password set by SQL (item 9);
+3. **Harness steps disclosed**: scratch learner password set by SQL (item 9);
    completed scratch actor `m1-scratch-beta` removed by direct SQL because
    the §4 guard correctly refuses completed learners and completions are
    append-only — the museum is back at exact contract state (8 auth users, 6
