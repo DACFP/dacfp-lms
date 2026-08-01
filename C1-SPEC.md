@@ -11,7 +11,9 @@ Replace the interim certificate view with the real design: the
 committed template PNG rendered full-bleed as the certificate
 background, with live text overlaid in three zones (positions as
 fractions of the 3300x2550 canvas so scaling stays true):
-- NAME zone (center, ~y 39–48%): "First [Middle] Last" from the
+- NAME zone (center, ~y 50.5–62%, centered 56.25%, measured from
+  the committed 3300x2550 template's blank field): "First [Middle]
+  Last" from the
   learner profile (middle included when present), in a large italic
   serif closely matching the design's script feel (a bundled/system
   serif italic at weight — no new font dependency unless flagged);

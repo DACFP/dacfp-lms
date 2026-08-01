@@ -124,10 +124,10 @@ export function CompletionPage() {
           <div>
             <p className="text-[11px] font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">Credential reveal</p>
             <h2 id="credential-reveal-heading" className="mt-2 font-serif text-3xl font-bold">
-              Your interim CBDA credential is ready
+              Your CBDA certificate is ready
             </h2>
             <p className="mt-3 max-w-prose text-sm leading-6 text-white/75">
-              The interim certificate is available now. Official designation issuance and course access remain separate statuses.
+              Your certificate is available now. Official designation issuance and course access remain separate statuses.
             </p>
             <p className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-dacfp-gold-hi">
               <Award className="size-icon-sm" aria-hidden="true" />

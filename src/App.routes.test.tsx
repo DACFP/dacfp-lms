@@ -421,25 +421,78 @@ describe('D0 route shell', () => {
     expect(screen.getByText('5/5')).toBeInTheDocument();
     expect(screen.getByText('4/4')).toBeInTheDocument();
     expect(screen.getByText('FPT completed')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Your interim CBDA credential is ready' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your CBDA certificate is ready' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open My Credentials' })).toHaveAttribute('href', '/credentials');
     expect(screen.queryByRole('heading', { name: 'CE reporting status' })).not.toBeInTheDocument();
   });
 
-  it('renders the interim certificate only after FPT completion', async () => {
-    renderRoute('/certificate', 'mid-module-2');
+  it('renders the certificate only after FPT completion', async () => {
+    renderRoute('/credentials', 'mid-module-2');
     expect(await screen.findByRole('heading', { level: 1, name: 'My Credentials' })).toBeInTheDocument();
     expect(await screen.findByText('Certificate not available yet')).toBeInTheDocument();
   });
 
-  it('renders a completed learner interim certificate with designation dates', async () => {
-    renderRoute('/certificate', 'fpt-completed');
+  it('renders the real certificate template with live name and designation dates', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+    renderRoute('/credentials', 'fpt-completed');
     expect(await screen.findByRole('heading', { level: 1, name: 'My Credentials' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'FPT completed' })).toBeInTheDocument();
-    expect(screen.getByText('Certified in Blockchain and Digital Assets')).toBeInTheDocument();
-    expect(screen.getByText('Interim demonstration certificate')).toBeInTheDocument();
+    const artwork = screen.getByRole('article', { name: /CBDA certificate for FPT completed/ });
+    expect(artwork).toBeInTheDocument();
+    expect(artwork.querySelector('.certificate-template')).toHaveAttribute(
+      'src',
+      expect.stringContaining('cbda-certificate-template'),
+    );
+    expect(screen.getByText('FPT completed')).toHaveAttribute('data-auto-fit', 'single-line');
     expect(screen.getByText('Jul 16, 2026')).toBeInTheDocument();
     expect(screen.getByText('Jul 16, 2027')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Download / print' }));
+    expect(print).toHaveBeenCalledOnce();
+    expect(screen.getByText('Course completion, designation issuance, and course access are tracked separately.')).toBeInTheDocument();
+    expect(screen.queryByText(/interim demonstration certificate/i)).not.toBeInTheDocument();
+  });
+
+  it('includes a present middle name on the certificate', async () => {
+    const middleNameProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        return {
+          ...snapshot,
+          profile: {
+            ...snapshot.profile,
+            first_name: 'Avery',
+            middle_name: 'Morgan',
+            last_name: 'Stone',
+          },
+        };
+      },
+    };
+
+    renderRoute('/credentials', 'fpt-completed', testAuthProvider(signedInSession), middleNameProvider);
+    expect(await screen.findByText('Avery Morgan Stone')).toBeInTheDocument();
+    expect(screen.queryByText('Avery Stone')).not.toBeInTheDocument();
+  });
+
+  it('omits an absent middle name from the certificate without adding spacing', async () => {
+    const noMiddleNameProvider: LmsDataProvider = {
+      ...mockProvider,
+      async getLearnerSnapshot(learner) {
+        const snapshot = await mockProvider.getLearnerSnapshot(learner);
+        return {
+          ...snapshot,
+          profile: {
+            ...snapshot.profile,
+            first_name: 'Avery',
+            middle_name: null,
+            last_name: 'Stone',
+          },
+        };
+      },
+    };
+
+    renderRoute('/credentials', 'fpt-completed', testAuthProvider(signedInSession), noMiddleNameProvider);
+    expect(await screen.findByText('Avery Stone')).toBeInTheDocument();
+    expect(screen.queryByText(/Avery\s{2,}Stone/)).not.toBeInTheDocument();
   });
 
   it('opens every course module for review after course completion', async () => {
