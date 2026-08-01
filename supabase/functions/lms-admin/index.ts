@@ -829,6 +829,9 @@ async function inspectLearner(
         p_actor_auth_user_id: actorId,
         p_target_email: normalized,
         p_limit: 100,
+        // The learner file is an exact-target population, never a substring
+        // match — ann@ must not surface joann@'s rows.
+        p_target_exact: true,
       }),
     ]);
   if (authUserError) throw new Error(authUserError.message);
@@ -1052,7 +1055,12 @@ async function createLearner(
       p_audit_action: 'create_learner',
     },
   );
-  assertQuery(profileError);
+  if (profileError) {
+    // Compensate: never leave an un-audited auth user behind if the audited
+    // profile write (the create_learner record) failed.
+    await admin.auth.admin.deleteUser(created.user.id).catch(() => undefined);
+    assertQuery(profileError);
+  }
   return { auth_user_id: created.user.id, email, profile };
 }
 
@@ -1305,6 +1313,16 @@ async function adminCompleteLesson(
       .single();
     if (completionError?.code !== '23505') assertQuery(completionError);
     completionFired = Boolean(inserted);
+    if (completionFired) {
+      // The completion event is the most consequential record in the system;
+      // when the admin path causes it, it gets its own audit row.
+      await audit(admin, actorId, 'completion_event_recorded', {
+        enrollment_id: enrollmentId,
+        completion_id: inserted?.id ?? null,
+        trigger: 'all_requirements_met',
+        via: 'admin_complete_lesson',
+      });
+    }
   }
   return { progress: progressRow, completion_fired: completionFired };
 }
@@ -1440,6 +1458,7 @@ async function importLearners(
   const results: Array<{ row_number: number; email: string; enrollment_id: string | null }> = [];
   for (const row of valid) {
     let user = await findAuthUserByEmail(admin, row.email);
+    let createdAccount = false;
     if (!user) {
       const { data: created, error } = await admin.auth.admin.createUser({
         email: row.email,
@@ -1451,20 +1470,42 @@ async function importLearners(
         continue;
       }
       user = { id: created.user.id, email: row.email };
+      createdAccount = true;
       accountsCreated += 1;
     }
-    const { error: profileError } = await admin.rpc('lms_admin_upsert_learner_profile', {
-      p_actor_auth_user_id: actorId,
-      p_auth_user_id: user.id,
-      p_first_name: row.first_name,
-      p_middle_name: row.middle_name,
-      p_last_name: row.last_name,
-      p_cfp_id: row.cfp_board_id,
-      p_audit_action: 'create_learner',
-    });
-    if (profileError) {
-      rejections.push({ row_number: row.row_number, field: 'first', reason: 'profile write failed' });
-      continue;
+    // Matched accounts are matched, not modified (§7): the profile is written
+    // only for newly created accounts, or when the existing profile has no
+    // names yet. Existing profile data — including CFP Board IDs and middle
+    // names — is never overwritten by an import row.
+    let writeProfile = createdAccount;
+    if (!createdAccount) {
+      const { data: existingProfile, error: existingProfileError } = await admin
+        .from('lms_learner_profiles')
+        .select('first_name,last_name')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      assertQuery(existingProfileError);
+      writeProfile = !existingProfile ||
+        (!existingProfile.first_name && !existingProfile.last_name);
+    }
+    if (writeProfile) {
+      const { error: profileError } = await admin.rpc('lms_admin_upsert_learner_profile', {
+        p_actor_auth_user_id: actorId,
+        p_auth_user_id: user.id,
+        p_first_name: row.first_name,
+        p_middle_name: row.middle_name,
+        p_last_name: row.last_name,
+        p_cfp_id: row.cfp_board_id,
+        p_audit_action: createdAccount ? 'create_learner' : 'update_learner_profile',
+      });
+      if (profileError) {
+        if (createdAccount) {
+          await admin.auth.admin.deleteUser(user.id).catch(() => undefined);
+          accountsCreated -= 1;
+        }
+        rejections.push({ row_number: row.row_number, field: 'first', reason: 'profile write failed' });
+        continue;
+      }
     }
     const { data: granted, error: grantError } = await admin.rpc('lms_grant_enrollment', {
       p_email: row.email,
