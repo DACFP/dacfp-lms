@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { CbdaSeal } from '../components/CbdaSeal';
 import { EmptyState, PageHeader, StatusPill, formatDate } from '../components/common';
 import { useLms } from '../context/LmsContext';
+import { courseKind } from '../lib/courseKind';
 import { enrollmentForCourse, moduleIsPassed } from '../lib/progress';
 
 export interface CeStatusRow {
@@ -117,33 +118,47 @@ export function CompletionPage() {
         </dl>
       </section>
 
-      <section aria-labelledby="credential-reveal-heading" className="on-navy overflow-hidden rounded-[0.1875rem] bg-dacfp-navy p-7 text-white sm:p-9">
-        <div className="brand-strip -mx-9 -mt-9 mb-8 h-1" />
-        <div className="grid gap-7 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-          <CbdaSeal size="lg" decorative />
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">Credential reveal</p>
-            <h2 id="credential-reveal-heading" className="mt-2 font-serif text-3xl font-bold">
-              Your CBDA certificate is ready
-            </h2>
-            <p className="mt-3 max-w-prose text-sm leading-6 text-white/75">
-              Your certificate is available now. Official designation issuance and course access remain separate statuses.
-            </p>
-            <p className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-dacfp-gold-hi">
-              <Award className="size-icon-sm" aria-hidden="true" />
-              {completion.designation_issued ? 'Official designation issued' : 'Official designation processing'}
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link className="inline-flex min-h-11 items-center justify-center rounded-[0.1875rem] bg-white px-4 py-2.5 text-sm font-bold text-dacfp-navy hover:bg-dacfp-gold-hi" to="/credentials">
-                Open My Credentials
-              </Link>
-              <Link className="inline-flex min-h-11 items-center justify-center rounded-[0.1875rem] border border-white/30 px-4 py-2.5 text-sm font-bold text-white hover:bg-white/10" to="/dashboard">
-                Return to dashboard
-              </Link>
+      {/* Ratified M1 decision: only the FPT (flagship) completion issues a
+          certificate — bonus and renewal completions show completion state
+          with no certificate affordance. Renewal completions extend the FPT
+          certificate dates per C1-SPEC; they are not separate certificates. */}
+      {courseKind(course) === 'flagship' ? (
+        <section aria-labelledby="credential-reveal-heading" className="on-navy overflow-hidden rounded-[0.1875rem] bg-dacfp-navy p-7 text-white sm:p-9">
+          <div className="brand-strip -mx-9 -mt-9 mb-8 h-1" />
+          <div className="grid gap-7 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+            <CbdaSeal size="lg" decorative />
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-eyebrow text-dacfp-gold-hi">Credential reveal</p>
+              <h2 id="credential-reveal-heading" className="mt-2 font-serif text-3xl font-bold">
+                Your CBDA certificate is ready
+              </h2>
+              <p className="mt-3 max-w-prose text-sm leading-6 text-white/75">
+                Your certificate is available now. Official designation issuance and course access remain separate statuses.
+              </p>
+              <p className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-dacfp-gold-hi">
+                <Award className="size-icon-sm" aria-hidden="true" />
+                {completion.designation_issued ? 'Official designation issued' : 'Official designation processing'}
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link className="inline-flex min-h-11 items-center justify-center rounded-[0.1875rem] bg-white px-4 py-2.5 text-sm font-bold text-dacfp-navy hover:bg-dacfp-gold-hi" to="/credentials">
+                  Open My Credentials
+                </Link>
+                <Link className="inline-flex min-h-11 items-center justify-center rounded-[0.1875rem] border border-white/30 px-4 py-2.5 text-sm font-bold text-white hover:bg-white/10" to="/dashboard">
+                  Return to dashboard
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section aria-label="Completion recorded" className="card flex flex-wrap items-center justify-between gap-4 p-6 sm:p-8">
+          <p className="max-w-prose text-sm leading-6 text-dacfp-gray-text">
+            This completion is part of your learning record. It does not issue a
+            separate certificate.
+          </p>
+          <Link className="button-secondary" to="/dashboard">Return to dashboard</Link>
+        </section>
+      )}
 
       <CompletionStatusSlots rows={ceStatusRows} />
     </div>

@@ -5,12 +5,18 @@ import { PageSkeleton } from '../components/Skeletons';
 import { AdminProvider } from '../context/AdminContext';
 import type { LmsAdminProvider } from '../data/provider';
 import {
-  AdminAuditPage,
   AdminCoursePage,
   AdminCoursesPage,
   AdminLearnersPage,
   AdminNotFoundPage,
 } from './AdminPages';
+import {
+  AdminAuditSearchPage,
+  AdminDashboardPage,
+  AdminDirectoryPage,
+  AdminImportPage,
+  AdminLearnerFilePage,
+} from './AdminM1Pages';
 
 const CeReportingPage = lazy(() => import('./CeReportingPage').then((module) => ({
   default: module.CeReportingPage,
@@ -32,11 +38,17 @@ export default function AdminApp({ adminProvider }: { adminProvider?: LmsAdminPr
     <AdminProvider provider={adminProvider}>
       <Routes>
         <Route element={<AdminShell />}>
-          <Route index element={<AdminCoursesPage />} />
+          {/* M1 §1: the dashboard is the operator landing route. Courses moved
+              to /admin/courses, one click away in the nav. */}
+          <Route index element={<AdminDashboardPage />} />
+          <Route path="courses" element={<AdminCoursesPage />} />
           <Route path="course/:id" element={<AdminCoursePage />} />
-          <Route path="learners" element={<AdminLearnersPage />} />
+          <Route path="learners" element={<AdminDirectoryPage />} />
+          <Route path="learners/inspect" element={<AdminLearnersPage />} />
+          <Route path="learners/:email" element={<AdminLearnerFilePage />} />
+          <Route path="import" element={<AdminImportPage />} />
           <Route path="ce-reporting" element={<Suspense fallback={<PageSkeleton />}><CeReportingPage /></Suspense>} />
-          <Route path="audit" element={<AdminAuditPage />} />
+          <Route path="audit" element={<AdminAuditSearchPage />} />
           <Route path="*" element={<AdminNotFoundPage />} />
         </Route>
       </Routes>

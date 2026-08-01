@@ -31,6 +31,8 @@ interface AdminContextValue extends AdminSnapshot {
   error: string;
   refresh: () => Promise<void>;
   mutate: <T>(action: string, payload: Record<string, unknown>) => Promise<T>;
+  /** Plain audited-server read — no mutation lifecycle, no snapshot refresh. */
+  request: <T>(action: string, payload?: Record<string, unknown>) => Promise<T>;
   inspectLearner: (email: string) => Promise<LearnerInspection | null>;
   exportQuestionBank: (moduleId: string) => Promise<QuestionBank>;
   surveyResults: (lessonId: string) => Promise<SurveyResults>;
@@ -147,6 +149,8 @@ export function AdminProvider({
     error,
     refresh,
     mutate,
+    request: <T,>(action: string, payload: Record<string, unknown> = {}) =>
+      provider.adminRequest<T>(action, payload),
     inspectLearner: (email) => provider.adminRequest<LearnerInspection | null>('inspect_learner', { email }),
     exportQuestionBank: (moduleId) => provider.adminRequest<QuestionBank>('export_question_bank', { module_id: moduleId }),
     surveyResults: (lessonId) => runMutationLifecycle({

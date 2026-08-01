@@ -29,8 +29,29 @@ export interface AdminEnrollment extends LmsEnrollment {
   };
 }
 
+export interface LearnerNote {
+  id: string;
+  author_email: string;
+  body: string;
+  created_at: string;
+}
+
+export interface AuditSearchRow extends LmsAdminAction {
+  actor_email: string;
+}
+
+export interface AuditSearchResult {
+  total: number;
+  rows: AuditSearchRow[];
+}
+
 export interface LearnerInspection {
   user: { id: string; email: string };
+  account: {
+    created_at: string | null;
+    banned_until: string | null;
+    deactivated: boolean;
+  };
   profile: Omit<LmsLearnerProfile, 'email'> | null;
   enrollments: AdminEnrollment[];
   progress: LmsLessonProgress[];
@@ -38,6 +59,94 @@ export interface LearnerInspection {
   surveyResponses: LmsSurveyResponse[];
   completions: LmsCompletionEvent[];
   summaries: Array<{ enrollment_id: string; percent_complete: number }>;
+  notes: LearnerNote[];
+  auditSlice: AuditSearchResult;
+  ceReportedCompletionIds: string[];
+}
+
+export interface DirectoryRow {
+  auth_user_id: string;
+  email: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  display_name: string;
+  cfp_id: string | null;
+  deactivated: boolean;
+  created_at: string;
+  enrollment_count: number;
+  course_title: string | null;
+  course_slug: string | null;
+  enrollment_status: 'active' | 'expired' | 'revoked' | 'none';
+  percent_complete: number | null;
+  expires_at: string | null;
+  last_activity: string | null;
+  stalled: boolean;
+  completed: boolean;
+  latest_completed_at: string | null;
+}
+
+export interface DirectoryResult {
+  total: number;
+  rows: DirectoryRow[];
+  stalled_threshold_days: number;
+}
+
+export interface DashboardData {
+  total_learners: number;
+  active_access: number;
+  in_progress: number;
+  completed_30d: number;
+  completed_all: number;
+  expiring_30: number;
+  expiring_60: number;
+  expiring_90: number;
+  stalled: number;
+  deactivated: number;
+  stalled_threshold_days: number;
+  recent_completions: Array<{
+    completed_at: string;
+    trigger: string;
+    person_email: string;
+    course_title: string;
+  }>;
+  recent_actions: Array<{
+    created_at: string;
+    action: string;
+    actor_email: string;
+    target: Record<string, unknown>;
+  }>;
+}
+
+export interface ImportRejection {
+  row_number: number;
+  field: string;
+  reason: string;
+}
+
+export interface ImportPreview {
+  dry_run: true;
+  valid_count: number;
+  rejected_count: number;
+  valid_rows: Array<{
+    row_number: number;
+    email: string;
+    first_name: string;
+    middle_name: string | null;
+    last_name: string;
+    cfp_board_id: string | null;
+    course: string;
+    expiration: string;
+  }>;
+  rejections: ImportRejection[];
+}
+
+export interface ImportResult {
+  dry_run: false;
+  accounts_created: number;
+  enrollments_created: number;
+  results: Array<{ row_number: number; email: string; enrollment_id: string | null }>;
+  rejections: ImportRejection[];
 }
 
 export interface AdminSnapshot {

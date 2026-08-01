@@ -50,6 +50,7 @@ function renderAdmin(route: string, admin: LmsAdminProvider) {
 
 const inspection: LearnerInspection = {
   user: { id: 'learner-1', email: 'jordan@example.test' },
+  account: { created_at: '2026-01-01T00:00:00.000Z', banned_until: null, deactivated: false },
   profile: {
     auth_user_id: 'learner-1',
     display_name: 'Jordan Rivers',
@@ -108,6 +109,9 @@ const inspection: LearnerInspection = {
   surveyResponses: [],
   completions: [],
   summaries: [{ enrollment_id: 'enr-1', percent_complete: 40 }],
+  notes: [],
+  auditSlice: { total: 0, rows: [] },
+  ceReportedCompletionIds: [],
 };
 
 function baseAdmin(overrides: Partial<Record<string, unknown>> = {}): LmsAdminProvider {
@@ -125,7 +129,7 @@ function baseAdmin(overrides: Partial<Record<string, unknown>> = {}): LmsAdminPr
 
 describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   it('renders credential IDs as labelled fields, not a JSON block', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -145,7 +149,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   });
 
   it('shows enrollment evidence as structured facts', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -161,7 +165,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   });
 
   it('names manual completion for both the course and learner', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -171,7 +175,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   });
 
   it('names every quiz reset for its module and learner', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -217,7 +221,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
         { enrollment_id: renewalEnrollment.id, percent_complete: 0 },
       ],
     };
-    renderAdmin('/admin/learners', baseAdmin({ inspect_learner: () => twoCourseInspection }));
+    renderAdmin('/admin/learners/inspect', baseAdmin({ inspect_learner: () => twoCourseInspection }));
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -342,7 +346,7 @@ describe('Admin pending and empty states — F6', () => {
     const inspect = vi.fn((payload: Record<string, unknown>) => payload.email === 'second@example.test'
       ? new Promise<LearnerInspection | null>((resolve) => { resolveSecond = resolve; })
       : inspection);
-    renderAdmin('/admin/learners', baseAdmin({ inspect_learner: inspect }));
+    renderAdmin('/admin/learners/inspect', baseAdmin({ inspect_learner: inspect }));
 
     const input = await screen.findByLabelText('Learner email');
     fireEvent.change(input, { target: { value: 'jordan@example.test' } });
@@ -696,5 +700,63 @@ describe('Admin CFP CE reporting — R1', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Download again' }));
     await waitFor(() => expect(workbookDownload).toHaveBeenCalledWith([frozenRow], filename));
+  });
+});
+
+describe('M1 ratified certificate scope — admin learner file', () => {
+  const fptCompletion = {
+    id: 'comp-fpt-1',
+    enrollment_id: 'enr-1',
+    completed_at: '2026-07-30T12:00:00.000Z',
+    trigger: 'all_requirements_met' as const,
+    processed_at: null,
+    designation_issued: false,
+  };
+  const renewalEnrollment: LearnerInspection['enrollments'][number] = {
+    id: 'enr-renewal',
+    person_email: 'jordan@example.test',
+    auth_user_id: 'learner-1',
+    course_id: 'course-renewal-2026',
+    source: 'synthetic',
+    enrolled_at: '2026-01-01T00:00:00.000Z',
+    expires_at: '2027-07-16T00:00:00.000Z',
+    status: 'active',
+    terms_accepted_at: null,
+    order_id: null,
+    lms_courses: {
+      id: 'course-renewal-2026',
+      slug: 'renewal-2026-sandbox',
+      title: 'Renewal 2026 Sandbox',
+      ce_credits: 1,
+      cfp_program_id: null,
+    },
+  };
+
+  it('offers the certificate for an FPT completion', async () => {
+    renderAdmin('/admin/learners/jordan%40example.test', baseAdmin({
+      inspect_learner: () => ({ ...inspection, completions: [fptCompletion] }),
+    }));
+    expect(await screen.findByRole('button', { name: /View certificate/ })).toBeInTheDocument();
+    expect(screen.getByText(/certificate valid through/)).toBeInTheDocument();
+  });
+
+  it('renders no certificate affordance for a non-FPT completion', async () => {
+    const renewalCompletion = { ...fptCompletion, id: 'comp-renewal-1', enrollment_id: 'enr-renewal' };
+    renderAdmin('/admin/learners/jordan%40example.test', baseAdmin({
+      inspect_learner: () => ({
+        ...inspection,
+        enrollments: [...inspection.enrollments, renewalEnrollment],
+        summaries: [
+          ...inspection.summaries,
+          { enrollment_id: renewalEnrollment.id, percent_complete: 100 },
+        ],
+        completions: [renewalCompletion],
+      }),
+    }));
+    expect(
+      await screen.findByText(/Completion recorded — this course does not issue its own certificate/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /View certificate/ })).toBeNull();
+    expect(screen.queryByText(/certificate valid through/)).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { BookOpen, ClipboardList, FileSpreadsheet, LogOut, Menu, Users } from 'lucide-react';
+import { BookOpen, ClipboardList, FileSpreadsheet, LayoutDashboard, LogOut, Menu, Users } from 'lucide-react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -12,8 +12,9 @@ import { useAuth } from '../context/AuthContext';
 import { BrandLockup } from './BrandLockup';
 
 const links = [
-  { to: '/admin', label: 'Courses', icon: BookOpen, end: true },
+  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/learners', label: 'Learners', icon: Users, end: false },
+  { to: '/admin/courses', label: 'Courses', icon: BookOpen, end: false },
   { to: '/admin/ce-reporting', label: 'CFP CE', icon: FileSpreadsheet, end: false },
   { to: '/admin/audit', label: 'Audit trail', icon: ClipboardList, end: false },
 ];
@@ -32,7 +33,7 @@ export function AdminShell() {
       <header className="on-navy sticky top-0 z-40 bg-dacfp-navy text-white shadow-sm">
         <div className="mx-auto flex h-16 max-w-shell items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
-            <Link to="/admin" className="shrink-0 rounded-md" aria-label="DACFP operator console — courses">
+            <Link to="/admin" className="shrink-0 rounded-md" aria-label="DACFP operator console — dashboard">
               <BrandLockup surface="navy" priority className="h-9 w-auto" />
             </Link>
             {/* gold-hi, not raw gold: small bold text on navy is 8.30:1 (raw
