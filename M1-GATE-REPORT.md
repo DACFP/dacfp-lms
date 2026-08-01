@@ -1,6 +1,6 @@
 # M1 GATE REPORT — Learner Management + Operator Dashboard
 
-Branch: `codex/m1-learners` · Head: `07ae773` · Date: 2026-08-01
+Branch: `codex/m1-learners` · Head: `ad1146a` · Date: 2026-08-01
 Sandbox: `xfvaohvismisfdggfdfj` (the only Supabase project touched)
 Edge function: `lms-admin` version 17, deployed and byte-verified against the repo.
 Merge happens only on Jack's explicit "merge approved."
@@ -44,7 +44,7 @@ Merge happens only on Jack's explicit "merge approved."
    The extension path restores (`status='active'` when the new date is
    future), the UI says so, and the audit row records old/new status.
 3. **Certificate scope: FPT only** — RATIFIED BY DIRECTIVE and implemented
-   pre-merge (commit noted below). Bonus courses do not award a certificate;
+   pre-merge (commit `ad1146a`). Bonus courses do not award a certificate;
    renewal extends the FPT certificate dates per C1-SPEC (renewal
    certificates remain out of C1 scope — no separate certificate exists).
    The certificate panel and the /credentials artifact render ONLY for FPT
@@ -243,10 +243,11 @@ API. No gate artifact contains the production ref; working-tree forbidden-ref
 scan: **0 matches**.
 
 **13. Suite / lint / build / scan.**
-`npm test`: **35 files, 273 tests, all passing** (includes new
-`learnerImportCsv` tests, updated route tests, engine-identity now covering
-the lms-admin copy). `npm run lint` (tsc): clean. `npm run build`: clean.
-Forbidden-ref scan: 0. Branch `codex/m1-learners`, head `07ae773`.
+`npm test`: **35 files, 277 tests, all passing** (includes new
+`learnerImportCsv` tests, updated route tests, the four ratified
+certificate-scope tests, and engine-identity now covering the lms-admin
+copy). `npm run lint` (tsc): clean. `npm run build`: clean.
+Forbidden-ref scan: 0. Branch `codex/m1-learners`, head `ad1146a`.
 
 ## Pre-gate fresh-context review (disclosed per session protocol)
 
