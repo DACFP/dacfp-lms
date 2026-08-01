@@ -36,6 +36,15 @@ const mockAdminProvider: LmsAdminProvider = {
   async adminRequest<T>(action: string) {
     if (action === 'list_catalog') return (await mockProvider.getCatalog()) as T;
     if (action === 'list_audit') return [] as T;
+    // M1: the admin landing route is the operator dashboard.
+    if (action === 'dashboard') {
+      return {
+        total_learners: 0, active_access: 0, in_progress: 0, completed_30d: 0,
+        completed_all: 0, expiring_30: 0, expiring_60: 0, expiring_90: 0,
+        stalled: 0, deactivated: 0, stalled_threshold_days: 14,
+        recent_completions: [], recent_actions: [],
+      } as T;
+    }
     throw new Error(`Unexpected admin action: ${action}`);
   },
 };
@@ -1212,7 +1221,7 @@ describe('F5 journey-defect remediation', () => {
       mockAdminProvider,
     );
     expect(
-      await screen.findByRole('heading', { name: 'Course catalog' }),
+      await screen.findByRole('heading', { name: 'Learner operations' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Sign in to continue' })).not.toBeInTheDocument();
   });
@@ -1261,7 +1270,7 @@ describe('F5 journey-defect remediation', () => {
     );
 
     expect(
-      await screen.findByRole('heading', { name: 'Course catalog' }),
+      await screen.findByRole('heading', { name: 'Learner operations' }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Blockchain and DLT: Video lesson' }),
@@ -1357,7 +1366,7 @@ describe('D6 operator routes', () => {
         </AuthSessionProvider>
       </MemoryRouter>,
     );
-    expect(await screen.findByRole('heading', { name: 'Course catalog' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Learner operations' })).toBeInTheDocument();
     // O3 replaced the icon+"Operator console" text lockup with the brand
     // lockup image (BrandLockup). The admin chrome's identity is now the
     // lockup plus the "Operator" role badge; the property under test — that the
@@ -1378,7 +1387,7 @@ describe('D6 operator routes', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole('heading', { name: 'Admin page not found' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Return to course catalog' })).toHaveAttribute('href', '/admin');
+    expect(screen.getByRole('link', { name: 'Return to dashboard' })).toHaveAttribute('href', '/admin');
     expect(screen.getByRole('navigation', { name: 'Admin' })).toBeInTheDocument();
   });
 

@@ -50,6 +50,7 @@ function renderAdmin(route: string, admin: LmsAdminProvider) {
 
 const inspection: LearnerInspection = {
   user: { id: 'learner-1', email: 'jordan@example.test' },
+  account: { created_at: '2026-01-01T00:00:00.000Z', banned_until: null, deactivated: false },
   profile: {
     auth_user_id: 'learner-1',
     display_name: 'Jordan Rivers',
@@ -108,6 +109,9 @@ const inspection: LearnerInspection = {
   surveyResponses: [],
   completions: [],
   summaries: [{ enrollment_id: 'enr-1', percent_complete: 40 }],
+  notes: [],
+  auditSlice: { total: 0, rows: [] },
+  ceReportedCompletionIds: [],
 };
 
 function baseAdmin(overrides: Partial<Record<string, unknown>> = {}): LmsAdminProvider {
@@ -125,7 +129,7 @@ function baseAdmin(overrides: Partial<Record<string, unknown>> = {}): LmsAdminPr
 
 describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   it('renders credential IDs as labelled fields, not a JSON block', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -145,7 +149,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   });
 
   it('shows enrollment evidence as structured facts', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -161,7 +165,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   });
 
   it('names manual completion for both the course and learner', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -171,7 +175,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
   });
 
   it('names every quiz reset for its module and learner', async () => {
-    renderAdmin('/admin/learners', baseAdmin());
+    renderAdmin('/admin/learners/inspect', baseAdmin());
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -217,7 +221,7 @@ describe('Admin inspector — brief #21 (no JSON dumps)', () => {
         { enrollment_id: renewalEnrollment.id, percent_complete: 0 },
       ],
     };
-    renderAdmin('/admin/learners', baseAdmin({ inspect_learner: () => twoCourseInspection }));
+    renderAdmin('/admin/learners/inspect', baseAdmin({ inspect_learner: () => twoCourseInspection }));
     fireEvent.change(await screen.findByLabelText('Learner email'), { target: { value: 'jordan@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect learner' }));
 
@@ -342,7 +346,7 @@ describe('Admin pending and empty states — F6', () => {
     const inspect = vi.fn((payload: Record<string, unknown>) => payload.email === 'second@example.test'
       ? new Promise<LearnerInspection | null>((resolve) => { resolveSecond = resolve; })
       : inspection);
-    renderAdmin('/admin/learners', baseAdmin({ inspect_learner: inspect }));
+    renderAdmin('/admin/learners/inspect', baseAdmin({ inspect_learner: inspect }));
 
     const input = await screen.findByLabelText('Learner email');
     fireEvent.change(input, { target: { value: 'jordan@example.test' } });

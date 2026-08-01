@@ -1,5 +1,6 @@
 import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import { courseComplete, type ProgressionContext } from './progression.ts';
 
 const DENIED_BODY = { error: 'Admin access is unavailable.' };
 const RESOURCE_BUCKET = 'lms-resources';
@@ -814,8 +815,54 @@ async function inspectLearner(
     enrollment_count: (enrollments.data ?? []).length,
   });
 
+  // M1 §3 learner-file extensions: account state, support notes, and the
+  // learner's slice of the audit trail. All service-role reads.
+  const [{ data: authUser, error: authUserError }, notes, auditSlice] =
+    await Promise.all([
+      admin.auth.admin.getUserById(user.id),
+      admin
+        .from('lms_learner_notes')
+        .select('id,author_email,body,created_at')
+        .eq('learner_auth_user_id', user.id)
+        .order('created_at', { ascending: false }),
+      admin.rpc('lms_admin_search_audit', {
+        p_actor_auth_user_id: actorId,
+        p_target_email: normalized,
+        p_limit: 100,
+      }),
+    ]);
+  if (authUserError) throw new Error(authUserError.message);
+  assertQuery(notes.error);
+  assertQuery(auditSlice.error);
+  const bannedUntil =
+    (authUser?.user as { banned_until?: string } | null)?.banned_until ?? null;
+
+  // §3 completion panel: CE-report inclusion status per completion event.
+  const completionIds = new Set((completions.data ?? []).map((row) => row.id));
+  const reportedCompletionIds = new Set<string>();
+  if (completionIds.size) {
+    const { data: ceRuns, error: ceRunsError } = await admin
+      .from('lms_ce_report_runs')
+      .select('rows');
+    assertQuery(ceRunsError);
+    for (const run of ceRuns ?? []) {
+      for (const row of (run.rows ?? []) as Array<{ completion_id?: string }>) {
+        if (row.completion_id && completionIds.has(row.completion_id)) {
+          reportedCompletionIds.add(row.completion_id);
+        }
+      }
+    }
+  }
+
   return {
     user: { id: user.id, email: user.email },
+    account: {
+      created_at: authUser?.user?.created_at ?? null,
+      banned_until: bannedUntil,
+      deactivated: Boolean(
+        bannedUntil && new Date(bannedUntil).getTime() > Date.now(),
+      ),
+    },
     profile: profile.data,
     enrollments: enrollments.data ?? [],
     progress: progress.data ?? [],
@@ -823,6 +870,639 @@ async function inspectLearner(
     surveyResponses: surveyResponses.data ?? [],
     completions: completions.data ?? [],
     summaries,
+    notes: notes.data ?? [],
+    auditSlice: auditSlice.data ?? { total: 0, rows: [] },
+    ceReportedCompletionIds: [...reportedCompletionIds],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// M1: learner management + operator dashboard
+// ---------------------------------------------------------------------------
+
+const LEARNER_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Reversible sign-in block (M1 §4). Ten years, not a deletion of anything.
+const DEACTIVATION_BAN = '87600h';
+
+function requiredEmail(value: unknown, field: string) {
+  const email = requiredString(value, field).toLowerCase();
+  if (!LEARNER_EMAIL_PATTERN.test(email)) {
+    throw new InvalidRequest(`${field} is invalid.`);
+  }
+  return email;
+}
+
+interface DirectoryFilters {
+  p_search: string | null;
+  p_course_id: string | null;
+  p_enrollment_status: string | null;
+  p_stalled: boolean;
+  p_expiring_days: number | null;
+  p_completed: boolean;
+  p_completed_within_days: number | null;
+  p_in_progress: boolean;
+  p_deactivated: boolean;
+  p_sort: string;
+  p_dir: string;
+}
+
+function directoryFilters(payload: Record<string, unknown>): DirectoryFilters {
+  return {
+    p_search: optionalString(payload.search),
+    p_course_id: optionalUuid(payload.course_id, 'course_id'),
+    p_enrollment_status: optionalString(payload.status),
+    p_stalled: payload.stalled === true,
+    p_expiring_days: payload.expiring_days === undefined || payload.expiring_days === null || payload.expiring_days === ''
+      ? null
+      : asNumber(payload.expiring_days, 'expiring_days'),
+    p_completed: payload.completed === true,
+    p_completed_within_days: payload.completed_within_days === undefined || payload.completed_within_days === null || payload.completed_within_days === ''
+      ? null
+      : asNumber(payload.completed_within_days, 'completed_within_days'),
+    p_in_progress: payload.in_progress === true,
+    p_deactivated: payload.deactivated === true,
+    p_sort: optionalString(payload.sort) ?? 'email',
+    p_dir: optionalString(payload.dir) ?? 'asc',
+  };
+}
+
+async function listLearners(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } = await admin.rpc('lms_admin_list_learners', {
+    p_actor_auth_user_id: actorId,
+    ...directoryFilters(payload),
+    p_limit: asNumber(payload.limit ?? 25, 'limit'),
+    p_offset: asNumber(payload.offset ?? 0, 'offset'),
+  });
+  assertQuery(error);
+  return data;
+}
+
+async function dashboard(admin: SupabaseClient, actorId: string) {
+  const { data, error } = await admin.rpc('lms_admin_dashboard_counts', {
+    p_actor_auth_user_id: actorId,
+  });
+  assertQuery(error);
+  await audit(admin, actorId, 'view_dashboard', {
+    source: 'lms_admin_list_learners',
+  });
+  return data;
+}
+
+const LEARNER_CSV_HEADERS = [
+  'email',
+  'first_name',
+  'middle_name',
+  'last_name',
+  'cfp_id',
+  'account_state',
+  'course',
+  'enrollment_status',
+  'percent_complete',
+  'expires_at',
+  'last_activity',
+  'stalled',
+  'completed',
+  'latest_completed_at',
+  'enrollment_count',
+];
+
+async function exportLearnersCsv(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const filters = directoryFilters(payload);
+  const { data, error } = await admin.rpc('lms_admin_list_learners', {
+    p_actor_auth_user_id: actorId,
+    ...filters,
+    p_limit: 10000,
+    p_offset: 0,
+  });
+  assertQuery(error);
+  const rows = (data?.rows ?? []) as Array<Record<string, unknown>>;
+  const csv = [
+    LEARNER_CSV_HEADERS,
+    ...rows.map((row) => [
+      row.email,
+      row.first_name,
+      row.middle_name,
+      row.last_name,
+      row.cfp_id,
+      row.deactivated ? 'deactivated' : 'active',
+      row.course_title,
+      row.enrollment_status,
+      row.percent_complete,
+      row.expires_at,
+      row.last_activity,
+      row.stalled,
+      row.completed,
+      row.latest_completed_at,
+      row.enrollment_count,
+    ]),
+  ]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\r\n');
+  await audit(admin, actorId, 'export_learners_csv', {
+    filters: { ...filters },
+    row_count: rows.length,
+  });
+  return { file_name: 'learner-directory.csv', csv, row_count: rows.length };
+}
+
+async function findAuthUserByEmail(admin: SupabaseClient, email: string) {
+  const { data, error } = await admin.rpc('lms_admin_find_auth_user_by_email', {
+    p_email: email,
+  });
+  assertQuery(error);
+  return data as { id: string; email: string } | null;
+}
+
+async function createLearner(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const email = requiredEmail(payload.email, 'email');
+  const firstName = requiredString(payload.first_name, 'first_name');
+  const lastName = requiredString(payload.last_name, 'last_name');
+  const existing = await findAuthUserByEmail(admin, email);
+  if (existing) throw new InvalidRequest('An account already exists for that email.');
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email,
+    email_confirm: true,
+    app_metadata: { lms_role: 'learner', lms_provisioned: true },
+  });
+  if (error || !created.user) {
+    throw new Error(error?.message ?? 'Account creation failed.');
+  }
+  // The profile RPC audits this as create_learner in the same transaction.
+  const { data: profile, error: profileError } = await admin.rpc(
+    'lms_admin_upsert_learner_profile',
+    {
+      p_actor_auth_user_id: actorId,
+      p_auth_user_id: created.user.id,
+      p_first_name: firstName,
+      p_middle_name: optionalString(payload.middle_name),
+      p_last_name: lastName,
+      p_cfp_id: optionalString(payload.cfp_id),
+      p_audit_action: 'create_learner',
+    },
+  );
+  assertQuery(profileError);
+  return { auth_user_id: created.user.id, email, profile };
+}
+
+async function updateLearnerProfile(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } = await admin.rpc('lms_admin_upsert_learner_profile', {
+    p_actor_auth_user_id: actorId,
+    p_auth_user_id: requiredUuid(payload.auth_user_id, 'auth_user_id'),
+    p_first_name: requiredString(payload.first_name, 'first_name'),
+    p_middle_name: optionalString(payload.middle_name),
+    p_last_name: requiredString(payload.last_name, 'last_name'),
+    p_cfp_id: optionalString(payload.cfp_id),
+  });
+  assertQuery(error);
+  return data;
+}
+
+async function sendPasswordReset(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const email = requiredEmail(payload.email, 'email');
+  const user = await findAuthUserByEmail(admin, email);
+  if (!user) throw new InvalidRequest('No account exists for that email.');
+  const { error } = await admin.auth.resetPasswordForEmail(email);
+  if (error) throw new Error(error.message);
+  // The response confirms dispatch only. No token or link is ever returned.
+  await audit(admin, actorId, 'send_password_reset', {
+    email,
+    auth_user_id: user.id,
+  });
+  return { dispatched: true, email };
+}
+
+async function setAccountState(
+  admin: SupabaseClient,
+  actorId: string,
+  action: 'deactivate_learner' | 'reactivate_learner',
+  payload: Record<string, unknown>,
+) {
+  const userId = requiredUuid(payload.auth_user_id, 'auth_user_id');
+  const { data: before, error: beforeError } =
+    await admin.auth.admin.getUserById(userId);
+  if (beforeError || !before.user) throw new InvalidRequest('Learner is unavailable.');
+  if (before.user.app_metadata?.lms_role === 'operator') {
+    throw new InvalidRequest('Operator accounts cannot be changed here.');
+  }
+  const { data: updated, error } = await admin.auth.admin.updateUserById(userId, {
+    ban_duration: action === 'deactivate_learner' ? DEACTIVATION_BAN : 'none',
+  });
+  if (error || !updated.user) throw new Error(error?.message ?? 'Update failed.');
+  const bannedUntil =
+    (updated.user as { banned_until?: string }).banned_until ?? null;
+  await audit(admin, actorId, action, {
+    auth_user_id: userId,
+    email: (before.user.email ?? '').toLowerCase(),
+    old_banned_until:
+      (before.user as { banned_until?: string }).banned_until ?? null,
+    new_banned_until: bannedUntil,
+  });
+  return { auth_user_id: userId, banned_until: bannedUntil };
+}
+
+async function deleteLearner(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const userId = requiredUuid(payload.auth_user_id, 'auth_user_id');
+  const confirmEmail = requiredEmail(payload.confirm_email, 'confirm_email');
+  const { data: guard, error: guardError } = await admin.rpc(
+    'lms_admin_delete_learner_guard',
+    { p_actor_auth_user_id: actorId, p_auth_user_id: userId },
+  );
+  assertQuery(guardError);
+  if (guard.email !== confirmEmail) {
+    throw new InvalidRequest('Confirmation email does not match the learner.');
+  }
+  if (!guard.allowed) {
+    throw new InvalidRequest(
+      'This learner has completion or CE reporting records and cannot be deleted. Deactivate the account instead.',
+    );
+  }
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  if (error) throw new Error(error.message);
+  // auth.users cascades through enrollments, progress, attempts, surveys,
+  // notes, and the profile per the platform FK graph.
+  await audit(admin, actorId, 'delete_learner', {
+    auth_user_id: userId,
+    email: guard.email,
+    enrollment_count: guard.enrollment_count,
+  });
+  return { deleted: true, email: guard.email };
+}
+
+async function grantEnrollment(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const email = requiredEmail(payload.email, 'email');
+  const courseSlug = requiredString(payload.course_slug, 'course_slug');
+  const expiresOn = requiredDate(payload.expires_at, 'expires_at');
+  const expiresAt = `${expiresOn}T23:59:59Z`;
+  const { data: course, error: courseError } = await admin
+    .from('lms_courses')
+    .select('id,title')
+    .eq('slug', courseSlug)
+    .maybeSingle();
+  assertQuery(courseError);
+  if (!course) throw new InvalidRequest('course_slug is invalid.');
+  const { data: existing, error: existingError } = await admin
+    .from('lms_enrollments')
+    .select('id')
+    .eq('person_email', email)
+    .eq('course_id', course.id)
+    .maybeSingle();
+  assertQuery(existingError);
+  if (existing) {
+    throw new InvalidRequest(
+      'An enrollment already exists for this learner and course. Use set expiration instead.',
+    );
+  }
+  const { data, error } = await admin.rpc('lms_grant_enrollment', {
+    p_email: email,
+    p_course_slug: courseSlug,
+    p_source: 'manual',
+    p_expires_at: expiresAt,
+    p_order_id: null,
+  });
+  assertQuery(error);
+  const row = Array.isArray(data) ? data[0] : data;
+  await audit(admin, actorId, 'grant_enrollment', {
+    email,
+    course_slug: courseSlug,
+    expires_at: expiresAt,
+    enrollment_id: row?.primary_enrollment_id ?? null,
+    bonus_enrollment_granted: Boolean(row?.bonus_enrollment_id),
+  });
+  return row;
+}
+
+async function buildEnrollmentContext(
+  admin: SupabaseClient,
+  enrollmentId: string,
+) {
+  const { data: enrollment, error: enrollmentError } = await admin
+    .from('lms_enrollments')
+    .select('id,person_email,course_id,status,expires_at,terms_accepted_at')
+    .eq('id', enrollmentId)
+    .maybeSingle();
+  assertQuery(enrollmentError);
+  if (!enrollment) throw new InvalidRequest('Enrollment is unavailable.');
+  const { data: course, error: courseError } = await admin
+    .from('lms_courses')
+    .select('id,status,progression,prerequisite_course_id,requires_terms_acceptance')
+    .eq('id', enrollment.course_id)
+    .single();
+  assertQuery(courseError);
+  const { data: modules, error: modulesError } = await admin
+    .from('lms_modules')
+    .select('id,course_id,position')
+    .eq('course_id', course.id);
+  assertQuery(modulesError);
+  const moduleIds = (modules ?? []).map((item) => item.id);
+  const [lessons, quizzes, progress, surveyResponses, attempts] =
+    await Promise.all([
+      moduleIds.length
+        ? admin
+            .from('lms_lessons')
+            .select('id,module_id,kind,duration_seconds,is_required')
+            .in('module_id', moduleIds)
+        : Promise.resolve({ data: [], error: null }),
+      moduleIds.length
+        ? admin.from('lms_module_quizzes').select('id,module_id').in('module_id', moduleIds)
+        : Promise.resolve({ data: [], error: null }),
+      admin
+        .from('lms_lesson_progress')
+        .select('lesson_id,completed_at,max_watched_seconds')
+        .eq('enrollment_id', enrollment.id),
+      admin
+        .from('lms_survey_responses')
+        .select('enrollment_id,lesson_id')
+        .eq('enrollment_id', enrollment.id),
+      admin
+        .from('lms_quiz_attempts')
+        .select('quiz_id,attempt_number,passed')
+        .eq('enrollment_id', enrollment.id),
+    ]);
+  assertQuery(lessons.error);
+  assertQuery(quizzes.error);
+  assertQuery(progress.error);
+  assertQuery(surveyResponses.error);
+  assertQuery(attempts.error);
+  const context: ProgressionContext = {
+    course,
+    module: (modules ?? [])[0],
+    modules: modules ?? [],
+    lessons: lessons.data ?? [],
+    quizzes: quizzes.data ?? [],
+    progress: progress.data ?? [],
+    surveyResponses: surveyResponses.data ?? [],
+    attempts: attempts.data ?? [],
+  };
+  return { enrollment, context };
+}
+
+async function adminCompleteLesson(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  const enrollmentId = requiredUuid(payload.enrollment_id, 'enrollment_id');
+  const lessonId = requiredUuid(payload.lesson_id, 'lesson_id');
+  // The RPC validates course membership, refuses surveys, sets completed_at
+  // only (video positions are never fabricated), and audits.
+  const { data: progressRow, error } = await admin.rpc('lms_admin_complete_lesson', {
+    p_actor_auth_user_id: actorId,
+    p_enrollment_id: enrollmentId,
+    p_lesson_id: lessonId,
+  });
+  assertQuery(error);
+  // Engine path: re-evaluate course completion exactly as the learner-side
+  // detector does, so downstream unlock and completion state stays derived.
+  const { context } = await buildEnrollmentContext(admin, enrollmentId);
+  let completionFired = false;
+  if (courseComplete(
+    context.course,
+    context.modules,
+    context.lessons,
+    context.quizzes,
+    context.progress,
+    context.attempts,
+    context.surveyResponses,
+  )) {
+    const { data: inserted, error: completionError } = await admin
+      .from('lms_completion_events')
+      .insert({
+        enrollment_id: enrollmentId,
+        completed_at: new Date().toISOString(),
+        trigger: 'all_requirements_met',
+        processed_at: null,
+        designation_issued: false,
+      })
+      .select('id')
+      .single();
+    if (completionError?.code !== '23505') assertQuery(completionError);
+    completionFired = Boolean(inserted);
+  }
+  return { progress: progressRow, completion_fired: completionFired };
+}
+
+interface ImportRowInput {
+  row_number: number;
+  email: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  cfp_board_id: string | null;
+  course: string;
+  expiration: string;
+}
+
+interface ImportRejection {
+  row_number: number;
+  field: string;
+  reason: string;
+}
+
+async function importLearners(
+  admin: SupabaseClient,
+  actorId: string,
+  payload: Record<string, unknown>,
+) {
+  if (!Array.isArray(payload.rows) || payload.rows.length === 0) {
+    throw new InvalidRequest('rows is required.');
+  }
+  if (payload.rows.length > 1000) {
+    throw new InvalidRequest('Import is limited to 1000 rows per file.');
+  }
+  const commit = payload.commit === true;
+
+  const { data: courses, error: coursesError } = await admin
+    .from('lms_courses')
+    .select('id,slug,title,status');
+  assertQuery(coursesError);
+  const courseBySlug = new Map(
+    (courses ?? []).map((course) => [course.slug, course]),
+  );
+
+  const rejections: ImportRejection[] = [];
+  const valid: ImportRowInput[] = [];
+  const seenPairs = new Set<string>();
+
+  for (const [index, raw] of payload.rows.entries()) {
+    const rowNumber = index + 2; // data starts on line 2 of the CSV
+    const row = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const reject = (field: string, reason: string) =>
+      rejections.push({ row_number: rowNumber, field, reason });
+
+    const emailRaw = typeof row.email === 'string' ? row.email.trim().toLowerCase() : '';
+    if (!LEARNER_EMAIL_PATTERN.test(emailRaw)) {
+      reject('email', 'must be a valid email address');
+      continue;
+    }
+    const firstName = typeof row.first === 'string' ? row.first.trim() : '';
+    const lastName = typeof row.last === 'string' ? row.last.trim() : '';
+    if (!firstName) { reject('first', 'is required'); continue; }
+    if (!lastName) { reject('last', 'is required'); continue; }
+    const courseSlug = typeof row.course === 'string' ? row.course.trim().toLowerCase() : '';
+    const course = courseBySlug.get(courseSlug);
+    if (!course) { reject('course', 'unknown course slug'); continue; }
+    const expiration = typeof row.expiration === 'string' ? row.expiration.trim() : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiration) ||
+      Number.isNaN(new Date(`${expiration}T00:00:00Z`).getTime())) {
+      reject('expiration', 'must be a YYYY-MM-DD date');
+      continue;
+    }
+    const pairKey = `${emailRaw}|${courseSlug}`;
+    if (seenPairs.has(pairKey)) {
+      reject('email', 'duplicates an earlier row for the same course');
+      continue;
+    }
+    seenPairs.add(pairKey);
+
+    const { data: existingEnrollment, error: enrollmentError } = await admin
+      .from('lms_enrollments')
+      .select('id')
+      .eq('person_email', emailRaw)
+      .eq('course_id', course.id)
+      .maybeSingle();
+    assertQuery(enrollmentError);
+    if (existingEnrollment) {
+      reject('course', 'already enrolled in this course');
+      continue;
+    }
+
+    const existingUser = await findAuthUserByEmail(admin, emailRaw);
+    if (existingUser) {
+      const { data: profile, error: profileError } = await admin
+        .from('lms_learner_profiles')
+        .select('first_name,last_name')
+        .eq('auth_user_id', existingUser.id)
+        .maybeSingle();
+      assertQuery(profileError);
+      if (
+        profile &&
+        (profile.first_name || profile.last_name) &&
+        (profile.first_name.toLowerCase() !== firstName.toLowerCase() ||
+          profile.last_name.toLowerCase() !== lastName.toLowerCase())
+      ) {
+        reject('first', 'name conflicts with the existing profile for this email');
+        continue;
+      }
+    }
+
+    valid.push({
+      row_number: rowNumber,
+      email: emailRaw,
+      first_name: firstName,
+      middle_name: typeof row.middle === 'string' && row.middle.trim() ? row.middle.trim() : null,
+      last_name: lastName,
+      cfp_board_id: typeof row.cfp_board_id === 'string' && row.cfp_board_id.trim() ? row.cfp_board_id.trim() : null,
+      course: courseSlug,
+      expiration,
+    });
+  }
+
+  if (!commit) {
+    return {
+      dry_run: true,
+      valid_count: valid.length,
+      rejected_count: rejections.length,
+      valid_rows: valid,
+      rejections,
+    };
+  }
+
+  let accountsCreated = 0;
+  let enrollmentsCreated = 0;
+  const results: Array<{ row_number: number; email: string; enrollment_id: string | null }> = [];
+  for (const row of valid) {
+    let user = await findAuthUserByEmail(admin, row.email);
+    if (!user) {
+      const { data: created, error } = await admin.auth.admin.createUser({
+        email: row.email,
+        email_confirm: true,
+        app_metadata: { lms_role: 'learner', lms_provisioned: true },
+      });
+      if (error || !created.user) {
+        rejections.push({ row_number: row.row_number, field: 'email', reason: 'account creation failed' });
+        continue;
+      }
+      user = { id: created.user.id, email: row.email };
+      accountsCreated += 1;
+    }
+    const { error: profileError } = await admin.rpc('lms_admin_upsert_learner_profile', {
+      p_actor_auth_user_id: actorId,
+      p_auth_user_id: user.id,
+      p_first_name: row.first_name,
+      p_middle_name: row.middle_name,
+      p_last_name: row.last_name,
+      p_cfp_id: row.cfp_board_id,
+      p_audit_action: 'create_learner',
+    });
+    if (profileError) {
+      rejections.push({ row_number: row.row_number, field: 'first', reason: 'profile write failed' });
+      continue;
+    }
+    const { data: granted, error: grantError } = await admin.rpc('lms_grant_enrollment', {
+      p_email: row.email,
+      p_course_slug: row.course,
+      p_source: 'manual',
+      p_expires_at: `${row.expiration}T23:59:59Z`,
+      p_order_id: null,
+    });
+    if (grantError) {
+      rejections.push({ row_number: row.row_number, field: 'course', reason: 'enrollment grant failed' });
+      continue;
+    }
+    const grantRow = Array.isArray(granted) ? granted[0] : granted;
+    const enrollmentId = grantRow?.primary_enrollment_id ?? null;
+    await audit(admin, actorId, 'grant_enrollment', {
+      email: row.email,
+      course_slug: row.course,
+      expires_at: `${row.expiration}T23:59:59Z`,
+      enrollment_id: enrollmentId,
+      via: 'bulk_import',
+    });
+    enrollmentsCreated += 1;
+    results.push({ row_number: row.row_number, email: row.email, enrollment_id: enrollmentId });
+  }
+
+  await audit(admin, actorId, 'bulk_import', {
+    row_count: payload.rows.length,
+    accounts_created: accountsCreated,
+    enrollments_created: enrollmentsCreated,
+    rejected_count: rejections.length,
+  });
+
+  return {
+    dry_run: false,
+    accounts_created: accountsCreated,
+    enrollments_created: enrollmentsCreated,
+    results,
+    rejections,
   };
 }
 
@@ -927,6 +1607,63 @@ Deno.serve(async (req: Request) => {
         break;
       }
       case 'upload_resource': data = await uploadResource(admin, actor.id, payload); break;
+      case 'dashboard': data = await dashboard(admin, actor.id); break;
+      case 'list_learners': data = await listLearners(admin, actor.id, payload); break;
+      case 'export_learners_csv': data = await exportLearnersCsv(admin, actor.id, payload); break;
+      case 'create_learner': data = await createLearner(admin, actor.id, payload); break;
+      case 'update_learner_profile': data = await updateLearnerProfile(admin, actor.id, payload); break;
+      case 'send_password_reset': data = await sendPasswordReset(admin, actor.id, payload); break;
+      case 'deactivate_learner':
+      case 'reactivate_learner':
+        data = await setAccountState(admin, actor.id, action, payload);
+        break;
+      case 'delete_learner': data = await deleteLearner(admin, actor.id, payload); break;
+      case 'grant_enrollment': data = await grantEnrollment(admin, actor.id, payload); break;
+      case 'set_enrollment_expiration': {
+        const expiresOn = requiredDate(payload.expires_at, 'expires_at');
+        const { data: result, error } = await admin.rpc('lms_admin_set_enrollment_expiration', {
+          p_actor_auth_user_id: actor.id,
+          p_enrollment_id: requiredUuid(payload.enrollment_id, 'enrollment_id'),
+          p_expires_at: `${expiresOn}T23:59:59Z`,
+        });
+        assertQuery(error);
+        data = result;
+        break;
+      }
+      case 'revoke_enrollment': {
+        const { data: result, error } = await admin.rpc('lms_admin_revoke_enrollment', {
+          p_actor_auth_user_id: actor.id,
+          p_enrollment_id: requiredUuid(payload.enrollment_id, 'enrollment_id'),
+        });
+        assertQuery(error);
+        data = result;
+        break;
+      }
+      case 'admin_complete_lesson': data = await adminCompleteLesson(admin, actor.id, payload); break;
+      case 'add_learner_note': {
+        const { data: result, error } = await admin.rpc('lms_admin_add_learner_note', {
+          p_actor_auth_user_id: actor.id,
+          p_learner_auth_user_id: requiredUuid(payload.auth_user_id, 'auth_user_id'),
+          p_body: requiredString(payload.body, 'body'),
+        });
+        assertQuery(error);
+        data = result;
+        break;
+      }
+      case 'import_learners': data = await importLearners(admin, actor.id, payload); break;
+      case 'search_audit': {
+        const { data: result, error } = await admin.rpc('lms_admin_search_audit', {
+          p_actor_auth_user_id: actor.id,
+          p_actor_email: optionalString(payload.actor_email),
+          p_action: optionalString(payload.action),
+          p_target_email: optionalString(payload.target_email),
+          p_limit: asNumber(payload.limit ?? 50, 'limit'),
+          p_offset: asNumber(payload.offset ?? 0, 'offset'),
+        });
+        assertQuery(error);
+        data = result;
+        break;
+      }
       case 'reset_attempt_history':
       case 'manual_mark_complete': {
         const { data: result, error } = await admin.rpc('lms_admin_support_action', {

@@ -9,21 +9,12 @@ import {
   GripVertical,
   Plus,
   Search,
-  ShieldCheck,
   Trash2,
 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Alert } from '../components/Alert';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DetailList, type DetailItem } from '../components/DetailList';
@@ -865,7 +856,7 @@ export function AdminCoursePage() {
   const [deleteError, setDeleteError] = useState('');
   const [addingModule, setAddingModule] = useState(false);
   const [deletingCourse, setDeletingCourse] = useState(false);
-  if (!course) return <div className="card p-8 text-center"><h1 className="text-2xl font-bold text-dacfp-navy">Course unavailable</h1><Link className="button-secondary mt-5" to="/admin">Back to courses</Link></div>;
+  if (!course) return <div className="card p-8 text-center"><h1 className="text-2xl font-bold text-dacfp-navy">Course unavailable</h1><Link className="button-secondary mt-5" to="/admin/courses">Back to courses</Link></div>;
 
   const addModule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -887,7 +878,7 @@ export function AdminCoursePage() {
     setDeleteError('');
     try {
       await mutate('delete_course', { id: course.id });
-      navigate('/admin');
+      navigate('/admin/courses');
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : '';
       setDeleteError(
@@ -902,7 +893,7 @@ export function AdminCoursePage() {
 
   return (
     <div className="space-y-8">
-      <Link className="button-quiet" to="/admin"><ArrowLeft className="size-icon-sm" aria-hidden="true" />Back to courses</Link>
+      <Link className="button-quiet" to="/admin/courses"><ArrowLeft className="size-icon-sm" aria-hidden="true" />Back to courses</Link>
       <PageHeader
         eyebrow={`Course editor · ${course.status}`}
         title={course.title}
@@ -949,7 +940,7 @@ export function AdminCoursePage() {
 }
 
 /** Structured evidence for one enrollment — replaces the JSON dumps (brief #21). */
-function EnrollmentInspector({
+export function EnrollmentInspector({
   inspection,
   enrollment,
   onSupport,
@@ -1121,7 +1112,7 @@ export function AdminNotFoundPage() {
         title="Admin page not found"
         description="This admin destination does not exist. The operator workspace remains available."
       />
-      <Link className="button-primary mt-6" to="/admin">Return to course catalog</Link>
+      <Link className="button-primary mt-6" to="/admin">Return to dashboard</Link>
     </section>
   );
 }
@@ -1210,65 +1201,14 @@ export function AdminLearnersPage() {
   );
 }
 
-export function AdminAuditPage() {
-  const { audit } = useAdmin();
-  return (
-    <div className="space-y-8">
-      <PageHeader eyebrow="Accountability" title="Admin audit trail" description="Every admin mutation, including CRUD, import, upload, reorder, and support actions, is written by the service boundary." action={<div className="flex items-center gap-2 rounded-lg bg-status-positive/10 px-3 py-2 text-sm font-bold text-status-positive"><ShieldCheck className="size-icon-md" aria-hidden="true" />{audit.length} recent actions</div>} />
-
-      {/* brief #21: a real table at md and up; card-per-row below it, because a
-          4-column table does not survive 375px. Same data, two presentations. */}
-      <div className="hidden md:block">
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Actor</TableHead>
-                  <TableHead>Target</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {audit.map((action) => (
-                  <TableRow key={action.id}>
-                    <TableCell className="whitespace-nowrap text-dacfp-gray-text">{new Date(action.created_at).toLocaleString()}</TableCell>
-                    <TableCell className="font-bold text-dacfp-navy">{action.action}</TableCell>
-                    <TableCell className="font-mono text-xs">{action.actor_auth_user_id}</TableCell>
-                    <TableCell><AuditTarget target={action.target} /></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </div>
-
-      <ul className="space-y-3 md:hidden">
-        {audit.map((action) => (
-          <li key={action.id} className="card p-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-bold text-dacfp-navy">{action.action}</span>
-              <span className="shrink-0 text-xs text-dacfp-gray-text">{new Date(action.created_at).toLocaleString()}</span>
-            </div>
-            <dl className="mt-3 space-y-2 border-t border-dacfp-line pt-3 text-sm">
-              <div className="flex gap-2"><dt className="shrink-0 font-semibold text-dacfp-gray-text">Actor</dt><dd className="min-w-0 break-all font-mono text-xs text-dacfp-navy">{action.actor_auth_user_id}</dd></div>
-              <div><dt className="font-semibold text-dacfp-gray-text">Target</dt><dd className="mt-1"><AuditTarget target={action.target} /></dd></div>
-            </dl>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 /**
  * Audit target as labelled key-values, not JSON.stringify (brief #21). The
  * target is a flat record of id/kind fields, so a compact chip list reads at a
- * glance where a brace-wrapped blob did not.
+ * glance where a brace-wrapped blob did not. M1 moved the audit page itself to
+ * AdminM1Pages (server-side search + pagination); the chip renderer stays here
+ * and is shared.
  */
-function AuditTarget({ target }: { target: Record<string, unknown> }) {
+export function AuditTarget({ target }: { target: Record<string, unknown> }) {
   const entries = Object.entries(target);
   if (entries.length === 0) return <span className="text-dacfp-gray-text">—</span>;
   return (
