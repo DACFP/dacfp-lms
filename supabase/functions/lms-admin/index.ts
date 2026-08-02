@@ -521,6 +521,587 @@ function csvCell(value: unknown) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
+const M2_QUIZ_MINIMUM_ATTEMPTS = 2;
+const M2_QUIZ_ATTEMPT_VIEW = 'v_lms_m2_quiz_attempt_population';
+const M2_QUIZ_QUESTION_VIEW = 'v_lms_m2_quiz_question_population';
+const M2_SURVEY_RESPONSE_VIEW = 'v_lms_m2_survey_response_population';
+
+type M2QuizAttemptRow = {
+  attempt_id: string;
+  enrollment_id: string;
+  course_id: string;
+  course_slug: string;
+  course_title: string;
+  module_id: string;
+  module_position: number;
+  module_title: string;
+  quiz_id: string;
+  attempt_number: number;
+  passed: boolean;
+  auth_user_id: string | null;
+};
+
+type M2QuizQuestionRow = {
+  course_id: string;
+  course_slug: string;
+  course_title: string;
+  module_id: string;
+  module_position: number;
+  module_title: string;
+  quiz_id: string;
+  question_id: string;
+  question_position: number;
+  prompt: string;
+  choices: Array<{ id: string; text: string }>;
+  correct_choice_ids: string[];
+  attempt_id: string | null;
+  selected_choice_ids: string[] | null;
+  answered_correctly: boolean | null;
+};
+
+function percentage(numerator: number, denominator: number) {
+  return denominator
+    ? Number(((numerator / denominator) * 100).toFixed(2))
+    : null;
+}
+
+async function allM2CourseRows<T>(
+  admin: SupabaseClient,
+  view: string,
+  columns: string,
+  courseId: string,
+  orderColumns: string[],
+) {
+  const rows: T[] = [];
+  const batchSize = 1000;
+  for (let offset = 0; ; offset += batchSize) {
+    let query = admin
+      .from(view)
+      .select(columns)
+      .eq('course_id', courseId);
+    for (const column of orderColumns) query = query.order(column);
+    const { data, error } = await query.range(offset, offset + batchSize - 1);
+    assertQuery(error);
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < batchSize) break;
+  }
+  return rows;
+}
+
+function m2QuizRollup(attempts: M2QuizAttemptRow[]) {
+  const insufficientData = attempts.length < M2_QUIZ_MINIMUM_ATTEMPTS;
+  const learnerKey = (attempt: M2QuizAttemptRow) =>
+    attempt.auth_user_id ?? `enrollment:${attempt.enrollment_id}`;
+  const firstPassByLearnerQuiz = new Map<string, number>();
+  for (const attempt of attempts) {
+    if (!attempt.passed) continue;
+    const key = `${learnerKey(attempt)}:${attempt.quiz_id}`;
+    const current = firstPassByLearnerQuiz.get(key);
+    if (current === undefined || attempt.attempt_number < current) {
+      firstPassByLearnerQuiz.set(key, attempt.attempt_number);
+    }
+  }
+  const attemptsToPass = [...firstPassByLearnerQuiz.values()];
+  return {
+    attempts: attempts.length,
+    unique_learners: new Set(attempts.map(learnerKey)).size,
+    pass_rate: insufficientData
+      ? null
+      : percentage(attempts.filter((attempt) => attempt.passed).length, attempts.length),
+    average_attempts_to_pass: insufficientData || !attemptsToPass.length
+      ? null
+      : Number((attemptsToPass.reduce((sum, value) => sum + value, 0) / attemptsToPass.length).toFixed(2)),
+    retake_volume: attempts.filter((attempt) => attempt.attempt_number > 1).length,
+    insufficient_data: insufficientData,
+  };
+}
+
+async function quizAnalytics(
+  admin: SupabaseClient,
+  input: Record<string, unknown>,
+) {
+  const courseId = requiredUuid(input.course_id, 'course_id');
+  const [attemptRows, responseRows] = await Promise.all([
+    allM2CourseRows<M2QuizAttemptRow>(
+      admin,
+      M2_QUIZ_ATTEMPT_VIEW,
+      'attempt_id,enrollment_id,course_id,course_slug,course_title,module_id,module_position,module_title,quiz_id,attempt_number,passed,auth_user_id',
+      courseId,
+      ['module_position', 'attempt_number', 'attempt_id'],
+    ),
+    allM2CourseRows<M2QuizQuestionRow>(
+      admin,
+      M2_QUIZ_QUESTION_VIEW,
+      'course_id,course_slug,course_title,module_id,module_position,module_title,quiz_id,question_id,question_position,prompt,choices,correct_choice_ids,attempt_id,selected_choice_ids,answered_correctly',
+      courseId,
+      ['module_position', 'question_position', 'attempt_id'],
+    ),
+  ]);
+  const course = responseRows[0] ?? attemptRows[0];
+  if (!course) throw new InvalidRequest('Quiz analytics are unavailable for this course.');
+
+  const modules = new Map<string, {
+    module_id: string;
+    position: number;
+    title: string;
+    quiz_id: string;
+    attempts: M2QuizAttemptRow[];
+    questions: Map<string, M2QuizQuestionRow[]>;
+  }>();
+
+  for (const row of responseRows) {
+    const module = modules.get(row.module_id) ?? {
+      module_id: row.module_id,
+      position: row.module_position,
+      title: row.module_title,
+      quiz_id: row.quiz_id,
+      attempts: [],
+      questions: new Map<string, M2QuizQuestionRow[]>(),
+    };
+    const question = module.questions.get(row.question_id) ?? [];
+    question.push(row);
+    module.questions.set(row.question_id, question);
+    modules.set(row.module_id, module);
+  }
+
+  for (const row of attemptRows) {
+    const module = modules.get(row.module_id) ?? {
+      module_id: row.module_id,
+      position: row.module_position,
+      title: row.module_title,
+      quiz_id: row.quiz_id,
+      attempts: [],
+      questions: new Map<string, M2QuizQuestionRow[]>(),
+    };
+    module.attempts.push(row);
+    modules.set(row.module_id, module);
+  }
+
+  return {
+    course: {
+      id: course.course_id,
+      slug: course.course_slug,
+      title: course.course_title,
+    },
+    minimum_attempts: M2_QUIZ_MINIMUM_ATTEMPTS,
+    population_views: {
+      attempts: M2_QUIZ_ATTEMPT_VIEW,
+      questions: M2_QUIZ_QUESTION_VIEW,
+    },
+    course_rollup: m2QuizRollup(attemptRows),
+    modules: [...modules.values()]
+      .sort((left, right) => left.position - right.position)
+      .map((module) => {
+        const rollup = m2QuizRollup(module.attempts);
+        const questions = [...module.questions.values()]
+          .map((rows) => {
+            const definition = rows[0];
+            const answered = rows.filter((row) =>
+              row.attempt_id !== null && row.selected_choice_ids !== null
+            );
+            const misses = answered.filter((row) => row.answered_correctly === false).length;
+            const questionInsufficient = answered.length < M2_QUIZ_MINIMUM_ATTEMPTS;
+            const choices = definition.choices.map((choice) => {
+              const selected = answered.filter((row) =>
+                (row.selected_choice_ids ?? []).includes(choice.id)
+              ).length;
+              return {
+                id: choice.id,
+                text: choice.text,
+                selected_count: selected,
+                selected_pct: questionInsufficient
+                  ? null
+                  : percentage(selected, answered.length),
+                correct: definition.correct_choice_ids.includes(choice.id),
+              };
+            });
+            return {
+              question_id: definition.question_id,
+              position: definition.question_position,
+              prompt: definition.prompt,
+              attempt_count: answered.length,
+              miss_count: misses,
+              miss_rate: questionInsufficient
+                ? null
+                : percentage(misses, answered.length),
+              insufficient_data: questionInsufficient,
+              choices,
+            };
+          })
+          .sort((left, right) => {
+            if (left.miss_rate === null && right.miss_rate === null) return left.position - right.position;
+            if (left.miss_rate === null) return 1;
+            if (right.miss_rate === null) return -1;
+            return right.miss_rate - left.miss_rate || left.position - right.position;
+          });
+
+        return {
+          module_id: module.module_id,
+          position: module.position,
+          title: module.title,
+          quiz_id: module.quiz_id,
+          ...rollup,
+          questions,
+        };
+      }),
+  };
+}
+
+type M2SurveyFilters = {
+  course_id: string | null;
+  survey_id: string | null;
+  submitted_from: string | null;
+  submitted_to: string | null;
+};
+
+type M2SurveyPopulationRow = {
+  response_id: string;
+  enrollment_id: string;
+  learner_email: string;
+  course_id: string;
+  course_slug: string;
+  course_title: string;
+  enrollment_status: 'active' | 'expired' | 'revoked';
+  course_completed_at: string | null;
+  module_id: string;
+  module_position: number;
+  survey_id: string;
+  survey_position: number;
+  survey_title: string;
+  submitted_at: string;
+  answers: Record<string, unknown>;
+  choice_free_text: Record<string, Record<string, string>>;
+  path: string[];
+};
+
+function optionalDate(value: unknown, field: string) {
+  if (value === null || value === undefined || value === '') return null;
+  return requiredDate(value, field);
+}
+
+function surveyFilters(input: Record<string, unknown>): M2SurveyFilters {
+  const filters = {
+    course_id: optionalUuid(input.course_id, 'course_id'),
+    survey_id: optionalUuid(input.survey_id, 'survey_id'),
+    submitted_from: optionalDate(input.submitted_from, 'submitted_from'),
+    submitted_to: optionalDate(input.submitted_to, 'submitted_to'),
+  };
+  if (
+    filters.submitted_from &&
+    filters.submitted_to &&
+    filters.submitted_from > filters.submitted_to
+  ) {
+    throw new InvalidRequest('submitted_from must not be after submitted_to.');
+  }
+  return filters;
+}
+
+function nextUtcDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function applySurveyFilters(query: any, filters: M2SurveyFilters) {
+  let filtered = query;
+  if (filters.course_id) filtered = filtered.eq('course_id', filters.course_id);
+  if (filters.survey_id) filtered = filtered.eq('survey_id', filters.survey_id);
+  if (filters.submitted_from) {
+    filtered = filtered.gte('submitted_at', `${filters.submitted_from}T00:00:00Z`);
+  }
+  if (filters.submitted_to) {
+    filtered = filtered.lt('submitted_at', `${nextUtcDate(filters.submitted_to)}T00:00:00Z`);
+  }
+  return filtered;
+}
+
+function pageNumber(value: unknown, fallback: number, maximum: number) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new InvalidRequest('Pagination is invalid.');
+  }
+  return parsed;
+}
+
+function publicSurveyFilters(filters: M2SurveyFilters) {
+  return Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== null),
+  );
+}
+
+async function listSurveyResponses(
+  admin: SupabaseClient,
+  input: Record<string, unknown>,
+) {
+  const filters = surveyFilters(input);
+  const page = pageNumber(input.page, 1, 100000);
+  const pageSize = pageNumber(input.page_size, 10, 50);
+  const offset = (page - 1) * pageSize;
+  let query = admin
+    .from(M2_SURVEY_RESPONSE_VIEW)
+    .select('response_id,learner_email,course_id,course_title,survey_id,survey_title,submitted_at,enrollment_status,course_completed_at', { count: 'exact' });
+  query = applySurveyFilters(query, filters);
+  const { data, error, count } = await query
+    .order('submitted_at', { ascending: false })
+    .order('response_id')
+    .range(offset, offset + pageSize - 1);
+  assertQuery(error);
+  return {
+    total: count ?? 0,
+    page,
+    page_size: pageSize,
+    filters: publicSurveyFilters(filters),
+    population_view: M2_SURVEY_RESPONSE_VIEW,
+    rows: data ?? [],
+  };
+}
+
+function surveyAnswerLines(
+  question: SurveyQuestion,
+  rawAnswer: unknown,
+  choiceFreeText: Record<string, string>,
+) {
+  if (rawAnswer === null || rawAnswer === undefined || rawAnswer === '') return [];
+  if (question.kind === 'text' || question.kind === 'scale_1_5') {
+    return [String(rawAnswer)];
+  }
+  const selected = Array.isArray(rawAnswer) ? rawAnswer : [rawAnswer];
+  return selected.map((value) => {
+    const choiceId = String(value);
+    const label = question.choices?.find((choice) => choice.id === choiceId)?.text ?? choiceId;
+    const detail = choiceFreeText?.[choiceId];
+    return typeof detail === 'string' && detail ? `${label} — ${detail}` : label;
+  });
+}
+
+async function surveyResponseDetail(
+  admin: SupabaseClient,
+  input: Record<string, unknown>,
+) {
+  const responseId = requiredUuid(input.response_id, 'response_id');
+  const { data, error } = await admin
+    .from(M2_SURVEY_RESPONSE_VIEW)
+    .select('*')
+    .eq('response_id', responseId)
+    .maybeSingle();
+  assertQuery(error);
+  if (!data) throw new InvalidRequest('Survey response is unavailable.');
+  const response = data as M2SurveyPopulationRow;
+  const [sections, questions] = await Promise.all([
+    admin
+      .from('lms_survey_sections')
+      .select('*')
+      .eq('lesson_id', response.survey_id)
+      .order('position'),
+    admin
+      .from('lms_survey_questions')
+      .select('*')
+      .eq('lesson_id', response.survey_id),
+  ]);
+  assertQuery(sections.error);
+  assertQuery(questions.error);
+  const sectionById = new Map(
+    ((sections.data ?? []) as SurveySection[]).map((section) => [section.id, section]),
+  );
+  const questionRows = (questions.data ?? []) as SurveyQuestion[];
+  return {
+    response_id: response.response_id,
+    learner_email: response.learner_email,
+    course_id: response.course_id,
+    course_title: response.course_title,
+    survey_id: response.survey_id,
+    survey_title: response.survey_title,
+    submitted_at: response.submitted_at,
+    enrollment_status: response.enrollment_status,
+    course_completed_at: response.course_completed_at,
+    population_view: M2_SURVEY_RESPONSE_VIEW,
+    path: response.path,
+    sections: response.path.map((sectionId) => {
+      const section = sectionById.get(sectionId);
+      return {
+        section_id: sectionId,
+        position: section?.position ?? 0,
+        title: section?.title ?? null,
+        answers: questionRows
+          .filter((question) => question.section_id === sectionId)
+          .sort((left, right) => left.position - right.position)
+          .map((question) => {
+            const choiceFreeText = response.choice_free_text?.[question.id] ?? {};
+            const rawAnswer = response.answers?.[question.id] ?? null;
+            return {
+              question_id: question.id,
+              position: question.position,
+              prompt: question.prompt,
+              kind: question.kind,
+              raw_answer: rawAnswer,
+              answer_lines: surveyAnswerLines(question, rawAnswer, choiceFreeText),
+              choice_free_text: choiceFreeText,
+            };
+          }),
+      };
+    }),
+  };
+}
+
+async function allFilteredSurveyResponses(
+  admin: SupabaseClient,
+  filters: M2SurveyFilters,
+) {
+  const rows: M2SurveyPopulationRow[] = [];
+  const batchSize = 1000;
+  for (let offset = 0; ; offset += batchSize) {
+    let query = admin.from(M2_SURVEY_RESPONSE_VIEW).select('*');
+    query = applySurveyFilters(query, filters);
+    const { data, error } = await query
+      .order('submitted_at', { ascending: false })
+      .order('response_id')
+      .range(offset, offset + batchSize - 1);
+    assertQuery(error);
+    const batch = (data ?? []) as M2SurveyPopulationRow[];
+    rows.push(...batch);
+    if (batch.length < batchSize) break;
+  }
+  return rows;
+}
+
+function surveyAnswerForCsv(
+  question: SurveyQuestion,
+  response: M2SurveyPopulationRow,
+) {
+  const value = response.answers?.[question.id];
+  if (value === null || value === undefined) return '';
+  if (question.kind === 'text' || question.kind === 'scale_1_5') return value;
+  return surveyAnswerLines(
+    question,
+    value,
+    response.choice_free_text?.[question.id] ?? {},
+  );
+}
+
+async function exportM2SurveyResponses(
+  admin: SupabaseClient,
+  actorId: string,
+  input: Record<string, unknown>,
+) {
+  const filters = surveyFilters(input);
+  const responses = await allFilteredSurveyResponses(admin, filters);
+  const responseSurveyIds = [...new Set(responses.map((response) => response.survey_id))];
+  let definitionQuery = admin
+    .from('lms_lessons')
+    .select('id,title,module_id,position')
+    .eq('kind', 'survey');
+  let shouldLoadDefinitions = true;
+  if (responseSurveyIds.length) {
+    definitionQuery = definitionQuery.in('id', responseSurveyIds);
+  } else if (filters.survey_id) {
+    definitionQuery = definitionQuery.eq('id', filters.survey_id);
+  } else if (filters.course_id) {
+    const modules = await admin
+      .from('lms_modules')
+      .select('id')
+      .eq('course_id', filters.course_id);
+    assertQuery(modules.error);
+    const moduleIds = (modules.data ?? []).map((module) => module.id);
+    if (moduleIds.length) definitionQuery = definitionQuery.in('module_id', moduleIds);
+    else shouldLoadDefinitions = false;
+  }
+  const surveyDefinitions: Array<{
+    id: string;
+    title: string;
+    module_id: string;
+    position: number;
+  }> = [];
+  if (shouldLoadDefinitions) {
+    const definitions = await definitionQuery;
+    assertQuery(definitions.error);
+    surveyDefinitions.push(...((definitions.data ?? []) as typeof surveyDefinitions));
+  }
+  const definitionById = new Map(surveyDefinitions.map((survey) => [survey.id, survey]));
+  const surveyIds = [...new Set([
+    ...responseSurveyIds,
+    ...surveyDefinitions.map((survey) => survey.id),
+  ])];
+  const [sections, questions] = surveyIds.length
+    ? await Promise.all([
+      admin.from('lms_survey_sections').select('*').in('lesson_id', surveyIds),
+      admin.from('lms_survey_questions').select('*').in('lesson_id', surveyIds),
+    ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+  assertQuery(sections.error);
+  assertQuery(questions.error);
+  const sectionRows = (sections.data ?? []) as SurveySection[];
+  const sectionById = new Map(sectionRows.map((section) => [section.id, section]));
+  const surveyById = new Map(responses.map((response) => [response.survey_id, response]));
+  const questionRows = ((questions.data ?? []) as SurveyQuestion[]).sort((left, right) => {
+    const leftSurvey = surveyById.get(left.lesson_id);
+    const rightSurvey = surveyById.get(right.lesson_id);
+    const leftDefinition = definitionById.get(left.lesson_id);
+    const rightDefinition = definitionById.get(right.lesson_id);
+    return (leftSurvey?.course_title ?? '').localeCompare(rightSurvey?.course_title ?? '')
+      || (leftSurvey?.module_position ?? 0) - (rightSurvey?.module_position ?? 0)
+      || (leftSurvey?.survey_position ?? leftDefinition?.position ?? 0)
+        - (rightSurvey?.survey_position ?? rightDefinition?.position ?? 0)
+      || (sectionById.get(left.section_id)?.position ?? 0) - (sectionById.get(right.section_id)?.position ?? 0)
+      || left.position - right.position;
+  });
+  const headers = [
+    'email',
+    'submitted_at',
+    'course',
+    'survey',
+    'enrollment_status',
+    'course_completed_at',
+    'path',
+    ...questionRows.map((question) => {
+      const survey = surveyById.get(question.lesson_id);
+      const definition = definitionById.get(question.lesson_id);
+      const section = sectionById.get(question.section_id);
+      return `${survey?.survey_title ?? definition?.title ?? 'Survey'} — ${section?.title ?? `Section ${section?.position ?? ''}`} — ${question.prompt}`;
+    }),
+  ];
+  const csvRows = responses.map((response) => [
+    response.learner_email,
+    response.submitted_at,
+    response.course_title,
+    response.survey_title,
+    response.enrollment_status,
+    response.course_completed_at,
+    response.path.map((sectionId) => {
+      const section = sectionById.get(sectionId);
+      return section ? `§${section.position}${section.title ? ` ${section.title}` : ''}` : sectionId;
+    }).join(' > '),
+    ...questionRows.map((question) =>
+      question.lesson_id === response.survey_id && response.path.includes(question.section_id)
+        ? surveyAnswerForCsv(question, response)
+        : ''
+    ),
+  ]);
+  const csv = [headers, ...csvRows]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\r\n');
+  const namedFilters = {
+    course_id: filters.course_id,
+    survey_id: filters.survey_id,
+    submitted_from: filters.submitted_from,
+    submitted_to: filters.submitted_to,
+  };
+  await audit(admin, actorId, 'export_m2_survey_responses', {
+    population_view: M2_SURVEY_RESPONSE_VIEW,
+    filters: namedFilters,
+    row_count: responses.length,
+  });
+  const courseSlug = filters.course_id && responses.length
+    ? responses[0].course_slug
+    : 'all-courses';
+  return {
+    file_name: `${courseSlug}-survey-responses.csv`,
+    csv,
+    row_count: responses.length,
+    filters: publicSurveyFilters(filters),
+  };
+}
+
 async function exportSurveyResponses(
   admin: SupabaseClient,
   actorId: string,
@@ -1571,6 +2152,10 @@ Deno.serve(async (req: Request) => {
       }
       case 'inspect_learner': data = await inspectLearner(admin, actor.id, requiredString(payload.email, 'email')); break;
       case 'export_question_bank': data = await exportQuestionBank(admin, actor.id, requiredUuid(payload.module_id, 'module_id')); break;
+      case 'quiz_analytics': data = await quizAnalytics(admin, payload); break;
+      case 'list_survey_responses': data = await listSurveyResponses(admin, payload); break;
+      case 'survey_response_detail': data = await surveyResponseDetail(admin, payload); break;
+      case 'export_m2_survey_responses': data = await exportM2SurveyResponses(admin, actor.id, payload); break;
       case 'survey_results': data = await surveyResults(admin, actor.id, requiredUuid(payload.lesson_id, 'lesson_id')); break;
       case 'export_survey_responses': data = await exportSurveyResponses(admin, actor.id, payload); break;
       case 'preview_ce_report': data = await previewCeReport(admin, actor.id, payload); break;

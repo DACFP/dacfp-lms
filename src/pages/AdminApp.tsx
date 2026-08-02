@@ -17,6 +17,11 @@ import {
   AdminImportPage,
   AdminLearnerFilePage,
 } from './AdminM1Pages';
+import {
+  AdminQuizAnalyticsPage,
+  AdminSurveyResponseDetailPage,
+  AdminSurveyResponsesPage,
+} from './AdminM2Pages';
 
 const CeReportingPage = lazy(() => import('./CeReportingPage').then((module) => ({
   default: module.CeReportingPage,
@@ -47,6 +52,9 @@ export default function AdminApp({ adminProvider }: { adminProvider?: LmsAdminPr
           <Route path="learners/inspect" element={<AdminLearnersPage />} />
           <Route path="learners/:email" element={<AdminLearnerFilePage />} />
           <Route path="import" element={<AdminImportPage />} />
+          <Route path="analytics/quizzes" element={<AdminQuizAnalyticsPage />} />
+          <Route path="surveys" element={<AdminSurveyResponsesPage />} />
+          <Route path="surveys/:responseId" element={<AdminSurveyResponseDetailPage />} />
           <Route path="ce-reporting" element={<Suspense fallback={<PageSkeleton />}><CeReportingPage /></Suspense>} />
           <Route path="audit" element={<AdminAuditSearchPage />} />
           <Route path="*" element={<AdminNotFoundPage />} />

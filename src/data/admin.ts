@@ -219,6 +219,104 @@ export interface SurveyExport {
   row_count: number;
 }
 
+export interface QuizAnalyticsChoice {
+  id: string;
+  text: string;
+  selected_count: number;
+  selected_pct: number | null;
+  correct: boolean;
+}
+
+export interface QuizAnalyticsQuestion {
+  question_id: string;
+  position: number;
+  prompt: string;
+  attempt_count: number;
+  miss_count: number;
+  miss_rate: number | null;
+  insufficient_data: boolean;
+  choices: QuizAnalyticsChoice[];
+}
+
+export interface QuizAnalyticsRollup {
+  attempts: number;
+  unique_learners: number;
+  pass_rate: number | null;
+  average_attempts_to_pass: number | null;
+  retake_volume: number;
+  insufficient_data: boolean;
+}
+
+export interface QuizAnalyticsModule extends QuizAnalyticsRollup {
+  module_id: string;
+  position: number;
+  title: string;
+  quiz_id: string;
+  questions: QuizAnalyticsQuestion[];
+}
+
+export interface QuizAnalytics {
+  course: { id: string; slug: string; title: string };
+  minimum_attempts: number;
+  population_views: {
+    attempts: string;
+    questions: string;
+  };
+  course_rollup: QuizAnalyticsRollup;
+  modules: QuizAnalyticsModule[];
+}
+
+export interface SurveyBrowserFilters {
+  course_id?: string;
+  survey_id?: string;
+  submitted_from?: string;
+  submitted_to?: string;
+}
+
+export interface SurveyBrowserRow {
+  response_id: string;
+  learner_email: string;
+  course_id: string;
+  course_title: string;
+  survey_id: string;
+  survey_title: string;
+  submitted_at: string;
+  enrollment_status: 'active' | 'expired' | 'revoked';
+  course_completed_at: string | null;
+}
+
+export interface SurveyBrowserResult {
+  total: number;
+  page: number;
+  page_size: number;
+  filters: SurveyBrowserFilters;
+  population_view: string;
+  rows: SurveyBrowserRow[];
+}
+
+export interface SurveyResponseAnswer {
+  question_id: string;
+  position: number;
+  prompt: string;
+  kind: LmsSurveyQuestion['kind'];
+  raw_answer: unknown;
+  answer_lines: string[];
+  choice_free_text: Record<string, string>;
+}
+
+export interface SurveyResponseSection {
+  section_id: string;
+  position: number;
+  title: string | null;
+  answers: SurveyResponseAnswer[];
+}
+
+export interface SurveyResponseDetail extends SurveyBrowserRow {
+  population_view: string;
+  path: string[];
+  sections: SurveyResponseSection[];
+}
+
 export interface CfpCeExportRow {
   completion_id: string;
   course_id: string;

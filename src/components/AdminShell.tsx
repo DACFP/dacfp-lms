@@ -1,4 +1,4 @@
-import { BookOpen, ClipboardList, FileSpreadsheet, LayoutDashboard, LogOut, Menu, Users } from 'lucide-react';
+import { BarChart3, BookOpen, ClipboardList, FileSpreadsheet, LayoutDashboard, LogOut, Menu, MessagesSquare, Users } from 'lucide-react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -15,6 +15,8 @@ const links = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/learners', label: 'Learners', icon: Users, end: false },
   { to: '/admin/courses', label: 'Courses', icon: BookOpen, end: false },
+  { to: '/admin/analytics/quizzes', label: 'Quiz analytics', icon: BarChart3, end: false },
+  { to: '/admin/surveys', label: 'Survey responses', icon: MessagesSquare, end: false },
   { to: '/admin/ce-reporting', label: 'CFP CE', icon: FileSpreadsheet, end: false },
   { to: '/admin/audit', label: 'Audit trail', icon: ClipboardList, end: false },
 ];
@@ -43,7 +45,7 @@ export function AdminShell() {
             </span>
           </div>
 
-          <nav aria-label="Admin" className="hidden items-center gap-1 md:flex">
+          <nav aria-label="Admin" className="hidden items-center gap-1 xl:flex">
             {links.map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} end={end} to={to} className={({ isActive }) => `flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors ${isActive ? 'bg-white text-dacfp-navy' : 'text-white/75 hover:bg-white/10 hover:text-white'}`}>
                 <Icon className="size-icon-sm" aria-hidden="true" />{label}
@@ -51,7 +53,7 @@ export function AdminShell() {
             ))}
           </nav>
 
-          <div className="hidden items-center gap-3 md:flex">
+          <div className="hidden items-center gap-3 xl:flex">
             <p className="max-w-40 truncate text-sm text-white/70" title={session?.user.email}>{session?.user.email}</p>
             <button className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/20 px-3 text-sm font-bold transition-colors hover:bg-white/10" type="button" onClick={signOut} aria-label={`Sign out${session?.user.email ? ` ${session.user.email}` : ''}`}>
               <LogOut className="size-icon-sm" aria-hidden="true" /> Sign out
@@ -60,7 +62,7 @@ export function AdminShell() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" className="inline-flex size-11 items-center justify-center rounded-lg border border-white/20 text-white transition-colors hover:bg-white/10 md:hidden" aria-label="Open menu">
+              <button type="button" className="inline-flex size-11 items-center justify-center rounded-lg border border-white/20 text-white transition-colors hover:bg-white/10 xl:hidden" aria-label="Open menu">
                 <Menu className="size-icon-md" aria-hidden="true" />
               </button>
             </DropdownMenuTrigger>
