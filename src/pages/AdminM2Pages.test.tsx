@@ -1,10 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { AuthSessionProvider } from '../context/AuthContext';
 import { LmsProvider } from '../context/LmsContext';
 import type {
+  DefinitionStatus,
   QuizAnalytics,
   SurveyBrowserResult,
   SurveyResponseDetail,
@@ -15,6 +16,20 @@ import type {
   LmsAuthProvider,
   LmsAuthSession,
 } from '../data/provider';
+
+const unchangedDefinitions: DefinitionStatus = {
+  changed_since_data: false,
+  latest_change_at: null,
+  mutation_count: 0,
+  population_view: 'v_lms_m2_definition_mutation_population',
+};
+
+const changedDefinitions: DefinitionStatus = {
+  changed_since_data: true,
+  latest_change_at: '2026-07-29T02:08:46.844Z',
+  mutation_count: 1,
+  population_view: 'v_lms_m2_definition_mutation_population',
+};
 
 const operatorSession: LmsAuthSession = {
   user: {
@@ -66,7 +81,9 @@ const quizAnalytics: QuizAnalytics = {
   population_views: {
     attempts: 'v_lms_m2_quiz_attempt_population',
     questions: 'v_lms_m2_quiz_question_population',
+    definition_mutations: 'v_lms_m2_definition_mutation_population',
   },
+  definition_status: unchangedDefinitions,
   course_rollup: {
     attempts: 1,
     unique_learners: 1,
@@ -116,8 +133,21 @@ describe('M2 quiz analytics', () => {
     expect(screen.getAllByText(/Insufficient data/).length).toBeGreaterThan(0);
     expect(screen.getByText('Accurate choice')).toBeInTheDocument();
     expect(screen.getByText('Correct')).toBeInTheDocument();
+    expect(screen.queryByText('Definitions changed since this data was collected.')).toBeNull();
     expect(screen.queryByText(/learner@example/i)).toBeNull();
     expect(screen.queryByRole('button', { name: /export/i })).toBeNull();
+  });
+
+  it('shows the Amendment 1 indicator when an audited bank change postdates attempts', async () => {
+    renderAdmin('/admin/analytics/quizzes', (action, payload = {}) =>
+      adminRequest(action, payload, {
+        quiz_analytics: () => ({ ...quizAnalytics, definition_status: changedDefinitions }),
+      }));
+
+    expect(await screen.findByText('Definitions changed since this data was collected.')).toBeInTheDocument();
+    expect(screen.getByText(/M2 Amendment 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Derived pass rate and attempts-to-pass are unavailable/)).toBeInTheDocument();
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
   });
 });
 
@@ -127,6 +157,7 @@ const browserResult: SurveyBrowserResult = {
   page_size: 10,
   filters: {},
   population_view: 'v_lms_m2_survey_response_population',
+  definition_status: unchangedDefinitions,
   rows: [{
     response_id: '11111111-1111-1111-1111-111111111111',
     learner_email: 'learner@example.test',
@@ -153,13 +184,50 @@ describe('M2 survey response browser', () => {
     )).length).toBeGreaterThan(0);
     expect(screen.getByText('v_lms_m2_survey_response_population')).toBeInTheDocument();
     expect(screen.getAllByText(/Course completed Jul 28, 2026/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Definitions changed since this data was collected.')).toBeNull();
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 10 }));
+  });
+
+  it('shows the Amendment 1 indicator when an audited survey change postdates visible responses', async () => {
+    renderAdmin('/admin/surveys', (action, payload = {}) =>
+      adminRequest(action, payload, {
+        list_survey_responses: () => ({ ...browserResult, definition_status: changedDefinitions }),
+      }));
+
+    expect(await screen.findByText('Definitions changed since this data was collected.')).toBeInTheDocument();
+  });
+
+  it('returns an export-wide definition status and places the indicator in the CSV', async () => {
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:m2-export');
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const exportResponse = vi.fn(() => ({
+      file_name: 'fpt-survey-responses.csv',
+      csv: `definitions_notice,email\r\n"Definitions changed since this data was collected.",learner@example.test`,
+      row_count: 1,
+      definition_status: changedDefinitions,
+    }));
+    renderAdmin('/admin/surveys', (action, payload = {}) =>
+      adminRequest(action, payload, {
+        list_survey_responses: () => browserResult,
+        export_m2_survey_responses: exportResponse,
+      }));
+
+    await screen.findAllByText('learner@example.test');
+    fireEvent.click(screen.getByRole('button', { name: 'Export filtered CSV' }));
+
+    expect(await screen.findByText('Definitions changed since this data was collected.')).toBeInTheDocument();
+    expect(exportResponse).toHaveBeenCalledWith({});
+    expect(createObjectUrl).toHaveBeenCalled();
+    await waitFor(() => expect(revokeObjectUrl).toHaveBeenCalledWith('blob:m2-export'));
+    expect(anchorClick).toHaveBeenCalled();
   });
 
   it('renders routed sections in stored order with verbatim free text and no mutation affordance', async () => {
     const detail: SurveyResponseDetail = {
       ...browserResult.rows[0],
       population_view: 'v_lms_m2_survey_response_population',
+      definition_status: changedDefinitions,
       path: ['section-a', 'section-c'],
       sections: [
         {
@@ -207,6 +275,25 @@ describe('M2 survey response browser', () => {
     ]);
     expect(screen.getByText(/Verbatim response/)).toHaveTextContent('Verbatim response with a second line.');
     expect(screen.getByText('Yes — Please contact me next week.')).toBeInTheDocument();
+    expect(screen.getByText('Definitions changed since this data was collected.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /edit|annotate|status|save/i })).toBeNull();
+  });
+
+  it('omits the indicator on routed detail when no audited change postdates the response', async () => {
+    renderAdmin(
+      '/admin/surveys/11111111-1111-1111-1111-111111111111',
+      (action, payload = {}) => adminRequest(action, payload, {
+        survey_response_detail: () => ({
+          ...browserResult.rows[0],
+          population_view: 'v_lms_m2_survey_response_population',
+          definition_status: unchangedDefinitions,
+          path: [],
+          sections: [],
+        }),
+      }),
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Post-course survey' })).toBeInTheDocument();
+    expect(screen.queryByText('Definitions changed since this data was collected.')).toBeNull();
   });
 });

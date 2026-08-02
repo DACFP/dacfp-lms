@@ -217,6 +217,7 @@ export interface SurveyExport {
   file_name: string;
   csv: string;
   row_count: number;
+  definition_status: DefinitionStatus;
 }
 
 export interface QuizAnalyticsChoice {
@@ -255,13 +256,22 @@ export interface QuizAnalyticsModule extends QuizAnalyticsRollup {
   questions: QuizAnalyticsQuestion[];
 }
 
+export interface DefinitionStatus {
+  changed_since_data: boolean;
+  latest_change_at: string | null;
+  mutation_count: number;
+  population_view: string;
+}
+
 export interface QuizAnalytics {
   course: { id: string; slug: string; title: string };
   minimum_attempts: number;
   population_views: {
     attempts: string;
     questions: string;
+    definition_mutations: string;
   };
+  definition_status: DefinitionStatus;
   course_rollup: QuizAnalyticsRollup;
   modules: QuizAnalyticsModule[];
 }
@@ -291,6 +301,7 @@ export interface SurveyBrowserResult {
   page_size: number;
   filters: SurveyBrowserFilters;
   population_view: string;
+  definition_status: DefinitionStatus;
   rows: SurveyBrowserRow[];
 }
 
@@ -313,6 +324,7 @@ export interface SurveyResponseSection {
 
 export interface SurveyResponseDetail extends SurveyBrowserRow {
   population_view: string;
+  definition_status: DefinitionStatus;
   path: string[];
   sections: SurveyResponseSection[];
 }

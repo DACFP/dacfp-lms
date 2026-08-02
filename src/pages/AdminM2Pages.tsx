@@ -26,6 +26,7 @@ import { Field } from '../components/Field';
 import { EmptyState, PageHeader, StatusPill, formatDate } from '../components/common';
 import { useAdmin } from '../context/AdminContext';
 import type {
+  DefinitionStatus,
   QuizAnalytics,
   QuizAnalyticsQuestion,
   SurveyBrowserFilters,
@@ -56,6 +57,10 @@ function decimal(value: number | null) {
   return value === null ? 'Insufficient data' : value.toFixed(2);
 }
 
+function rollupMetric(value: number | null, definitionsChanged: boolean, formatter: (metric: number | null) => string) {
+  return definitionsChanged ? 'Unavailable' : formatter(value);
+}
+
 function dateTime(value: string) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -72,6 +77,17 @@ function completionContext(completedAt: string | null, enrollmentStatus: string)
   return completedAt
     ? `Course completed ${formatDate(completedAt)}`
     : `${enrollmentStatus} enrollment · completion not recorded`;
+}
+
+function DefinitionsChangedNotice({ status }: { status: DefinitionStatus }) {
+  if (!status.changed_since_data) return null;
+  return (
+    <Alert tone="warning">
+      <strong>Definitions changed since this data was collected.</strong>{' '}
+      This surface applies the current definitions under M2 Amendment 1.
+      {status.latest_change_at ? ` Latest relevant audited change: ${dateTime(status.latest_change_at)}.` : ''}
+    </Alert>
+  );
 }
 
 export function AdminQuizAnalyticsPage() {
@@ -156,6 +172,12 @@ export function AdminQuizAnalyticsPage() {
         title="Question quality and outcomes"
         description="Aggregate submitted attempts only. No learner-identifying drill-down is available here, and the published 10-question, 70%, unlimited-attempt exam policy is unchanged."
       />
+      {data ? <DefinitionsChangedNotice status={data.definition_status} /> : null}
+      {data?.definition_status.changed_since_data ? (
+        <p className="text-sm text-dacfp-gray-text">
+          Derived pass rate and attempts-to-pass are unavailable because a bank definition changed after displayed attempts were collected.
+        </p>
+      ) : null}
       {error ? <Alert tone="danger">{error} <button className="font-bold underline" type="button" onClick={load}>Retry</button></Alert> : null}
 
       <section className="card grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" aria-label="Quiz analytics controls">
@@ -190,8 +212,8 @@ export function AdminQuizAnalyticsPage() {
             <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <div className="card p-4"><dt className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Attempts</dt><dd className="mt-2 text-2xl font-bold tabular-nums text-dacfp-navy">{data.course_rollup.attempts}</dd></div>
               <div className="card p-4"><dt className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Unique learners</dt><dd className="mt-2 text-2xl font-bold tabular-nums text-dacfp-navy">{data.course_rollup.unique_learners}</dd></div>
-              <div className="card p-4"><dt className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Pass rate</dt><dd className="mt-2 text-2xl font-bold tabular-nums text-dacfp-navy">{percent(data.course_rollup.pass_rate)}</dd></div>
-              <div className="card p-4"><dt className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Avg. attempts-to-pass</dt><dd className="mt-2 text-2xl font-bold tabular-nums text-dacfp-navy">{decimal(data.course_rollup.average_attempts_to_pass)}</dd></div>
+              <div className="card p-4"><dt className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Pass rate</dt><dd className="mt-2 text-2xl font-bold tabular-nums text-dacfp-navy">{rollupMetric(data.course_rollup.pass_rate, data.definition_status.changed_since_data, percent)}</dd></div>
+              <div className="card p-4"><dt className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Avg. attempts-to-pass</dt><dd className="mt-2 text-2xl font-bold tabular-nums text-dacfp-navy">{rollupMetric(data.course_rollup.average_attempts_to_pass, data.definition_status.changed_since_data, decimal)}</dd></div>
               <div className="card p-4"><dt className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Retakes</dt><dd className="mt-2 text-2xl font-bold tabular-nums text-dacfp-navy">{data.course_rollup.retake_volume}</dd></div>
             </dl>
             {data.course_rollup.insufficient_data ? (
@@ -226,8 +248,8 @@ export function AdminQuizAnalyticsPage() {
                         </TableCell>
                         <TableCell className="tabular-nums">{module.attempts}</TableCell>
                         <TableCell className="tabular-nums">{module.unique_learners}</TableCell>
-                        <TableCell className="tabular-nums">{percent(module.pass_rate)}</TableCell>
-                        <TableCell className="tabular-nums">{decimal(module.average_attempts_to_pass)}</TableCell>
+                        <TableCell className="tabular-nums">{rollupMetric(module.pass_rate, data.definition_status.changed_since_data, percent)}</TableCell>
+                        <TableCell className="tabular-nums">{rollupMetric(module.average_attempts_to_pass, data.definition_status.changed_since_data, decimal)}</TableCell>
                         <TableCell className="tabular-nums">{module.retake_volume}</TableCell>
                       </TableRow>
                     ))}
@@ -243,7 +265,7 @@ export function AdminQuizAnalyticsPage() {
                     <span className="mt-2 grid grid-cols-2 gap-2 text-sm text-dacfp-gray-text">
                       <span>{module.attempts} attempts</span>
                       <span>{module.unique_learners} learners</span>
-                      <span>{percent(module.pass_rate)} pass rate</span>
+                      <span>{rollupMetric(module.pass_rate, data.definition_status.changed_since_data, percent)} pass rate</span>
                       <span>{module.retake_volume} retakes</span>
                     </span>
                   </button>
@@ -423,6 +445,9 @@ export function AdminSurveyResponsesPage() {
         'export_m2_survey_responses',
         { ...filtersFromParams(params) },
       );
+      setResult((current) => current
+        ? { ...current, definition_status: exported.definition_status }
+        : current);
       downloadText(exported.file_name, exported.csv);
     } catch {
       setError('The filtered survey CSV could not be exported.');
@@ -446,6 +471,7 @@ export function AdminSurveyResponsesPage() {
           </button>
         )}
       />
+      {result ? <DefinitionsChangedNotice status={result.definition_status} /> : null}
       {error ? <Alert tone="danger">{error} <button className="font-bold underline" type="button" onClick={load}>Retry</button></Alert> : null}
 
       <form className="card space-y-4 p-5" onSubmit={applyFilters} aria-label="Survey response filters">
@@ -573,6 +599,7 @@ export function AdminSurveyResponseDetailPage() {
             description="The section path and answers are the immutable values stored with this submission. Question labels reflect the current survey definition. There are no edit, annotation, or status controls."
             action={<StatusPill tone="neutral">Read only</StatusPill>}
           />
+          <DefinitionsChangedNotice status={detail.definition_status} />
           <section className="card grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4" aria-label="Response context">
             <div><p className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Learner</p><p className="mt-1 break-all font-semibold text-dacfp-navy">{detail.learner_email}</p></div>
             <div><p className="text-xs font-bold uppercase tracking-wide text-dacfp-gray-text">Course</p><p className="mt-1 font-semibold text-dacfp-navy">{detail.course_title}</p></div>

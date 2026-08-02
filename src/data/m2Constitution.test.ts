@@ -14,12 +14,24 @@ describe('M2 read-only constitution', () => {
   it('keeps every named population security-invoker and service-role SELECT-only', async () => {
     const populations = await source('supabase/migrations/20260801130000_m2_analytics_populations.sql');
     const rider = await source('supabase/migrations/20260801131000_m2_view_acl_rider.sql');
+    const amendment = await source('supabase/migrations/20260801140000_m2_current_definitions_contract.sql');
 
     expect(populations.match(/with \(security_invoker = on\)/g)).toHaveLength(4);
     expect(populations.match(/from public, anon, authenticated/g)).toHaveLength(4);
     expect(rider.match(/from service_role/g)).toHaveLength(4);
     expect(rider.match(/grant select on table/g)).toHaveLength(4);
     expect(rider).not.toMatch(/grant (insert|update|delete|all)/i);
+    expect(amendment).toContain('with (security_invoker = on)');
+    expect(amendment).toContain('from public, anon, authenticated, service_role');
+    expect(amendment.match(/grant select on table/g)).toHaveLength(1);
+    expect(amendment).not.toMatch(/grant (insert|update|delete|all)/i);
+  });
+
+  it('ratifies the current-definitions contract and routes snapshots to the named rider', async () => {
+    const spec = await source('M2-SPEC.md');
+    expect(spec).toContain('CURRENT-DEFINITIONS CONTRACT');
+    expect(spec).toMatch(/definitions changed since this\s+data was collected/);
+    expect(spec).toMatch(/definition\s+snapshot rider/);
   });
 
   it('adds no read-path audit or mutation and keeps the survey export free of answer keys', async () => {
@@ -34,6 +46,9 @@ describe('M2 read-only constitution', () => {
       expect(readPath).not.toMatch(/\.insert\(|\.update\(|\.delete\(/);
     }
     expect(surveyExport).toContain("'export_m2_survey_responses'");
+    expect(surveyExport).toContain("'definitions_notice'");
+    expect(surveyExport).toContain('definitions_changed_since_data');
+    expect(surveyExport).toContain('definition_status: definitionStatus');
     expect(surveyExport).not.toContain('correct_choice_ids');
     expect(edge).not.toContain("case 'export_quiz_analytics'");
   });

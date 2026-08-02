@@ -5,6 +5,10 @@ STATUS: Commit as M2-SPEC.md at the repo root AFTER M1 merges. Runs
 after M1. Governed by SPEC.md v3.2 Hard Rules. Branch:
 codex/m2-analytics.
 
+AMENDMENT 1 (2026-08-01): The current-definitions contract below
+ratifies the historical-definition behavior for M2 and routes immutable
+definition snapshots to a named future session.
+
 ## §0 PRINCIPLES
 - M2 is READ-ONLY. It adds zero mutation paths. The only writes are
   lms_admin_actions rows auditing exports.
@@ -15,6 +19,15 @@ codex/m2-analytics.
 - Figure-equals-query parity (M1 §0 rule extended): any number
   shown must equal the row count or aggregate of the defined view
   it cites; drill-downs open exactly that population.
+- CURRENT-DEFINITIONS CONTRACT: §1 and §2 score and render stored
+  responses against the CURRENT question and survey definitions by
+  design. Where lms_admin_actions history shows a definition-
+  mutating action postdating any data a surface displays, that
+  surface must show an explicit "definitions changed since this
+  data was collected" indicator, derived read-only from the audit
+  trail. Attempt-time and submission-time definition snapshots are
+  ROUTED OUT as a named future write-path session (definition
+  snapshot rider) and are out of scope here.
 - Exam law (Hard Rule 12) is untouchable. Analytics observe quiz
   outcomes; nothing here can alter quiz policy, banks, or attempts.
 - Survey responses remain immutable (F3). Browsing and exporting

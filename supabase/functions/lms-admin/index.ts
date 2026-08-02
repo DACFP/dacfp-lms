@@ -1,6 +1,13 @@
 import { corsHeaders } from './cors.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { courseComplete, type ProgressionContext } from './progression.ts';
+import {
+  deriveM2DefinitionStatus,
+  M2_DEFINITIONS_CHANGED_NOTICE,
+  type M2CollectedDefinitionRow,
+  type M2DefinitionColumn,
+  type M2DefinitionMutationRow,
+} from './m2-definitions.ts';
 
 const DENIED_BODY = { error: 'Admin access is unavailable.' };
 const RESOURCE_BUCKET = 'lms-resources';
@@ -525,6 +532,7 @@ const M2_QUIZ_MINIMUM_ATTEMPTS = 2;
 const M2_QUIZ_ATTEMPT_VIEW = 'v_lms_m2_quiz_attempt_population';
 const M2_QUIZ_QUESTION_VIEW = 'v_lms_m2_quiz_question_population';
 const M2_SURVEY_RESPONSE_VIEW = 'v_lms_m2_survey_response_population';
+const M2_DEFINITION_MUTATION_VIEW = 'v_lms_m2_definition_mutation_population';
 
 type M2QuizAttemptRow = {
   attempt_id: string;
@@ -537,6 +545,7 @@ type M2QuizAttemptRow = {
   module_title: string;
   quiz_id: string;
   attempt_number: number;
+  submitted_at: string;
   passed: boolean;
   auth_user_id: string | null;
 };
@@ -589,7 +598,39 @@ async function allM2CourseRows<T>(
   return rows;
 }
 
-function m2QuizRollup(attempts: M2QuizAttemptRow[]) {
+async function m2DefinitionStatus(
+  admin: SupabaseClient,
+  mutationAction: 'import_question_bank' | 'replace_survey_flow',
+  definitionColumn: M2DefinitionColumn,
+  collectedRows: M2CollectedDefinitionRow[],
+) {
+  const definitionIds = [...new Set(collectedRows.map((row) => row.definition_id))];
+  const mutationRows: M2DefinitionMutationRow[] = [];
+  const batchSize = 1000;
+  if (definitionIds.length) {
+    for (let offset = 0; ; offset += batchSize) {
+      const { data, error } = await admin
+        .from(M2_DEFINITION_MUTATION_VIEW)
+        .select('changed_at,module_id,survey_id')
+        .eq('mutation_action', mutationAction)
+        .in(definitionColumn, definitionIds)
+        .order('changed_at', { ascending: false })
+        .range(offset, offset + batchSize - 1);
+      assertQuery(error);
+      const batch = (data ?? []) as M2DefinitionMutationRow[];
+      mutationRows.push(...batch);
+      if (batch.length < batchSize) break;
+    }
+  }
+  return deriveM2DefinitionStatus(
+    mutationRows,
+    definitionColumn,
+    collectedRows,
+    M2_DEFINITION_MUTATION_VIEW,
+  );
+}
+
+function m2QuizRollup(attempts: M2QuizAttemptRow[], definitionsChanged = false) {
   const insufficientData = attempts.length < M2_QUIZ_MINIMUM_ATTEMPTS;
   const learnerKey = (attempt: M2QuizAttemptRow) =>
     attempt.auth_user_id ?? `enrollment:${attempt.enrollment_id}`;
@@ -606,10 +647,10 @@ function m2QuizRollup(attempts: M2QuizAttemptRow[]) {
   return {
     attempts: attempts.length,
     unique_learners: new Set(attempts.map(learnerKey)).size,
-    pass_rate: insufficientData
+    pass_rate: insufficientData || definitionsChanged
       ? null
       : percentage(attempts.filter((attempt) => attempt.passed).length, attempts.length),
-    average_attempts_to_pass: insufficientData || !attemptsToPass.length
+    average_attempts_to_pass: insufficientData || definitionsChanged || !attemptsToPass.length
       ? null
       : Number((attemptsToPass.reduce((sum, value) => sum + value, 0) / attemptsToPass.length).toFixed(2)),
     retake_volume: attempts.filter((attempt) => attempt.attempt_number > 1).length,
@@ -626,7 +667,7 @@ async function quizAnalytics(
     allM2CourseRows<M2QuizAttemptRow>(
       admin,
       M2_QUIZ_ATTEMPT_VIEW,
-      'attempt_id,enrollment_id,course_id,course_slug,course_title,module_id,module_position,module_title,quiz_id,attempt_number,passed,auth_user_id',
+      'attempt_id,enrollment_id,course_id,course_slug,course_title,module_id,module_position,module_title,quiz_id,attempt_number,submitted_at,passed,auth_user_id',
       courseId,
       ['module_position', 'attempt_number', 'attempt_id'],
     ),
@@ -640,6 +681,15 @@ async function quizAnalytics(
   ]);
   const course = responseRows[0] ?? attemptRows[0];
   if (!course) throw new InvalidRequest('Quiz analytics are unavailable for this course.');
+  const definitionStatus = await m2DefinitionStatus(
+    admin,
+    'import_question_bank',
+    'module_id',
+    attemptRows.map((attempt) => ({
+      definition_id: attempt.module_id,
+      collected_at: attempt.submitted_at,
+    })),
+  );
 
   const modules = new Map<string, {
     module_id: string;
@@ -688,12 +738,14 @@ async function quizAnalytics(
     population_views: {
       attempts: M2_QUIZ_ATTEMPT_VIEW,
       questions: M2_QUIZ_QUESTION_VIEW,
+      definition_mutations: M2_DEFINITION_MUTATION_VIEW,
     },
-    course_rollup: m2QuizRollup(attemptRows),
+    definition_status: definitionStatus,
+    course_rollup: m2QuizRollup(attemptRows, definitionStatus.changed_since_data),
     modules: [...modules.values()]
       .sort((left, right) => left.position - right.position)
       .map((module) => {
-        const rollup = m2QuizRollup(module.attempts);
+        const rollup = m2QuizRollup(module.attempts, definitionStatus.changed_since_data);
         const questions = [...module.questions.values()]
           .map((rows) => {
             const definition = rows[0];
@@ -847,12 +899,23 @@ async function listSurveyResponses(
     .order('response_id')
     .range(offset, offset + pageSize - 1);
   assertQuery(error);
+  const filteredRows = await allFilteredSurveyDefinitionRows(admin, filters);
+  const definitionStatus = await m2DefinitionStatus(
+    admin,
+    'replace_survey_flow',
+    'survey_id',
+    filteredRows.map((row) => ({
+      definition_id: row.survey_id,
+      collected_at: row.submitted_at,
+    })),
+  );
   return {
     total: count ?? 0,
     page,
     page_size: pageSize,
     filters: publicSurveyFilters(filters),
     population_view: M2_SURVEY_RESPONSE_VIEW,
+    definition_status: definitionStatus,
     rows: data ?? [],
   };
 }
@@ -888,7 +951,7 @@ async function surveyResponseDetail(
   assertQuery(error);
   if (!data) throw new InvalidRequest('Survey response is unavailable.');
   const response = data as M2SurveyPopulationRow;
-  const [sections, questions] = await Promise.all([
+  const [sections, questions, definitionStatus] = await Promise.all([
     admin
       .from('lms_survey_sections')
       .select('*')
@@ -898,6 +961,12 @@ async function surveyResponseDetail(
       .from('lms_survey_questions')
       .select('*')
       .eq('lesson_id', response.survey_id),
+    m2DefinitionStatus(
+      admin,
+      'replace_survey_flow',
+      'survey_id',
+      [{ definition_id: response.survey_id, collected_at: response.submitted_at }],
+    ),
   ]);
   assertQuery(sections.error);
   assertQuery(questions.error);
@@ -916,6 +985,7 @@ async function surveyResponseDetail(
     enrollment_status: response.enrollment_status,
     course_completed_at: response.course_completed_at,
     population_view: M2_SURVEY_RESPONSE_VIEW,
+    definition_status: definitionStatus,
     path: response.path,
     sections: response.path.map((sectionId) => {
       const section = sectionById.get(sectionId);
@@ -965,6 +1035,29 @@ async function allFilteredSurveyResponses(
   return rows;
 }
 
+async function allFilteredSurveyDefinitionRows(
+  admin: SupabaseClient,
+  filters: M2SurveyFilters,
+) {
+  const rows: Array<{ survey_id: string; submitted_at: string }> = [];
+  const batchSize = 1000;
+  for (let offset = 0; ; offset += batchSize) {
+    let query = admin
+      .from(M2_SURVEY_RESPONSE_VIEW)
+      .select('survey_id,submitted_at');
+    query = applySurveyFilters(query, filters);
+    const { data, error } = await query
+      .order('submitted_at', { ascending: false })
+      .order('response_id')
+      .range(offset, offset + batchSize - 1);
+    assertQuery(error);
+    const batch = (data ?? []) as Array<{ survey_id: string; submitted_at: string }>;
+    rows.push(...batch);
+    if (batch.length < batchSize) break;
+  }
+  return rows;
+}
+
 function surveyAnswerForCsv(
   question: SurveyQuestion,
   response: M2SurveyPopulationRow,
@@ -986,6 +1079,15 @@ async function exportM2SurveyResponses(
 ) {
   const filters = surveyFilters(input);
   const responses = await allFilteredSurveyResponses(admin, filters);
+  const definitionStatus = await m2DefinitionStatus(
+    admin,
+    'replace_survey_flow',
+    'survey_id',
+    responses.map((response) => ({
+      definition_id: response.survey_id,
+      collected_at: response.submitted_at,
+    })),
+  );
   const responseSurveyIds = [...new Set(responses.map((response) => response.survey_id))];
   let definitionQuery = admin
     .from('lms_lessons')
@@ -1046,6 +1148,7 @@ async function exportM2SurveyResponses(
       || left.position - right.position;
   });
   const headers = [
+    'definitions_notice',
     'email',
     'submitted_at',
     'course',
@@ -1061,6 +1164,7 @@ async function exportM2SurveyResponses(
     }),
   ];
   const csvRows = responses.map((response) => [
+    definitionStatus.changed_since_data ? M2_DEFINITIONS_CHANGED_NOTICE : '',
     response.learner_email,
     response.submitted_at,
     response.course_title,
@@ -1090,6 +1194,8 @@ async function exportM2SurveyResponses(
     population_view: M2_SURVEY_RESPONSE_VIEW,
     filters: namedFilters,
     row_count: responses.length,
+    definitions_changed_since_data: definitionStatus.changed_since_data,
+    latest_definition_change_at: definitionStatus.latest_change_at,
   });
   const courseSlug = filters.course_id && responses.length
     ? responses[0].course_slug
@@ -1099,6 +1205,7 @@ async function exportM2SurveyResponses(
     csv,
     row_count: responses.length,
     filters: publicSurveyFilters(filters),
+    definition_status: definitionStatus,
   };
 }
 
